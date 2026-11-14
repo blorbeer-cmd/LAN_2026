@@ -469,6 +469,23 @@ test('real LAN account, automatic orga credits, own-game betting notification, h
   assert.equal(await tipsOverview.locator(`[data-tip-round="${round.id}"]`).count(), 1, 'the settled own tip is listed on the points page');
   assert.equal(await tipsOverview.locator(`[data-tip-round="${spectatorRound.id}"]`).count(), 1, 'an untipped open market is listed too');
   assert.equal(await member.locator('[data-history-item]').count(), 0);
+  const untippedGroup = tipsOverview.locator('[data-points-section="tips-untipped"]');
+  const finishedGroup = tipsOverview.locator('[data-points-section="tips-finished"]');
+  assert.equal(await untippedGroup.evaluate((element) => (element as HTMLDetailsElement).open), true);
+  assert.equal(await finishedGroup.evaluate((element) => (element as HTMLDetailsElement).open), false);
+  await untippedGroup.locator(':scope > summary').focus();
+  await member.keyboard.press('Enter');
+  await finishedGroup.locator(':scope > summary').click();
+  await api(`/api/points/rounds/${spectatorRound.id}/tip?eventId=${eventId}`, 'PUT',
+    { outcomeId: spectatorRound.outcomes[0].id, stake: 2 }, alice.cookie);
+  const pendingGroup = tipsOverview.locator('[data-points-section="tips-pending"]');
+  await pendingGroup.locator(`[data-tip-round="${spectatorRound.id}"]`).waitFor();
+  assert.equal(await pendingGroup.evaluate((element) => (element as HTMLDetailsElement).open), true);
+  assert.equal(await untippedGroup.evaluate((element) => (element as HTMLDetailsElement).open), false, 'a new own tip preserves the closed untipped group');
+  assert.equal(await finishedGroup.evaluate((element) => (element as HTMLDetailsElement).open), true, 'a betting refresh preserves opened settlements');
+  await api(`/api/points/rounds/${spectatorRound.id}/tip?eventId=${eventId}`, 'DELETE', undefined, alice.cookie);
+  await pendingGroup.waitFor({ state: 'detached' });
+  assert.equal(await untippedGroup.evaluate((element) => (element as HTMLDetailsElement).open), false, 'returning a tip to the group does not expand it');
 
   const categoryData = await api(`/api/points?eventId=${eventId}`, 'GET', undefined, alice.cookie);
   for (const [account, label] of Object.entries({ orga: 'Orga', playing: 'Spielen', betting: 'Wetten' })) {
@@ -497,6 +514,16 @@ test('real LAN account, automatic orga credits, own-game betting notification, h
         return meta && meta.left < title.right && meta.top < title.bottom;
       }).map((header) => header.textContent));
     assert.deepEqual(collisions, [], 'compact headers wrap metadata instead of overlapping labels');
+    const nesting = await member.locator('[data-points-section="categories"], [data-points-section="tips"]').evaluateAll((parents) => parents.flatMap((parent) => {
+      const parentHeader = parent.querySelector(':scope > summary')!;
+      return Array.from(parent.querySelectorAll('details')).map((child) => ({
+        parentBackground: getComputedStyle(parent).backgroundColor,
+        childBackground: getComputedStyle(child).backgroundColor,
+        inset: child.querySelector(':scope > summary')!.getBoundingClientRect().left - parentHeader.getBoundingClientRect().left,
+      }));
+    }));
+    assert.ok(nesting.length >= 6 && nesting.every((item) => item.parentBackground !== item.childBackground && item.inset > 0),
+      'open and closed points subgroups use alternating card surfaces and an inset header');
     assert.equal(await member.getByRole('region', { name: 'Punkteverlauf', exact: true }).locator('.points-chart svg[role="img"]').count(), 1);
   }
   await navigate(admin, 'matchmaking');
@@ -593,6 +620,20 @@ test('real LAN account, automatic orga credits, own-game betting notification, h
   await tournamentDialog.locator('[data-tip-group]').selectOption('Halbfinale');
   await tournamentDialog.getByText('Dein Tipp:', { exact: true }).waitFor();
   assert.equal(await tournamentDialog.locator('[name="stake"]').count(), 0, 'settled games remain available as tip details');
+  await tournamentDialog.locator('[data-tip-group]').selectOption('Turniersieger');
+  const champion = (await api(`/api/points?eventId=${eventId}`)).rounds.find((row: any) => row.sourceType === 'tournament' && row.sourceId === cup.id);
+  await api(`/api/points/rounds/${champion.id}/refund`, 'POST', { reason: 'Turniersiegertipp zur Prüfung erstattet' });
+  const refundNotice = tournamentDialog.locator('[data-tip-refund-notice]');
+  await refundNotice.getByText('Diese Wette wurde erstattet.', { exact: true }).waitFor();
+  await refundNotice.getByText(/Alle Einsätze wurden zurückgegeben/).waitFor();
+  await refundNotice.getByText(/Turniersiegertipp zur Prüfung erstattet/).waitFor();
+  assert.equal(await tournamentDialog.locator('[name="stake"]').count(), 0);
+  await admin.keyboard.press('Escape');
+  await tournamentBets.getByRole('button', { name: 'Tipps öffnen', exact: true }).click();
+  await tournamentDialog.locator('[data-tip-group]').selectOption('Turniersieger');
+  await tournamentDialog.locator('[data-tip-refund-notice]').getByText(/Turniersiegertipp zur Prüfung erstattet/).waitFor();
+  await tournamentDialog.locator('[data-tip-group]').selectOption('Halbfinale');
+  assert.equal(await tournamentDialog.locator('[data-tip-refund-notice]').count(), 0, 'refund notices belong only to the selected market');
   await admin.keyboard.press('Escape');
   await admin.locator(`[data-open-result="${fixture.id}"]`).click();
   await admin.getByRole('dialog', { name: 'Ergebnis', exact: true }).waitFor();

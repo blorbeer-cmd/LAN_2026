@@ -435,6 +435,13 @@ export function roundView(round: BettingRound, playerId: string) {
   const tips = tipsFor(round.id);
   const mine = tips.find((tip) => tip.player_id === playerId);
   const pot = tips.reduce((sum, t) => sum + t.stake, 0);
+  const refundReason = round.status === 'refunded'
+    ? db.prepare(`SELECT j.reason FROM points_journal j JOIN points_sources s ON s.id = j.source_id
+      JOIN events e ON e.id = s.event_id WHERE e.group_id = ? AND s.event_id = ?
+        AND s.source_key = ? AND s.account = 'wallet' AND j.reason IS NOT NULL
+      ORDER BY j.created_at DESC, j.rowid DESC LIMIT 1`)
+      .pluck().get(round.group_id, round.event_id, `bet:${round.id}`) as string | undefined
+    : undefined;
   // Only identities that may be shown publicly: accounts that opted out of
   // being named (newsticker opt-out) and test accounts outside test events
   // stay anonymous stakes, without name or id (#755).
@@ -452,6 +459,7 @@ export function roundView(round: BettingRound, playerId: string) {
     tournament: tournamentContext(round),
     title: round.title,
     status: round.status,
+    refundReason: refundReason ?? null,
     payoutPolicy: round.payout_policy,
     closesAt: round.closes_at || null,
     settledAt: round.settled_at,

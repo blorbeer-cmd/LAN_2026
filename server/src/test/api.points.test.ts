@@ -1013,6 +1013,8 @@ test('new todo rewards use one foreign helper, preserve corrections until reopen
   assert.ok(JSON.stringify(ownExport).includes(source.sourceKey));
   assert.ok(JSON.stringify(ownExport).includes('"pointsModel":"category"'));
   assert.equal((await request(app).post(`/api/points/rounds/${market.id}/refund`).send({ reason: 'Bestehenden Einsatz vollständig erhalten' })).status, 200);
+  assert.equal((await request(app).get('/api/points').set('x-test-player-id', a)).body.rounds.find(
+    (row: { id: string }) => row.id === market.id).refundReason, 'Admin-Erstattung: Bestehenden Einsatz vollständig erhalten');
   assert.equal((await request(app).patch(`/api/events/${f.eventId}/points-visibility`).send({ visible: false, revision: 1 })).status, 200);
   const hidden = await request(app).get('/api/checklist/tasks').set('x-test-player-id', a);
   assert.equal(hidden.body.tasks.find((t: { id: string }) => t.id === id).pointsValue, null);

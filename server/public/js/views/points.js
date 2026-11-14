@@ -378,7 +378,8 @@ function openTip(initialRound, ctx, { data: initialData, rounds: initialRounds }
       ${round.tournament && groups.length > 1 ? `<label class="stack"><span class="field-label">Runde</span><select data-tip-group>${groups.map((item) => `<option value="${e(item.label)}"${item === group ? ' selected' : ''}>${e(item.label)}</option>`).join('')}</select></label>` : ''}
       ${round.sourceType === 'tournament_match' ? `<label class="stack"><span class="field-label">Spiel</span><select data-tip-select>${group.rounds.map((row) => `<option value="${e(row.id)}"${row.id === roundId ? ' selected' : ''}>${e(`Spiel ${row.tournament.slot + 1}: ${row.outcomes.filter((o) => o.playerIds.length).map((o) => o.label).join(' gegen ')} · ${statusLabels[row.status]}${row.mine ? ' · Dein Tipp' : ''}`)}</option>`).join('')}</select></label>` : ''}
       <p class="muted"><span data-tip-context>${e(tipContext(round))}</span><br><span data-tip-summary>${e(roundSummary(round, Boolean(data.settings.closed_at)))}</span></p>
-      ${notice?.roundId === roundId ? `<p role="status" data-tip-notice>${e(notice.text)}</p>` : ''}
+      ${round.status === 'refunded' ? `<div class="notice" role="status" data-tip-refund-notice><strong>Diese Wette wurde erstattet.</strong> Alle Einsätze wurden zurückgegeben.${round.refundReason ? `<div>Grund: ${e(round.refundReason)}</div>` : ''}</div>`
+        : notice?.roundId === roundId ? `<p role="status" data-tip-notice>${e(notice.text)}</p>` : ''}
       <form class="stack" data-tip-form>${editable ? `
         <span class="field-label is-required" id="tip-outcome-label">${round.sourceType === 'tournament' ? 'Team' : 'Sieger'}</span>
         <div class="stack result-winner-list" role="radiogroup" aria-labelledby="tip-outcome-label">${round.outcomes.map((o) => `<label class="tournament-result-pick${draft.outcomeId === o.id ? ' is-selected' : ''}">
@@ -586,12 +587,12 @@ function tipsOverviewHtml(data) {
   const untipped = rounds.filter((round) => round.status === 'open' && !closed && !round.mine);
   const pending = rounds.filter((round) => round.mine && round.mine.payout === null);
   const finished = rounds.filter((round) => round.mine && round.mine.payout !== null);
-  const group = (title, rows) => rows.length
-    ? `<div class="stack"><h3 class="field-label">${title}</h3><div class="profile-rows">${rows.join('')}</div></div>` : '';
+  const group = (key, title, rows, open = true) => rows.length
+    ? pointsSectionHtml(`tips-${key}`, title, `<div class="profile-rows">${rows.join('')}</div>`, { open, meta: String(rows.length) }) : '';
   const content = [
-    group('Noch nicht getippt', untipped.map((round) => row(round, button(round, 'Jetzt tippen')))),
-    group('Deine offenen Tipps', pending.map((round) => row(round, button(round, round.status === 'open' && !closed ? 'Tipp ändern' : 'Tippdetails')))),
-    group('Abgerechnet', finished.map((round) => row(round, button(round, 'Tippdetails')))),
+    group('untipped', 'Noch nicht getippt', untipped.map((round) => row(round, button(round, 'Jetzt tippen')))),
+    group('pending', 'Deine offenen Tipps', pending.map((round) => row(round, button(round, round.status === 'open' && !closed ? 'Tipp ändern' : 'Tippdetails')))),
+    group('finished', 'Abgerechnet', finished.map((round) => row(round, button(round, 'Tippdetails'))), false),
   ].filter(Boolean).join('');
   return pointsSectionHtml('tips', 'Tipps', content || emptyStateHtml('Noch keine Tipprunden.', { className: 'empty-state-compact' }), {
     open: untipped.length > 0 || pending.length > 0,

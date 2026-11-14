@@ -32,7 +32,6 @@ export function categoryPointsHtml(data) {
       meta: `${e(row.categories[key].raw)} Punkte`, value: `${e(row.categories[key].placePoints)} P.`,
     })), { ranked: true, label: `${label}-Rangliste` }) : emptyStateHtml('Noch keine Platzierung.');
     return pointsSectionHtml(`ranking-${key}`, label, ranking, {
-      flat: true,
       metaHtml: `<span data-category-balance="${key}">${e(data.categoryBalances?.[key] ?? 0)}</span> Punkte${score ? ` · <span data-category-score="${key}">${score.rank === null ? 'Kein Platz' : `Platz ${score.rank}`} · ${e(score.placePoints)} Platzpunkte</span>` : ''}`,
       label: `${label}-Rangliste`,
     });
@@ -41,7 +40,7 @@ export function categoryPointsHtml(data) {
     rankedListHtml((data.standings ?? []).map((row) => ({ rank: row.rank, title: e(row.name),
       meta: Object.entries(POINT_CATEGORIES).map(([key, label]) => `${label} ${row.categories[key].placePoints}`).join(' · '),
       value: `${e(row.points ?? 0)} P.`,
-    })), { ranked: true, label: 'LAN-Rangliste' }), { flat: true, label: 'LAN-Rangliste' });
+    })), { ranked: true, label: 'LAN-Rangliste' }), { label: 'LAN-Rangliste' });
   const summary = pointsSectionHtml('categories', 'Wertung', `<div class="stack">${categories}${overall}</div>`, {
     open: true, label: 'Meine Kategorien',
     meta: data.categoryStanding ? `Gesamt ${data.categoryStanding.points} P. · Platz ${data.categoryStanding.rank}` : 'Ohne Wertung',

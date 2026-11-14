@@ -307,7 +307,14 @@ Phasenname.
 
 Die Punkteseite listet unter „Tipps“ alle Märkte des Events in drei Gruppen: „Noch nicht
 getippt“, „Deine offenen Tipps“ (Team und Einsatz) und „Abgerechnet“ (Netto); jede Zeile öffnet
-den Tippdialog. Gibt es offene Tipprunden, führt „Tipps ansehen“ auf Home dorthin. Admins finden in der
+den Tippdialog. Die drei Gruppen sind einzeln einklappbar und nennen ihre Anzahl. Offene Gruppen
+starten aufgeklappt, „Abgerechnet“ geschlossen; Live-Aktualisierungen erhalten die Auswahl.
+Wie die Unterbereiche der „Wertung“ verwenden sie eingerückte Karten mit nach Verschachtelung
+abwechselnder Hintergrundfläche, auch im geschlossenen Zustand.
+Auf schmalen Telefonen steht die Tippaktion unter dem Begegnungstext. Erstattete Märkte bleiben
+als Historie einsehbar und nennen im Tippdialog dauerhaft die Rückgabe aller Einsätze sowie den
+vorhandenen Erstattungsgrund. Das gilt auch nach erneutem Öffnen und bei einer Live-Erstattung.
+Gibt es offene Tipprunden, führt „Tipps ansehen“ auf Home dorthin. Admins finden in der
 Punkteverwaltung unter „Wettrunden“ alle Märkte mit Status, Topf, Tippanzahl und den Aktionen
 Schließen, Wiederöffnen, Erstatten und Stornieren. Vor „LAN-Endwertung festschreiben“ nennt die
 Bestätigung die noch nicht abgerechneten Runden.
