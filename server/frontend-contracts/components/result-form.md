@@ -60,6 +60,10 @@ sind ohne Farbsehen lesbar. Der Fokus bleibt bei Validierungs- und Speicherfehle
 `views/matchmaking.js` zeigt das Formular auf einem 390-px-Handy und einem 1024-px-Laptop;
 `views/tournament.js` verwendet es auf der breiten Turnierdetailseite. Admin kann mehr als
 sechs Personen als Frei-für-alle erfassen.
+Der Tippdialog in `views/points.js` übernimmt nur die Sieger-Radiogruppe (`result-winner-list`,
+`tournament-result-pick`, `tournament-result-pick-players`) als Teamauswahl, ohne Punktestand und
+ohne „Speichern“ des Formulars. Die zweite Zeile nennt dort Einsatzsumme und Tippende. Höhe,
+Akzentrahmen und Tastaturbedienung bleiben unverändert.
 
 ## 10. Prüfungen und Abnahmebeispiele
 

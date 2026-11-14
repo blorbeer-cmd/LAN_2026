@@ -190,6 +190,7 @@ export const APP_LIFECYCLE_HANDLERS = Object.freeze({
   },
   [CONNECTION_RESTORED]: () => { invalidateInfoBoard(); invalidatePoints(); },
   'leaderboard:changed': invalidatePoints,
+  'betting:changed': invalidatePoints,
   'players:changed': invalidatePoints,
   'events:changed': invalidatePoints,
   'checklist:changed': invalidatePoints,

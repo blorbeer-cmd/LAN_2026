@@ -83,8 +83,14 @@ Match eröffnen. Bei Turnieren werden Wetten auf Turniersieger und einzelne Turn
 ohne optionalen Freischalter angeboten. Die bestehenden Regeln zu Sichtbarkeit, feststehenden
 Gegnern, Tippschluss und Spielbeginn gelten weiterhin. Topf und Einsätze je Ausgang sind schon
 vor Tippschluss sichtbar. Auf Nutzerentscheidung werden Quoten vollständig aus der Oberfläche
-entfernt, einschließlich Match, Turnier, LAN-Punkte, Tippdialog und Hilfetext.
-Die API veröffentlicht dabei keine individuellen fremden Tipps. Freie Matches mit zwei oder mehr Teams sowie
+entfernt, einschließlich Match, Turnier, LAN-Punkte, Tippdialog und Hilfetext. Auch eine
+Gewinnschätzung („bei Sieg etwa +X P.“) entfällt, weil sie faktisch eine Quote wäre; sichtbar ist
+nur die feste Obergrenze „Gewinn höchstens in Höhe deines Einsatzes“.
+Fremde Tipps sind nach Nutzerentscheidung zu #755 (Stufe 3) sofort mit Namen sichtbar: Die
+Punkte-API nennt je Ausgang die Tippenden mit Einsatz (`tippers`). Ohne Namen und ohne
+Spieler-ID, also als „Anonym“ mit Einsatz, erscheinen Tipps gelöschter Konten, von Konten mit
+Newsticker-Opt-out und von Testkonten außerhalb von Testevents; Topf und Einsatzsummen bleiben
+vollständig. Freie Matches mit zwei oder mehr Teams sowie
 Liga- und Gruppenspiele bieten „Unentschieden“ als regulär gewinnenden Tipp. K.-o.-Spiele und
 Turniersieger-Märkte bieten ihn nicht; ältere Märkte behalten ihre ursprüngliche Auswahl.
 Eine neue Runde verbraucht keinen Kontingentplatz. Auch ein gespeichertes altes `maxRounds=0`
@@ -248,10 +254,20 @@ To-do-Zeilen, -Formulare und -Details wiederholen die einheitliche Punktevergüt
 Die LAN-Übersicht bietet getrennte einklappbare Ranglisten für Orga, Spielen, Wetten und den
 Gesamtstand. Jede Kategorie zeigt die eigenen „Punkte“, den Rang und die „Platzpunkte“; die Rangliste
 verwendet dieselben berechtigten Plätze wie die Gesamtwertung. Verläufe und Diagramme lassen
-sich aufklappen; die LAN-Punkteansicht enthält keine Spieleliste. Seltenere Informationen stehen in Details oder der bestehenden Hilfe.
+sich aufklappen; die LAN-Punkteansicht enthält keine Spieleliste, nur die Tippübersicht. Seltenere Informationen stehen in Details oder der bestehenden Hilfe.
 
-„Wetten“ steht im Header von Matchkarten, auch bei geschlossener Spielkarte. In der
-Turnieransicht steht genau einmal „Wetten“ direkt unter Titel und Turnierinfos. Turniersieger
+Die Wettaktion steht im Header von Matchkarten, auch bei geschlossener Spielkarte. Ein einzelnes
+Angebot behält seine Statusbeschriftung („Jetzt tippen“, „Tipp ändern“, „Tippdetails“), erst
+mehrere bilden das Menü „Wetten“. Mitspieler und Admins starten ein Match über die eigene
+Aktion „Spiel starten“ mit Bestätigung; sie schließt die Tipps für alle und steht nicht mehr
+neben „Jetzt tippen“ im Menü. Die Metazeile der Karte nennt den Stand: „Tipps offen“,
+„Tipps geschlossen“ oder „Abgerechnet“, Topf, Tippanzahl und den eigenen Tipp mit Team und
+Einsatz beziehungsweise nach der Abrechnung den Nettowert. Turnierkarten fassen alle Märkte
+zusammen: offene Tipprunden, sonst „Tipps geschlossen“, solange ein Ergebnis aussteht, danach
+„Abgerechnet“ oder, wenn alles erstattet wurde, „Erstattet“. Die Kachel „Ohne Ergebnis“ und der
+Tippfilter umfassen alle Spiele; die Spielauswahl steuert nur das nächste Auslosen, die Historie
+bleibt je Spiel. In der Turnieransicht steht genau einmal „Tipps öffnen“ beziehungsweise
+„Wetten“ direkt unter Titel und Turnierinfos. Turniersieger
 und einzelne Spiele wählt man im gemeinsamen Modal aus; im Match-Bereich führt die
 Turnierkachel in dasselbe Modal. Der Einstieg bleibt auch ohne Turniersiegermarkt verfügbar,
 sobald Spielmärkte existieren, etwa nach dem Einblenden eines bereits gestarteten Turniers.
@@ -259,15 +275,26 @@ Es wird kein verspäteter Siegertipp angelegt; Verwaltungsaktionen für einen Sp
 beziehen sich erst im Modal auf die gewählte Begegnung.
 Turnierbaum, Liga- und Gruppenzeilen enthalten keine Wettbuttons.
 Ein einzelnes verfügbares Angebot ist ein direkter Button, erst mehrere sind ein Dropdown.
+Sind die LAN-Punkte ausgeblendet, sehen Admins und der Event-Ersteller an der gerade erzeugten
+Auslosung und am laufenden Turnier „Tipps starten, sobald LAN-Punkte angezeigt werden“ mit einem
+Link zur Einstellung; alle anderen sehen weiterhin keine Wettelemente. Das Auslosungsformular
+bleibt unverändert.
 Punktefehler-Meldungen stehen in den Tippdetails; ihre asynchrone Freigabe erzeugt kein Menü
 mit nur einem sichtbaren Eintrag. Teilnahme und Adminrechte bestimmen weiterhin, ob neben
 der Tippabgabe auch Schließen, Wiederöffnen oder Finanzkorrekturen angeboten werden.
 
 Der Tippdialog nennt „Sieger tippen“ oder „Turniersieger tippen“ und zeigt kurze Angaben zu
-Spiel, Turnier und Runde. Die Teamnamen stehen in der Auswahl und werden in der Kontextzeile
-nicht wiederholt. Die Teamauswahl bei „Sieger tippen“ trägt die Beschriftung „Sieger“.
+Spiel, Turnier und Runde sowie Status, Topf und Tippanzahl. Die Teamnamen stehen in der Auswahl
+und werden in der Kontextzeile nicht wiederholt. Die Teamauswahl bei „Sieger tippen“ trägt die
+Beschriftung „Sieger“ und besteht aus großen Teamflächen; jede nennt Einsatzsumme und Tippende
+mit Einsatz. Kein Team ist vorausgewählt. Nach dem Speichern bestätigt „Tipp gespeichert: Team,
+Einsatz“, nach dem Zurücknehmen „Tipp zurückgenommen“. Ein offener Dialog übernimmt Tipps,
+Schließen und Abrechnung anderer Geräte sofort und meldet „Tipps wurden gerade geschlossen“;
+der Entwurf bleibt erhalten. Im Turnierdialog erscheinen dabei auch neu entstandene Märkte,
+etwa das Finale nach dem letzten Halbfinale.
 Im Turniermodal wählt man zuerst Runde beziehungsweise Gruppe und dann ein Spiel mit
-feststehenden Teams. Turniersieger und Spiel um Platz 3 sind eigene Einträge. Spielauswahl
+feststehenden Teams. Runden heißen wie im Turnierbaum („Viertelfinale“, „Halbfinale“, „Finale“,
+„Gruppe 1 · Runde 2“). Turniersieger und Spiel um Platz 3 sind eigene Einträge. Spielauswahl
 und Tippstatus nennen auch vorhandene eigene Tipps. Entwürfe und das zuletzt gewählte Spiel
 je Runde bleiben erhalten. „Speichern & weiter“ führt zum nächsten noch offenen, noch nicht
 getippten Markt und berücksichtigt auch frühere Runden der Auswahl. Schließen, Wiederöffnen
@@ -275,8 +302,19 @@ und begründete Erstattung/Storno des gewählten Spiels bleiben entsprechend der
 Mitspieler-/Adminrechte im Modal erreichbar. Bereits abgegebene Tipps bleiben änderbar, solange der jeweilige Markt offen ist; abgeschlossene Märkte
 zeigen die eigenen Details. Quoten werden nirgends angezeigt. Einsätze und Regeln bleiben über
 den Dialog zugänglich. Neue Wettmenüs beginnen geschlossen und öffnen die Spielkarte nicht.
-Die geschützte Punkte-API liefert dafür den Turnierbezug einschließlich Spiel/Runde; es werden
-keine individuellen fremden Tipps offengelegt.
+Die geschützte Punkte-API liefert dafür den Turnierbezug einschließlich Spiel, Runde und
+Phasenname.
+
+Die Punkteseite listet unter „Tipps“ alle Märkte des Events in drei Gruppen: „Noch nicht
+getippt“, „Deine offenen Tipps“ (Team und Einsatz) und „Abgerechnet“ (Netto); jede Zeile öffnet
+den Tippdialog. Gibt es offene Tipprunden, führt „Tipps ansehen“ auf Home dorthin. Admins finden in der
+Punkteverwaltung unter „Wettrunden“ alle Märkte mit Status, Topf, Tippanzahl und den Aktionen
+Schließen, Wiederöffnen, Erstatten und Stornieren. Vor „LAN-Endwertung festschreiben“ nennt die
+Bestätigung die noch nicht abgerechneten Runden.
+
+Tipps, Schließen und Wiederöffnen senden das Echtzeitsignal `betting:changed` mit der Runde.
+Nur Ansichten mit Wettinhalt laden daraufhin das Punktekonto neu; Abrechnungen bleiben
+`leaderboard:changed`.
 
 Das Filtermenü im Match-Bereich verwendet dieselben Überschriften, Chiplisten und Filterchips
 wie der Spielekatalog: Art, eigene Beteiligung und Tippstatus
