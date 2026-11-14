@@ -10,6 +10,8 @@
 // ticker simply starts a fresh feed, which costs nothing for a fun display.
 
 import { db } from './db';
+import { pointsAreVisible } from './points';
+import { type BettingRound, type BetOutcome } from './betting';
 import {
   DRAW_TEMPLATES,
   FALLBACK_GAMES,
@@ -72,6 +74,7 @@ interface FactBase {
 }
 
 export type NewsFact =
+  | (FactBase & { kind: 'betting'; text: string; meta: string })
   | (FactBase & { kind: 'match'; game: string; winners: string[]; losers: string[]; score: string | null })
   | (FactBase & { kind: 'draw'; game: string; teams: string[] })
   | (FactBase & { kind: 'tournamentMatch'; tournament: string; game: string; winner: string; loser: string; score: string | null })
@@ -151,6 +154,9 @@ function chooseTemplate<C>(rng: NewsRandom, templates: readonly NewsTemplate<C>[
 
 function composeFact(fact: NewsFact, rng: NewsRandom, history: NewsHistory): ComposedNews {
   switch (fact.kind) {
+    case 'betting':
+      return { text: fact.text, icon: 'trophy', meta: fact.meta, templateId: 'betting',
+        subject: null, factKey: fact.key, playerIds: fact.playerIds };
     case 'match': {
       const template = chooseTemplate(rng, MATCH_TEMPLATES, history);
       return {
@@ -237,7 +243,7 @@ function composeFallback(input: NewsInput, rng: NewsRandom, history: NewsHistory
   };
 }
 
-const REAL_RESULT_KINDS = new Set<NewsFact['kind']>(['match', 'draw', 'tournamentMatch']);
+const REAL_RESULT_KINDS = new Set<NewsFact['kind']>(['match', 'draw', 'tournamentMatch', 'betting']);
 
 // Pure selection step, separated from the database so the priorities and
 // the anti-repeat rules can be tested directly.
@@ -293,9 +299,10 @@ export function loadNewsRoster(groupId: string, eventId: string): NewsPlayer[] {
       `SELECT p.id, p.name FROM event_participants ep
        JOIN players p ON p.id = ep.player_id
        WHERE ep.event_id = ? AND ep.status = 'accepted' AND p.deactivated_at IS NULL AND p.newsticker_opt_out = 0
+       AND (p.is_test = 0 OR EXISTS (SELECT 1 FROM events e WHERE e.id = ? AND e.is_test = 1))
        ORDER BY p.name COLLATE NOCASE`,
     )
-    .all(eventId) as NewsPlayer[];
+    .all(eventId, eventId) as NewsPlayer[];
   if (participants.length > 0) return participants;
   // Events without a roster (e.g. a group workspace) fall back to the
   // group's active members.
@@ -304,9 +311,10 @@ export function loadNewsRoster(groupId: string, eventId: string): NewsPlayer[] {
       `SELECT p.id, p.name FROM group_memberships gm
        JOIN players p ON p.id = gm.player_id
        WHERE gm.group_id = ? AND gm.status = 'active' AND p.deactivated_at IS NULL AND p.newsticker_opt_out = 0
+       AND (p.is_test = 0 OR EXISTS (SELECT 1 FROM events e WHERE e.id = ? AND e.is_test = 1))
        ORDER BY p.name COLLATE NOCASE`,
     )
-    .all(groupId) as NewsPlayer[];
+    .all(groupId, eventId) as NewsPlayer[];
 }
 
 function loadCatalogGames(groupId: string): string[] {
@@ -476,13 +484,39 @@ function loadTrackingFacts(eventId: string, names: Map<string, string>, now: num
   return facts;
 }
 
+// Betting facts are projections of committed rounds, so rollback cannot publish
+// a headline. Revisions and rendered text invalidate cached corrected/private facts.
+function loadBettingFacts(groupId: string, eventId: string, names: Map<string, string>, now: number): NewsFact[] {
+  if (!pointsAreVisible(eventId)) return [];
+  const rounds = db.prepare(`SELECT * FROM betting_rounds WHERE group_id = ? AND event_id = ?
+    AND ((status = 'open' AND notice_sent = 1 AND created_at >= ?) OR (status = 'settled' AND settled_at >= ?))
+    ORDER BY COALESCE(settled_at, created_at) DESC`).all(groupId, eventId, now - NEWSTICKER_FRESH_MS, now - NEWSTICKER_FRESH_MS) as BettingRound[];
+  return rounds.map((round): NewsFact => {
+    const outcomes = JSON.parse(round.outcomes) as BetOutcome[];
+    const label = (o: BetOutcome) => o.playerIds.some((id) => !names.has(id)) ? 'Anonymes Team' : o.label;
+    const tips = db.prepare('SELECT outcome_id, stake FROM betting_tips WHERE round_id = ?').all(round.id) as
+      Array<{ outcome_id: string; stake: number }>;
+    const winner = outcomes.find((o) => o.id === round.result_key);
+    const pot = tips.reduce((sum, t) => sum + t.stake, 0);
+    const wrong = tips.filter((t) => t.outcome_id !== round.result_key).length;
+    const text = round.status === 'open'
+      ? round.source_type === 'tournament'
+        ? `Wetten offen: Turniersieger · ${round.title}`
+        : `Wetten offen: ${outcomes.filter((o) => o.playerIds.length).map(label).join(' gegen ')}`
+      : `${winner ? label(winner) : 'Unentschieden'}${winner?.id === '__draw__' ? '' : ' gewinnt'}, ${wrong} von ${tips.length} lagen daneben, Topf ${pot} P.`;
+    return { kind: 'betting', key: `betting:${round.id}:${round.revision}:${round.status}:${text}`,
+      at: round.settled_at ?? round.created_at, text, meta: round.title,
+      playerIds: outcomes.flatMap((o) => o.playerIds.filter((id) => names.has(id))) };
+  });
+}
+
 export function loadNewsInput(groupId: string, eventId: string, now: number): NewsInput {
   const roster = loadNewsRoster(groupId, eventId);
   const names = new Map(roster.map((player) => [player.id, player.name]));
   return {
     roster,
     games: loadCatalogGames(groupId),
-    facts: [...loadResultFacts(eventId, names, now - NEWSTICKER_FRESH_MS), ...loadTrackingFacts(eventId, names, now)],
+    facts: [...loadBettingFacts(groupId, eventId, names, now), ...loadResultFacts(eventId, names, now - NEWSTICKER_FRESH_MS), ...loadTrackingFacts(eventId, names, now)],
   };
 }
 
@@ -491,6 +525,7 @@ export function loadNewsInput(groupId: string, eventId: string, now: number): Ne
 
 interface StoredItem extends NewsItem {
   playerIds: string[];
+  bettingKey?: string;
 }
 
 interface FeedState {
@@ -547,6 +582,7 @@ export function getNewstickerFeed(groupId: string, eventId: string, now = Date.n
         meta: composed.meta,
         createdAt: initialTimes.get(sequence)!,
         playerIds: composed.playerIds,
+        ...(composed.factKey?.startsWith('betting:') ? { bettingKey: composed.factKey } : {}),
       });
     }
   }
@@ -566,6 +602,7 @@ export function getNewstickerFeed(groupId: string, eventId: string, now = Date.n
         meta: composed.meta,
         createdAt: now,
         playerIds: composed.playerIds,
+        ...(composed.factKey?.startsWith('betting:') ? { bettingKey: composed.factKey } : {}),
       });
     }
     state.items.length = Math.min(state.items.length, FEED_LENGTH);
@@ -576,9 +613,10 @@ export function getNewstickerFeed(groupId: string, eventId: string, now = Date.n
   // Filtered on every read, not only when a line is created: someone who
   // opts out disappears from the screen with the next poll.
   const visible = new Set(loadNewsRoster(groupId, eventId).map((player) => player.id));
+  const bettingKeys = new Set(loadBettingFacts(groupId, eventId, new Map(loadNewsRoster(groupId, eventId).map((p) => [p.id, p.name])), now).map((f) => f.key));
   const items = state.items
-    .filter((item) => item.playerIds.every((id) => visible.has(id)))
-    .map(({ playerIds: _playerIds, ...item }) => item);
+    .filter((item) => item.playerIds.every((id) => visible.has(id)) && (!item.bettingKey || bettingKeys.has(item.bettingKey)))
+    .map(({ playerIds: _playerIds, bettingKey: _bettingKey, ...item }) => item);
   return { items, nextAt: state.nextAt, nextInMs: Math.max(0, state.nextAt - now) };
 }
 

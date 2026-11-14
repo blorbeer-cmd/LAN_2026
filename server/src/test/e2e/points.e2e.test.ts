@@ -743,12 +743,13 @@ test('token-only kiosk pages every result participant and removes point columns 
         return rows.length > 0 && rows.every((row) => row.getBoundingClientRect().bottom <= bottom + 1);
       });
       const names = new Set<string>();
-      for (let turn = 0; turn < 8; turn++) {
+      for (let turn = 0; turn < 40 && names.size < 8; turn++) {
         const measured = await results.evaluate((element) => {
           const area = element.getBoundingClientRect();
           return {
             fits: document.documentElement.scrollWidth <= document.documentElement.clientWidth,
             captionHeight: element.querySelector('.kiosk-result-caption')!.getBoundingClientRect().height,
+            caption: element.querySelector('.kiosk-result-caption')!.textContent,
             rows: Array.from(element.querySelectorAll('tbody tr')).filter((row) => !(row as HTMLElement).hidden).map((row) => ({
               name: row.querySelector('.kiosk-result-name')!.textContent!, bottom: row.getBoundingClientRect().bottom,
             })), bottom: area.bottom,
@@ -759,14 +760,14 @@ test('token-only kiosk pages every result participant and removes point columns 
         assert.ok(measured.captionHeight >= 14, `game title remains visible at ${viewport.width}`);
         for (const row of measured.rows) {
           assert.ok(row.bottom <= measured.bottom + 1, `visible row fits at ${viewport.width}: ${JSON.stringify(measured)}`);
-          names.add(row.name);
+          if (measured.caption === game.name) names.add(row.name);
         }
         await kiosk.clock.runFor(10_000);
       }
       assert.equal(names.size, 8, `all eight participants rotate at ${viewport.width}`);
     }
     await api(`/api/matches/${match.id}`, 'PATCH', { gameId: game.id, teams: teams.map((team, i) => ({ ...team, score: 8 - i })) });
-    await results.getByText('korrigiert', { exact: true }).waitFor();
+    await results.getByText('korrigiert', { exact: true }).waitFor({ state: 'attached' });
     await api(`/api/events/${event.id}/points-visibility`, 'PATCH', { visible: false, revision: 2 });
     await results.getByRole('columnheader', { name: 'Spielpunkte', exact: true }).waitFor({ state: 'detached' });
     await results.getByRole('table', { name: game.name, exact: true }).waitFor();
@@ -775,7 +776,7 @@ test('token-only kiosk pages every result participant and removes point columns 
     await kiosk.screenshot({ path: 'test-results/kiosk-results-desktop.png' });
     await kiosk.setViewportSize({ width: 390, height: 900 });
     await kiosk.screenshot({ path: 'test-results/kiosk-results-phone.png' });
-    await api('/api/tournaments', 'POST', {
+    const tournament = await api('/api/tournaments', 'POST', {
       gameId: game.id, name: 'Broadcast-Pokal', format: 'single_elimination',
       teams: ids.slice(0, 2).map((id) => ({ playerIds: [id] })),
     });
@@ -787,9 +788,53 @@ test('token-only kiosk pages every result participant and removes point columns 
     await results.waitFor({ state: 'visible' });
     assert.equal(await results.getByRole('columnheader', { name: 'Spielpunkte', exact: true }).count(), 0);
 
+    await api(`/api/events/${event.id}/points-visibility`, 'PATCH', { visible: true, revision: 3 });
+    await api('/api/me/active-event', 'PUT', { eventId: event.id }, bob.cookie);
+    const rounds = (await api(`/api/points?eventId=${event.id}`)).rounds;
+    const market = rounds.find((r: any) => r.sourceType === 'tournament_match' && r.tournament.id === tournament.id);
+    const refreshed = kiosk.waitForResponse((response) => response.url().endsWith('/api/results/points') && response.ok());
+    await api(`/api/points/rounds/${market.id}/tip`, 'PUT', { outcomeId: market.outcomes[0].id, stake: 10 }, bob.cookie);
+    await refreshed;
+    const seenRankings = new Set<string>();
+    let sawTip = false;
+    let sawChampion = false;
+    for (const viewport of [{ width: 390, height: 900 }, { width: 1440, height: 900 }]) {
+      await kiosk.setViewportSize(viewport);
+      seenRankings.clear();
+      sawTip = false;
+      sawChampion = false;
+      for (let turn = 0; turn < 90 && (seenRankings.size < 4 || !sawTip || !sawChampion); turn++) {
+        if (await results.isVisible()) {
+          const caption = await results.locator('.kiosk-result-caption').textContent() ?? '';
+          if (caption.startsWith('LAN-Punkte')) seenRankings.add(caption);
+          if (caption.includes('Turniersieger')) sawChampion = true;
+          if (caption.includes('Finale') && (await results.textContent())?.includes('Points Bob')) {
+            sawTip = true;
+            assert.ok((await results.textContent())?.includes('Topf 10 P.'));
+          }
+          const geometry = await results.evaluate((element) => ({
+            bottom: element.getBoundingClientRect().bottom,
+            rows: Array.from(element.querySelectorAll('tbody tr')).filter((r) => !(r as HTMLElement).hidden)
+              .map((r) => r.getBoundingClientRect().bottom),
+          }));
+          assert.ok(geometry.rows.every((bottom) => bottom <= geometry.bottom + 1), `points rows fit at ${viewport.width}: ${caption}`);
+        }
+        // Exercise the actual ten-second page boundary with the browser clock.
+        await kiosk.clock.runFor(10_000);
+      }
+      assert.equal(seenRankings.size, 4, `all four rankings rotate at ${viewport.width}`);
+      assert.equal(sawChampion, true);
+      assert.equal(sawTip, true, 'the betting signal reaches the anonymous screen and names the tipper');
+    }
+    await api(`/api/events/${event.id}/points-visibility`, 'PATCH', { visible: false, revision: 4 });
+    await kiosk.waitForFunction(() => !document.querySelector('#kiosk-results')!.textContent!.includes('LAN-Punkte') &&
+      !document.querySelector('#kiosk-results')!.textContent!.includes('Topf'));
+    assert.deepEqual(errors, []);
+
   } finally {
     await context.close();
     await api('/api/me/active-event', 'PUT', { eventId });
+    await api('/api/me/active-event', 'PUT', { eventId }, bob.cookie);
   }
 });
 

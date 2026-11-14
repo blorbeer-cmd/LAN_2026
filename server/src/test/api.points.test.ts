@@ -19,6 +19,8 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { reconcileBetting, DRAW_NOTICE_DELAY_MS, type roundView } from '../betting';
 import { setIo } from '../realtime';
+import { issueKioskToken, revokeKioskToken } from '../kioskTokens';
+import { getNewstickerFeed, loadNewsInput, resetNewstickerFeeds } from '../newsticker';
 import type { Server } from 'socket.io';
 import { sweepBetting } from '../routes/points';
 import { createPointsReport, readPointsReports, resolvePointsReport } from '../pointsReports';
@@ -1116,6 +1118,8 @@ test('retired task rewards and entry deductions cannot mint or remove wallet fun
 test('rank-only results and conflicting winner corrections settle zero-sum, once, with a personal notification', async (t) => {
   const f = await fixture();
   const r = await round(f);
+  const winnings = () => db.prepare("SELECT title, player_ids, audience FROM push_log WHERE notification_type='betting-win' AND target_id=? ORDER BY rowid").all(r.id) as Array<{ title: string; player_ids: string; audience: string }>;
+  const bettingNews = () => loadNewsInput(DEFAULT_GROUP_ID, f.eventId, Date.now()).facts.filter((fact) => fact.kind === 'betting');
   const a = f.players[0],
     b = f.players[1];
   db.exec(`CREATE TEMP TRIGGER fail_tip_wallet BEFORE INSERT ON points_journal
@@ -1156,6 +1160,10 @@ test('rank-only results and conflicting winner corrections settle zero-sum, once
   assert.ok(JSON.parse(messages[0].player_ids).includes(a), 'own players receive the message');
   assert.ok(messages[0].url.includes(r.id));
   assert.ok(messages[0].url.includes(`eventId=${f.eventId}`));
+  assert.ok(bettingNews().some((fact) => fact.kind === 'betting' && fact.text.startsWith('Wetten offen: ')));
+  resetNewstickerFeeds();
+  const openFeed = getNewstickerFeed(DEFAULT_GROUP_ID, f.eventId);
+  assert.ok(openFeed.items.some((item) => item.text.startsWith('Wetten offen: ')));
   const locks = await Promise.all(
     [0, 1].map(() => request(app).post(`/api/points/rounds/${r.id}/lock`).set('x-test-player-id', a).send({})),
   );
@@ -1178,6 +1186,8 @@ test('rank-only results and conflicting winner corrections settle zero-sum, once
     assert.deepEqual(wallet(f.eventId, a), { total: 100, held: 10, available: 90 });
     assert.equal((await request(app).get('/api/points')).body.rounds[0].status, 'locked');
     assert.equal(db.prepare('SELECT 1 FROM matches WHERE id=(SELECT match_id FROM matchmaking_draws WHERE id=?)').get(r.drawId), undefined);
+    assert.deepEqual(winnings(), [], 'rolled-back results never send winner pushes');
+    assert.equal(bettingNews().some((fact) => fact.kind === 'betting' && fact.text.includes('lagen daneben')), false);
   } finally { db.exec('DROP TRIGGER fail_settlement_net'); }
   const result = await request(app)
     .post('/api/matches')
@@ -1188,6 +1198,9 @@ test('rank-only results and conflicting winner corrections settle zero-sum, once
     });
   assert.equal(result.status, 201, JSON.stringify(result.body));
   await Promise.all([request(app).get('/api/points'), request(app).get('/api/points')]);
+  assert.deepEqual(winnings(), [{ title: `+5 P. aus Points Game ${sequence}`, player_ids: JSON.stringify([a]), audience: 'direct' }]);
+  assert.ok(bettingNews().some((fact) => fact.kind === 'betting' && fact.text.endsWith('1 von 2 lagen daneben, Topf 15 P.')));
+  assert.equal(getNewstickerFeed(DEFAULT_GROUP_ID, f.eventId).items.some((item) => item.text.startsWith('Wetten offen: ')), false, 'closed openings leave the cached feed');
   assert.equal(wallet(f.eventId, a).total, 105);
   assert.equal(wallet(f.eventId, b).total, 95);
   assert.equal(wallet(f.eventId, a).held, 0);
@@ -1222,6 +1235,8 @@ test('rank-only results and conflicting winner corrections settle zero-sum, once
     ),
   );
   assert.deepEqual(corrections.map((v) => v.status).sort(), [200, 409]);
+  assert.equal(winnings().length, 2, 'a correction sends the new winner one notification');
+  assert.deepEqual(JSON.parse(winnings()[1].player_ids), [b]);
   assert.equal(wallet(f.eventId, a).total, 95);
   assert.equal(wallet(f.eventId, b).total, 105);
   assert.equal((await request(app).get('/api/points')).body.rounds[0].revision, 1);
@@ -1721,6 +1736,36 @@ test('tips are public with names, signal only the betting views and name fixture
     .map((row: { tournament: { phase: string } }) => row.tournament.phase);
   assert.deepEqual(phases, ['Halbfinale', 'Halbfinale'], 'the semifinals carry the bracket phase name');
 
+  const token = issueKioskToken(DEFAULT_GROUP_ID, f.eventId, TEST_ADMIN_ID, 'Betting TV');
+  const kioskRead = (selector = '') => request(app).get('/api/results/points' + selector)
+    .set('Cookie', 'respawn_session=invalid').set('x-kiosk-mode', '1').set('x-access-token', token.token);
+  const matchMarket = await automaticMarket(f, 'tournament_match', created.body.matches.find((m: { isBye: boolean }) => !m.isBye).id);
+  for (const [i, playerId] of [a, b].entries())
+    assert.equal((await request(app).put(`/api/points/rounds/${matchMarket.id}/tip`).set('x-test-player-id', playerId)
+      .send({ outcomeId: matchMarket.outcomes[i].id, stake: 10 })).status, 200);
+  const beforeRead = db.prepare('SELECT total_changes() AS n').get() as { n: number };
+  const projected = await kioskRead();
+  assert.equal(projected.status, 200);
+  assert.equal(projected.body.rounds.length, 3, 'champion and both semifinals, without free matches');
+  assert.equal(db.prepare('SELECT total_changes() AS n').pluck().get(), beforeRead.n);
+  assert.ok(projected.body.rounds.every((r: { tournament: { id: string } }) => r.tournament.id === created.body.id));
+  assert.deepEqual(projected.body.rankings.map((r: { category: string }) => r.category), ['total', 'betting', 'orga', 'playing']);
+  const publicMarket = projected.body.rounds.find((r: { id: string }) => r.id === matchMarket.id);
+  assert.equal(publicMarket.pot, 20);
+  assert.deepEqual(publicMarket.outcomes.map((o: { tippers: unknown[] }) => o.tippers),
+    [[{ name: names.get(a), stake: 10 }], [{ name: names.get(b), stake: 10 }]]);
+  assert.ok(!JSON.stringify(projected.body).includes('playerId'));
+  assert.ok(!JSON.stringify(projected.body).includes('odds'));
+  assert.ok(!JSON.stringify(projected.body).includes('myPossiblePayout'));
+  const foreign = createEvent('Other kiosk event', { groupId: DEFAULT_GROUP_ID, startsAt: Date.now(), endsAt: Date.now() + 60000 });
+  assert.deepEqual((await kioskRead('?eventId=' + foreign.id)).body, projected.body, 'the token overrides selectors');
+  const fixtureId = matchMarket.sourceId;
+  assert.equal((await request(app).post(`/api/tournaments/${created.body.id}/matches/${fixtureId}/result`)
+    .send({ winnerTeamId: matchMarket.outcomes[0].id })).status, 200);
+  const paid = (await kioskRead()).body.rounds.find((r: { id: string }) => r.id === matchMarket.id);
+  assert.equal(paid.status, 'settled');
+  assert.deepEqual(paid.outcomes.map((o: { winner: boolean }) => o.winner), [true, false]);
+
   // Accounts that opted out of being named and test accounts outside test
   // events stay anonymous stakes: neither name nor id is published.
   assert.equal((await request(app).patch(`/api/players/${b}`).set('x-test-player-id', b).send({ newstickerOptOut: true })).status, 200);
@@ -1728,6 +1773,23 @@ test('tips are public with names, signal only the betting views and name fixture
   const hidden = await automaticMarketAs(f, c, r.id);
   assert.deepEqual(hidden.outcomes.filter((o) => o.playerIds.length).map((o) => o.tippers),
     [[{ playerId: null, name: null, stake: 5 }], [{ playerId: null, name: null, stake: 6 }]]);
+  const anonymous = (await kioskRead()).body;
+  const anonymousMarket = anonymous.rounds.find((r: { id: string }) => r.id === matchMarket.id);
+  assert.deepEqual(anonymousMarket.outcomes.map((o: { tippers: unknown[] }) => o.tippers),
+    [[{ name: null, stake: 10 }], [{ name: null, stake: 10 }]]);
+  assert.ok(anonymous.rankings.every((r: { rows: Array<{ name: string }> }) =>
+    r.rows.some((p) => p.name === 'Anonym') && !r.rows.some((p) => [names.get(a), names.get(b)].includes(p.name))));
+  db.prepare('UPDATE events SET is_test = 1 WHERE id = ?').run(f.eventId);
+  const testEvent = (await kioskRead()).body;
+  assert.ok(testEvent.rankings[0].rows.some((p: { name: string }) => p.name === names.get(a)), 'test identities are visible in their own test event');
+  assert.deepEqual(testEvent.rounds.find((r: { id: string }) => r.id === matchMarket.id).outcomes[0].tippers,
+    [{ name: names.get(a), stake: 10 }]);
+  db.prepare('UPDATE points_settings SET visible = 0 WHERE event_id = ?').run(f.eventId);
+  assert.deepEqual((await kioskRead()).body, { showPoints: false, rounds: [], rankings: [] });
+  assert.equal(loadNewsInput(DEFAULT_GROUP_ID, f.eventId, Date.now()).facts.some((fact) => fact.kind === 'betting'), false);
+  revokeKioskToken(DEFAULT_GROUP_ID, token.scope.id);
+  assert.equal((await kioskRead()).status, 401);
+
 });
 
 test('tournament corrections need the admin path only for settled pools of the match, its bracket successors and the champion', async () => {

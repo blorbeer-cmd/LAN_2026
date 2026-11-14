@@ -13,6 +13,10 @@ export function isAdminTestMode(req: Request): boolean {
 // with the other seeded identities. Real accounts only receive fixture-player
 // data while their device is explicitly in Admin mode.
 export function includesTestPlayers(req: Request): boolean {
+  // An explicitly issued shared-screen credential may read its own test LAN.
+  // REST event selectors are still clamped to this exact token scope.
+  if (req.kioskScope) return Boolean(db.prepare('SELECT 1 FROM events WHERE id = ? AND group_id = ? AND is_test = 1')
+    .get(req.kioskScope.eventId, req.kioskScope.groupId));
   return isAdminTestMode(req) || req.player?.is_test === 1;
 }
 

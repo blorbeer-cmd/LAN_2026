@@ -25,13 +25,17 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu TV-Kiosk, Jam
   fewest columns (up to three, each at least 240 px wide) that show everyone; only if even that does
   not fit do pages rotate, marked by dots.
 - **Newsticker**: a timeline of playful, clearly invented headlines. The server writes one new
-  line every 30 seconds for the whole event, so every Broadcast screen of that event shows the same
+  line every three to ten minutes for the whole event, so every Broadcast screen of that event shows the same
   feed; a new feed starts with a full set of ten lines. A screen that runs on a signed-in account
   instead of its Broadcast token shows the feed of that account's active event, like every other
   card. If the feed cannot be loaded before any line was shown, the card says „Newsticker gerade
   nicht erreichbar.“ and keeps retrying. Fresh real results (matches and tournament fixtures of the last 90 minutes) are reported
-  first and each only once; where the event records play time, long ongoing sessions and daily
-  play-time milestones are used as well. Otherwise a line combines a real participant with a game
+  first and each only once. Bei sichtbaren LAN-Punkten kommen offene Wettmärkte und Abrechnungen
+  hinzu („Wetten offen: A gegen B“, „B gewinnt, 2 von 3 lagen daneben, Topf 30 P.“). Ersetzte,
+  geschlossene Öffnungen, korrigierte Abrechnungen und ausgeblendete Punkte verschwinden auch aus
+  bereits gespeicherten Wettzeilen mit dem nächsten Abruf; wo Namen nicht freigegeben sind, steht
+  „Anonymes Team“. Testkonten werden nur in Testevents genannt. Where the event records play time,
+  long ongoing sessions and daily play-time milestones are used as well. Otherwise a line combines a real participant with a game
   from the group's catalog (a few well-known games when the catalog is empty). Anti-repeat rules
   keep an identical line out for two hours, a sentence form for 20 lines and the same person out
   of two consecutive lines. The newest line leads as „Eilmeldung“ with a gradient icon, one text
@@ -64,7 +68,14 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu TV-Kiosk, Jam
   gebuchte Spielpunkte stehen in einer Tabelle; keine weiteren persönlichen Angaben.
   Änderungen erscheinen als „korrigiert“, auch reine Score-Korrekturen. Ohne Punkteanzeige fehlen
   die Punktespalte und Punkteranglisten; Ergebnisse bleiben sichtbar. Bei vorhandenem Turnier
-  wechseln beide Ansichten alle zehn Sekunden. Lange Teilnehmerlisten werden innerhalb der Kachel
+  wechseln die Ansichten alle zehn Sekunden. Bei sichtbaren LAN-Punkten rotieren zusätzlich alle
+  vier Ranglisten (Gesamt, Wetten, Orga-Punkte, Spielpunkte) sowie je Turnier der Turniersieger-Markt
+  und seine offenen, geschlossenen oder abgerechneten Spielmärkte. Die Wettseiten zeigen Topf,
+  Tippzahl und Einsätze sowie die Tippenden je Team, nach Abrechnung das siegreiche Team mit seinen
+  Tippenden. Quoten und Gewinnschätzungen fehlen. Jede Rangliste zeigt Platz und Punkte, Kategorien
+  zusätzlich ihre Platzpunkte. Opt-out-Konten und Testkonten außerhalb von Testevents bleiben in
+  Tipps und Ranglisten anonym; Werte und Platzierungen bleiben erhalten. Lange Teilnehmerlisten werden innerhalb der
+  Kachel
   automatisch paginiert; die Begrenzung auf zehn Ergebnisse beschränkt keine Punktegutschriften.
   Neue Ergebnisse und Sichtbarkeitsänderungen werden per Realtime, zusätzlich alle 60 Sekunden,
   geladen. Ein fehlgeschlagener Abruf verbirgt Punkte bis zum nächsten erfolgreichen Abruf.

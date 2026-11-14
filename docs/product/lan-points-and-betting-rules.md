@@ -330,3 +330,27 @@ geöffnete Bereiche. Neue Spielbuchungen speichern die erreichte Platzierung im 
 Buchungsdetails zeigen sie ausdrücklich. Historische Einträge ohne diese Angabe erhalten keine
 nachträglich erfundene Platzierung. „Punktefehler melden“ steht in Buchungs- und Ergebnisdetails,
 aber nicht in den Formularen zum Eintragen oder Korrigieren von Ergebnissen.
+
+## Wetten und Ranglisten im Broadcast
+
+`GET /api/results/points` liefert ausschließlich lesende Kiosk-Projektionen der Turniermärkte
+und vier LAN-Punkte-Ranglisten. Das Event stammt beim Broadcast-Token ausschließlich aus dessen
+Scope; ein übergebener Event-Selektor kann ihn nicht erweitern. Ein ausdrücklich für ein
+Testevent ausgestellter Token darf dessen Daten ohne persönlichen Admin-Modus anzeigen. Bei ausgeblendeten LAN-Punkten
+bleiben Märkte und Ranglisten leer. Der Abruf gleicht keine Märkte ab und schreibt keine Punkte.
+Er enthält keine Wallet, Spieler-IDs, Quoten, Gewinnschätzungen oder Verwaltungsaktionen.
+Die Kachel „Turnier/Ergebnisse“ rotiert die Wettseiten nach Turnier und die Ranglisten Gesamt,
+Wetten, Orga-Punkte und Spielpunkte mit automatischen Folgeseiten für alle Zeilen.
+Tipps und Ranglisten verwenden dieselbe Namensregel: Newsticker-Opt-out und Testkonten außerhalb
+von Testevents bleiben anonym. Platz, Rohwerte, Platzpunkte und Einsätze bleiben vollständig.
+`betting:changed` lädt auch im Broadcast die Wettprojektion neu; `leaderboard:changed` und
+`events:changed` entfernen Punkte vor dem Abruf aus dem DOM. Fehler verbergen alle Punktedaten.
+
+Der Newsticker verwendet nur aktuelle, sichtbare Märkte: offene Wetten nennen die Begegnung,
+Abrechnungen Sieger, Zahl falscher Tipps, Gesamtzahl und Topf. Auslosungen erscheinen erst nach
+der bestehenden Öffnungs-Wartezeit. Korrekturen, Opt-out, Schließen und Ausblenden entfernen
+veraltete Wettzeilen beim nächsten Abruf. Nach erfolgreichem Commit erhalten ausschließlich
+Gewinner mit positivem Netto persönlich „+10 P. aus <Spiel>“. Die Mitteilung nutzt die bestehende
+Empfänger-, Testkonto- und Stummschaltungsprüfung; sie wird je Runde, Abrechnungsversion und
+Gewinner nur einmal erzeugt. Zurückgerollte Abrechnungen senden nichts. Eine Ergebniskorrektur
+benachrichtigt die Gewinner der neuen Abrechnungsversion.
