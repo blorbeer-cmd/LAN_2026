@@ -24,6 +24,7 @@ import { getNewstickerFeed, loadNewsInput, resetNewstickerFeeds } from '../newst
 import type { Server } from 'socket.io';
 import { sweepBetting } from '../routes/points';
 import { createPointsReport, readPointsReports, resolvePointsReport } from '../pointsReports';
+import { pushTransport } from '../push';
 
 const app = createTestApp();
 
@@ -903,9 +904,12 @@ test('category readers share participant-based places, exclude test accounts out
   assert.deepEqual(remainingHall.overallChampions, []);
 });
 
-test('admins and event creators toggle visibility without interrupting hidden credits or settled pools', async () => {
+test('admins and event creators toggle visibility without interrupting hidden credits or settled pools', async (t) => {
   const f = await fixture({}, false);
   const [creator, opponent] = f.players;
+  const sendMock = t.mock.method(pushTransport, 'send', async () => {});
+  assert.equal((await request(app).post('/api/push/subscribe').set('x-test-player-id', creator)
+    .send({ subscription: { endpoint: `https://push.example.com/${creator}`, keys: { p256dh: 'p-key', auth: 'a-key' } } })).status, 201);
   db.prepare('UPDATE events SET created_by = ? WHERE id = ?').run(creator, f.eventId);
   const visibility = (visible: unknown, revision: number, actor = TEST_ADMIN_ID) =>
     request(app).patch(`/api/events/${f.eventId}/points-visibility`).set('x-test-player-id', actor).send({ visible, revision });
@@ -937,10 +941,14 @@ test('admins and event creators toggle visibility without interrupting hidden cr
     .send({ outcomeId: r.outcomes[0].id, stake: 5 })).status, 403);
   assert.equal((await request(app).get('/api/push/log').set('x-test-player-id', creator)).body.entries.some(
     (entry: { notificationType: string }) => entry.notificationType === 'betting-open'), false);
+  sendMock.mock.resetCalls();
   const result = await request(app).post('/api/matches').send({ gameId: f.gameId, drawId: r.drawId,
     teams: r.outcomes.map((o) => ({ playerIds: o.playerIds })), winnerTeamIndex: 0 });
   assert.equal(result.status, 201, JSON.stringify(result.body));
   assert.deepEqual([wallet(f.eventId, creator).total, wallet(f.eventId, opponent).total], [105, 95]);
+  assert.equal(sendMock.mock.calls.length, 0, 'hidden settlement never sends Web Push');
+  assert.equal(db.prepare("SELECT 1 FROM push_log WHERE notification_type='betting-win' AND target_id=?").get(r.id), undefined,
+    'hidden settlement never creates a personal winner notification');
   const hidden = await request(app).get('/api/points');
   assert.equal(hidden.body.rounds[0].status, 'settled', 'reconciliation continues while hidden');
   assert.deepEqual((await request(app).get(`/api/export?eventId=${f.eventId}`)).body.leaderboard, [], 'keepsake exports do not disclose hidden standings');
@@ -1122,6 +1130,9 @@ test('rank-only results and conflicting winner corrections settle zero-sum, once
   const bettingNews = () => loadNewsInput(DEFAULT_GROUP_ID, f.eventId, Date.now()).facts.filter((fact) => fact.kind === 'betting');
   const a = f.players[0],
     b = f.players[1];
+  const sendMock = t.mock.method(pushTransport, 'send', async () => {});
+  assert.equal((await request(app).post('/api/push/subscribe').set('x-test-player-id', a)
+    .send({ subscription: { endpoint: `https://push.example.com/${a}`, keys: { p256dh: 'p-key', auth: 'a-key' } } })).status, 201);
   db.exec(`CREATE TEMP TRIGGER fail_tip_wallet BEFORE INSERT ON points_journal
     WHEN NEW.amount<0 BEGIN SELECT RAISE(ABORT,'tip wallet failed'); END;`);
   try {
@@ -1189,6 +1200,7 @@ test('rank-only results and conflicting winner corrections settle zero-sum, once
     assert.deepEqual(winnings(), [], 'rolled-back results never send winner pushes');
     assert.equal(bettingNews().some((fact) => fact.kind === 'betting' && fact.text.includes('lagen daneben')), false);
   } finally { db.exec('DROP TRIGGER fail_settlement_net'); }
+  sendMock.mock.resetCalls();
   const result = await request(app)
     .post('/api/matches')
     .send({
@@ -1199,6 +1211,20 @@ test('rank-only results and conflicting winner corrections settle zero-sum, once
   assert.equal(result.status, 201, JSON.stringify(result.body));
   await Promise.all([request(app).get('/api/points'), request(app).get('/api/points')]);
   assert.deepEqual(winnings(), [{ title: `+5 P. aus Points Game ${sequence}`, player_ids: JSON.stringify([a]), audience: 'direct' }]);
+  assert.equal(sendMock.mock.calls.length, 1, 'visible settlement sends the winner Web Push once');
+  assert.equal(JSON.parse(sendMock.mock.calls[0].arguments[1] as string).title, winnings()[0].title);
+  const winnerHistory = async () => (await request(app).get('/api/push/log').set('x-test-player-id', a)).body.entries.filter(
+    (entry: { notificationType: string; targetId: string }) => entry.notificationType === 'betting-win' && entry.targetId === r.id);
+  assert.equal((await winnerHistory()).length, 1);
+  assert.equal((await request(app).get('/api/push/current').set('x-test-player-id', a)).body.entry.notificationType, 'betting-win');
+  assert.equal((await request(app).patch(`/api/events/${f.eventId}/points-visibility`).send({ visible: false, revision: 1 })).status, 200);
+  assert.deepEqual(await winnerHistory(), [], 'hiding points removes previously sent winnings from the cross-event feed');
+  assert.notEqual((await request(app).get('/api/push/current').set('x-test-player-id', a)).body.entry?.notificationType, 'betting-win',
+    'hidden winnings cannot remain the current notification');
+  assert.equal(winnings().length, 1, 'hiding preserves the stored notification');
+  assert.equal((await request(app).patch(`/api/events/${f.eventId}/points-visibility`).send({ visible: true, revision: 2 })).status, 200);
+  assert.equal((await winnerHistory()).length, 1, 'revealing restores the historical notification');
+  assert.equal(sendMock.mock.calls.length, 1, 'revealing does not resend Web Push');
   assert.ok(bettingNews().some((fact) => fact.kind === 'betting' && fact.text.endsWith('1 von 2 lagen daneben, Topf 15 P.')));
   assert.equal(getNewstickerFeed(DEFAULT_GROUP_ID, f.eventId).items.some((item) => item.text.startsWith('Wetten offen: ')), false, 'closed openings leave the cached feed');
   assert.equal(wallet(f.eventId, a).total, 105);

@@ -352,5 +352,7 @@ der bestehenden Öffnungs-Wartezeit. Korrekturen, Opt-out, Schließen und Ausble
 veraltete Wettzeilen beim nächsten Abruf. Nach erfolgreichem Commit erhalten ausschließlich
 Gewinner mit positivem Netto persönlich „+10 P. aus <Spiel>“. Die Mitteilung nutzt die bestehende
 Empfänger-, Testkonto- und Stummschaltungsprüfung; sie wird je Runde, Abrechnungsversion und
-Gewinner nur einmal erzeugt. Zurückgerollte Abrechnungen senden nichts. Eine Ergebniskorrektur
-benachrichtigt die Gewinner der neuen Abrechnungsversion.
+Gewinner nur einmal erzeugt. Bei ausgeblendeten LAN-Punkten läuft die Abrechnung weiter, erzeugt
+aber keine Gewinnmitteilung. Bereits gespeicherte Wettmitteilungen verschwinden solange auch aus
+dem persönlichen Feed. Zurückgerollte Abrechnungen senden nichts. Eine Ergebniskorrektur
+benachrichtigt bei sichtbaren Punkten die Gewinner der neuen Abrechnungsversion.

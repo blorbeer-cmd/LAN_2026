@@ -657,7 +657,7 @@ export function retireRerolledDraw(groupId: string, eventId: string, previousDra
   return rounds;
 }
 function notifyBettingWinners(round: BettingRound): void {
-  if (round.status !== 'settled') return;
+  if (round.status !== 'settled' || !pointsAreVisible(round.event_id)) return;
   const game = tournamentContext(round)?.gameName ?? db.prepare(`SELECT g.name FROM matchmaking_draws d
     JOIN games g ON g.id = d.game_id WHERE d.id = ?`).pluck().get(round.source_id) as string | undefined;
   for (const tip of tipsFor(round.id)) {
