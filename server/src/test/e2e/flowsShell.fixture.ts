@@ -4,7 +4,8 @@
 // Sibling tests here intentionally share that state and run in order.
 
 import assert from 'node:assert/strict';
-import { addSessionCookie, switchSessionCookie, finishE2EOnboarding } from './authHelpers';
+import { addSessionCookie, switchSessionCookie, finishE2EOnboarding, authenticatedServerEnv, loginE2EAdmin } from './authHelpers';
+import { startE2EServer } from './e2eServer';
 import { trackE2EContext } from './e2eDiagnostics';
 import {
   flowTest,
@@ -30,6 +31,42 @@ import { openMoreViewEntry, setAdminMode, selectMatchHistoryFilter } from './nav
 import { assertControlHeights, assertNoOverflow } from './visualHelpers';
 
 registerFlowFixture('shell');
+
+flowTest('MCP management uses personal sessions and previews cleanup without deleting on phone and laptop', async (t) => {
+  const server = await startE2EServer(authenticatedServerEnv());
+  t.after(() => server.process.kill());
+  const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  t.after(() => context.close());
+  await trackE2EContext(context, 'mcp-management');
+  const cookie = await loginE2EAdmin(server.baseUrl);
+  await addSessionCookie(context, server.baseUrl, cookie);
+  const meResponse = await context.request.get(`${server.baseUrl}/api/me`);
+  const me = await meResponse.json();
+  const created = await context.request.post(`${server.baseUrl}/api/events`, { data: {
+    name: 'MCP browser test', eventType: 'lan', startsAt: Date.now(), endsAt: Date.now() + 86_400_000,
+  } });
+  assert.equal(created.status(), 201, await created.text());
+  const event = await created.json();
+  const participants = await context.request.put(`${server.baseUrl}/api/events/${event.id}/participants`, { data: { playerIds: [me.id] } });
+  assert.equal(participants.status(), 200, await participants.text());
+  const integrationPage = await context.newPage();
+  await integrationPage.goto(`${server.baseUrl}/mcp/manage`);
+  await integrationPage.locator('#mcp-cleanup').waitFor({ state: 'visible' });
+  assert.equal(await integrationPage.getByRole('heading', { name: 'ChatGPT-Verbindungen', exact: true }).count(), 1);
+  const options = await integrationPage.locator('#cleanup-event option').count();
+  assert.ok(options > 0, 'admin has an accepted event for scoped cleanup');
+  await integrationPage.locator('#cleanup-age').fill('876000');
+  await integrationPage.getByRole('button', { name: 'Vorschau erstellen' }).click();
+  await integrationPage.getByRole('heading', { name: 'Bereinigung prüfen' }).waitFor({ state: 'visible' });
+  assert.equal(await integrationPage.getByRole('button', { name: '0 Auslosungen löschen' }).isDisabled(), true);
+  assert.match(await integrationPage.locator('#mcp-status').innerText(), /Noch nichts gelöscht/);
+  await assertNoOverflow(integrationPage.locator('body'));
+  await integrationPage.setViewportSize({ width: 1024, height: 768 });
+  await assertNoOverflow(integrationPage.locator('body'));
+  await integrationPage.locator('#cleanup-age').focus();
+  await integrationPage.keyboard.press('ArrowDown');
+  assert.equal(await integrationPage.locator('#cleanup-age').inputValue(), '875999');
+});
 
 const GROUP_NAME = 'E2E Skatrunde';
 const GROUP_NOTE = 'Jeden Donnerstag';
@@ -1477,7 +1514,8 @@ flowTest('the authenticated admin role owns the seating editor and backup tools'
   assert.equal(await page.locator('[data-navigate="adminFeedback"]').count(), 1);
   assert.equal(await page.locator('#admin-feature-usage-refresh').count(), 0);
   assert.equal(await page.locator('#admin-feedback-title').count(), 0);
-  assert.equal(await page.locator('[aria-label="Werkzeuge"] .profile-row').count(), 6);
+  assert.equal(await page.locator('[aria-label="Werkzeuge"] .profile-row').count(), 7);
+  assert.equal(await page.locator('[aria-label="Werkzeuge"] a[href="/mcp/manage"]').count(), 1);
   assert.equal(await page.locator('[data-navigate="pointsAdmin"]').count(), 1);
   await page.click('[data-navigate="adminFeatureUsage"]');
   await page.waitForSelector('#admin-feature-usage-refresh');

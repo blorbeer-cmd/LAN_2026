@@ -37,6 +37,7 @@
     "format:check": "prettier --check eslint.config.mjs .prettierrc.json ../agent/eslint.config.mjs ../agent/.prettierrc.json"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2",
     "archiver": "^6.0.2",
     "better-sqlite3": "^12.11.1",
     "express": "^4.19.2",
@@ -44,7 +45,9 @@
     "nanoid": "^3.3.18",
     "qrcode": "^1.5.4",
     "socket.io": "^4.7.5",
-    "web-push": "^3.6.7"
+    "web-push": "^3.6.7",
+    "zod": "^3.25.76",
+    "zod-to-json-schema": "^3.25.1"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

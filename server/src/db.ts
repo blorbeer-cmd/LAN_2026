@@ -7,6 +7,7 @@ import fs from 'fs';
 import path from 'path';
 import { nanoid } from 'nanoid';
 import { config } from './config';
+import { installMcpSchema } from './mcp/schema';
 import { DEFAULT_QUIZ_QUESTIONS } from './arcade/quizQuestions';
 import { DEFAULT_SCRIBBLE_WORDS } from './arcade/scribbleWords';
 import {
@@ -6145,6 +6146,9 @@ registerMigration({ version: 137, name: 'replace betting rounds after lineup cha
     CREATE UNIQUE INDEX betting_rounds_current_source ON betting_rounds(event_id,source_type,source_id)
       WHERE refund_cause IS NOT 'replaced';`);
 } });
+
+registerMigration({ version: 138, name: 'scoped MCP connections and confirmed draw cleanup plans',
+  up: () => installMcpSchema(db) });
 
 runRegisteredMigrations();
 

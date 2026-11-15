@@ -81,6 +81,9 @@ export const config = {
   // over request-derived URL data when the app sits behind a reverse proxy.
   publicBaseUrl: (process.env.PUBLIC_BASE_URL ?? '').trim().replace(/\/+$/, ''),
 
+  // Ships in the normal server image; activation requires a canonical HTTPS URL.
+  mcpEnabled: boolFromEnv('MCP_ENABLED'),
+
   // A player is considered "offline" if the agent hasn't reported within this
   // many milliseconds. Keeps the board honest when an agent crashes or a PC
   // is shut down without a clean stop message.
