@@ -3,6 +3,7 @@ import { BASE_EVENT_ID } from '../db';
 import { resolveAccessibleGroupEventScope } from '../groupEventScope';
 import { includesTestPlayers, testPlayerIds } from '../testDataVisibility';
 import { readResultsFeed } from '../resultsFeed';
+import { readKioskPoints } from '../kioskPoints';
 
 export const resultsRouter = Router();
 resultsRouter.get('/feed', (req, res) => {
@@ -16,4 +17,11 @@ resultsRouter.get('/feed', (req, res) => {
       includesTestPlayers(req) ? new Set() : testPlayerIds(),
     ),
   );
+});
+
+resultsRouter.get('/points', (req, res) => {
+  const scope = req.kioskScope ?? resolveAccessibleGroupEventScope(req, res, req.query.eventId);
+  if (!scope) return;
+  res.setHeader('Cache-Control', 'no-store');
+  res.json(readKioskPoints(req.group!.id, scope.eventId ?? BASE_EVENT_ID));
 });

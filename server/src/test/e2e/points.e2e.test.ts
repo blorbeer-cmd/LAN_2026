@@ -333,6 +333,36 @@ test('real LAN account, automatic orga credits, own-game betting notification, h
   for (let index = 0; index < 6; index++) await api('/api/matchmaking', 'POST', {
     gameId: game.id, playerIds: index === 0 ? [myId, bob.id] : [alice.id, bob.id], teamCount: 2,
   });
+  const spareMarkets = (await api(`/api/points?eventId=${eventId}`)).rounds.filter((row: any) => row.status === 'open' && row.id !== round.id);
+  const reservedMarkets = spareMarkets.slice(0, 5);
+  for (const [index, market] of reservedMarkets.entries()) await api(`/api/points/rounds/${market.id}/tip?eventId=${eventId}`, 'PUT',
+    { outcomeId: market.outcomes[0].id, stake: index < 4 ? 20 : 10 }, alice.cookie);
+  assert.equal((await api(`/api/points?eventId=${eventId}`, 'GET', undefined, alice.cookie)).wallet.available, 0);
+  await navigate(member, 'points');
+  await openSection(member, 'tips'); await openSection(member, 'tips-untipped');
+  await member.locator(`[data-tip-round="${spareMarkets[5].id}"]`).click();
+  await member.locator('[data-tip-stake-error]').getByText(/Kein frei verfügbares/).waitFor();
+  assert.equal(await member.locator('[data-tip-form] [type="submit"]').isDisabled(), true);
+  await member.keyboard.press('Escape');
+  await openSection(member, 'tips-pending');
+  await member.locator(`[data-tip-round="${round.id}"]`).click();
+  assert.equal(await member.locator('[data-tip-form] [type="submit"]').isEnabled(), true, 'the held own stake remains usable');
+  await member.locator('[name="stake"]').fill('11');
+  assert.equal(await member.locator('[data-tip-form] [type="submit"]').isDisabled(), true);
+  await member.locator('[name="stake"]').fill('10');
+  assert.equal(await member.locator('[data-tip-form] [type="submit"]').isEnabled(), true);
+  assert.equal(await member.locator('[data-remove-tip]').isEnabled(), true);
+  await member.keyboard.press('Escape');
+  for (const market of reservedMarkets) await api(`/api/points/rounds/${market.id}/tip?eventId=${eventId}`, 'DELETE', undefined, alice.cookie);
+  await setPointsVisibility(false);
+  await navigate(admin, 'pointsAdmin'); await openSection(admin, 'admin-rounds');
+  const adminRoundMenu = admin.locator(`[data-action-menu="admin-round-${round.id}"]`);
+  await adminRoundMenu.locator(':scope > summary').click();
+  await adminRoundMenu.getByRole('button', { name: 'Tippdetails', exact: true }).click();
+  await admin.getByRole('dialog').getByText(/Admin-Tippdetails sind nur lesbar/).waitFor();
+  assert.equal(await admin.locator('[data-tip-form] input, [data-tip-form] button, [data-tip-management]').count(), 0);
+  await admin.keyboard.press('Escape');
+  await setPointsVisibility(true);
   await navigate(member, 'matchmaking');
   const openDraws = member.locator('.matchmaking-open-draws');
   if (!await openDraws.evaluate((element) => (element as HTMLDetailsElement).open)) await openDraws.locator(':scope > summary').click();
@@ -456,12 +486,29 @@ test('real LAN account, automatic orga credits, own-game betting notification, h
       .map((item) => item.getBoundingClientRect().bottom));
     return button.getBoundingClientRect().top - contentBottom >= standardGap - 1;
   }), 'reporting has a separate action row below tip details');
+  await member.setViewportSize({ width: 1440, height: 900 });
+  const outcomeGeometry = await tipDetails.getByRole('list', { name: 'Einsätze nach Ergebnis' }).evaluate((el) => {
+    const rows = Array.from(el.querySelectorAll('.ranked-list-row'));
+    return { left: rows.map((row) => row.getBoundingClientRect().left),
+      tops: rows.map((row) => row.getBoundingClientRect().top),
+      labels: rows.map((row) => row.querySelector('[title]')?.getAttribute('title')) };
+  });
+  assert.ok(outcomeGeometry.left.every((left) => left === outcomeGeometry.left[0]));
+  assert.ok(outcomeGeometry.tops.every((top, index) => !index || top > outcomeGeometry.tops[index - 1]));
+  assert.ok(outcomeGeometry.labels.includes('Unentschieden'));
   await tipDetails.screenshot({ path: 'test-results/points-tip-details.png', animations: 'disabled' });
+  await member.setViewportSize({ width: 390, height: 844 });
   await member.keyboard.press('Escape');
   await navigate(member, 'matchmaking');
   const recordedMatch = member.locator(`[data-history-toggle="${draw.id}"]`);
   if (await recordedMatch.getAttribute('aria-expanded') !== 'true') await recordedMatch.click();
   assert.equal(await recordedCard.locator('.matchmaking-history-head [data-tip-round]').count(), 1, 'recorded matches keep betting in the header');
+  await recordedCard.locator('[data-edit-draw-result]').click();
+  await member.getByRole('dialog').getByText('Diese Korrektur kann nur ein Admin durchführen.', { exact: true }).waitFor();
+  assert.equal(await member.locator('[data-result-save]').isDisabled(), true);
+  assert.equal(await member.locator('[data-result-entry] input:enabled').count(), 0);
+  await member.keyboard.press('Escape');
+
   assert.doesNotMatch(await member.locator('#view-container').innerText(), /Quoten?/i);
   await navigate(member, 'points');
   await member.getByRole('region', { name: 'Mein Punktekonto' }).getByText('101', { exact: true }).first().waitFor();
@@ -469,6 +516,23 @@ test('real LAN account, automatic orga credits, own-game betting notification, h
   assert.equal(await tipsOverview.locator(`[data-tip-round="${round.id}"]`).count(), 1, 'the settled own tip is listed on the points page');
   assert.equal(await tipsOverview.locator(`[data-tip-round="${spectatorRound.id}"]`).count(), 1, 'an untipped open market is listed too');
   assert.equal(await member.locator('[data-history-item]').count(), 0);
+  const untippedGroup = tipsOverview.locator('[data-points-section="tips-untipped"]');
+  const finishedGroup = tipsOverview.locator('[data-points-section="tips-finished"]');
+  assert.equal(await untippedGroup.evaluate((element) => (element as HTMLDetailsElement).open), true);
+  assert.equal(await finishedGroup.evaluate((element) => (element as HTMLDetailsElement).open), false);
+  await untippedGroup.locator(':scope > summary').focus();
+  await member.keyboard.press('Enter');
+  await finishedGroup.locator(':scope > summary').click();
+  await api(`/api/points/rounds/${spectatorRound.id}/tip?eventId=${eventId}`, 'PUT',
+    { outcomeId: spectatorRound.outcomes[0].id, stake: 2 }, alice.cookie);
+  const pendingGroup = tipsOverview.locator('[data-points-section="tips-pending"]');
+  await pendingGroup.locator(`[data-tip-round="${spectatorRound.id}"]`).waitFor();
+  assert.equal(await pendingGroup.evaluate((element) => (element as HTMLDetailsElement).open), true);
+  assert.equal(await untippedGroup.evaluate((element) => (element as HTMLDetailsElement).open), false, 'a new own tip preserves the closed untipped group');
+  assert.equal(await finishedGroup.evaluate((element) => (element as HTMLDetailsElement).open), true, 'a betting refresh preserves opened settlements');
+  await api(`/api/points/rounds/${spectatorRound.id}/tip?eventId=${eventId}`, 'DELETE', undefined, alice.cookie);
+  await pendingGroup.waitFor({ state: 'detached' });
+  assert.equal(await untippedGroup.evaluate((element) => (element as HTMLDetailsElement).open), false, 'returning a tip to the group does not expand it');
 
   const categoryData = await api(`/api/points?eventId=${eventId}`, 'GET', undefined, alice.cookie);
   for (const [account, label] of Object.entries({ orga: 'Orga', playing: 'Spielen', betting: 'Wetten' })) {
@@ -497,6 +561,16 @@ test('real LAN account, automatic orga credits, own-game betting notification, h
         return meta && meta.left < title.right && meta.top < title.bottom;
       }).map((header) => header.textContent));
     assert.deepEqual(collisions, [], 'compact headers wrap metadata instead of overlapping labels');
+    const nesting = await member.locator('[data-points-section="categories"], [data-points-section="tips"]').evaluateAll((parents) => parents.flatMap((parent) => {
+      const parentHeader = parent.querySelector(':scope > summary')!;
+      return Array.from(parent.querySelectorAll('details')).map((child) => ({
+        parentBackground: getComputedStyle(parent).backgroundColor,
+        childBackground: getComputedStyle(child).backgroundColor,
+        inset: child.querySelector(':scope > summary')!.getBoundingClientRect().left - parentHeader.getBoundingClientRect().left,
+      }));
+    }));
+    assert.ok(nesting.length >= 6 && nesting.every((item) => item.parentBackground !== item.childBackground && item.inset > 0),
+      'open and closed points subgroups use alternating card surfaces and an inset header');
     assert.equal(await member.getByRole('region', { name: 'Punkteverlauf', exact: true }).locator('.points-chart svg[role="img"]').count(), 1);
   }
   await navigate(admin, 'matchmaking');
@@ -563,6 +637,17 @@ test('real LAN account, automatic orga credits, own-game betting notification, h
   await tournamentDialog.locator('[name="stake"]').waitFor();
   assert.equal(await tournamentDialog.locator('[name="stake"]').inputValue(), '3', 'management and round changes retain the draft');
   await tournamentDialog.locator('[data-tip-group]').selectOption('Turniersieger');
+  // While a fixture is started, the champion reopening action is absent.
+  await tournamentDialog.locator('[data-tip-group]').selectOption('Halbfinale');
+  await tournamentDialog.getByRole('button', { name: 'Spiel starten (Tipps schließen)', exact: true }).click();
+  await admin.getByRole('alertdialog').getByRole('button', { name: 'Spiel starten', exact: true }).click();
+  await tournamentDialog.getByRole('button', { name: 'Tipps wieder öffnen', exact: true }).waitFor();
+  await tournamentDialog.locator('[data-tip-group]').selectOption('Turniersieger');
+  assert.equal(await tournamentDialog.locator('[data-reopen-round]').count(), 0);
+  await tournamentDialog.locator('[data-tip-group]').selectOption('Halbfinale');
+  await tournamentDialog.getByRole('button', { name: 'Tipps wieder öffnen', exact: true }).click();
+  await tournamentDialog.locator('[name="stake"]').waitFor();
+  await tournamentDialog.locator('[data-tip-group]').selectOption('Turniersieger');
   // Closing a fixture also protects the champion market; reopening that market is explicit.
   await tournamentDialog.getByRole('button', { name: 'Turniersiegertipps wieder öffnen', exact: true }).click();
   await admin.getByRole('dialog', { name: 'Turniersieger tippen', exact: true }).waitFor();
@@ -593,6 +678,20 @@ test('real LAN account, automatic orga credits, own-game betting notification, h
   await tournamentDialog.locator('[data-tip-group]').selectOption('Halbfinale');
   await tournamentDialog.getByText('Dein Tipp:', { exact: true }).waitFor();
   assert.equal(await tournamentDialog.locator('[name="stake"]').count(), 0, 'settled games remain available as tip details');
+  await tournamentDialog.locator('[data-tip-group]').selectOption('Turniersieger');
+  const champion = (await api(`/api/points?eventId=${eventId}`)).rounds.find((row: any) => row.sourceType === 'tournament' && row.sourceId === cup.id);
+  await api(`/api/points/rounds/${champion.id}/refund`, 'POST', { reason: 'Turniersiegertipp zur Prüfung erstattet' });
+  const refundNotice = tournamentDialog.locator('[data-tip-refund-notice]');
+  await refundNotice.getByText('Diese Wette wurde erstattet.', { exact: true }).waitFor();
+  await refundNotice.getByText(/Alle Einsätze wurden zurückgegeben/).waitFor();
+  await refundNotice.getByText(/Turniersiegertipp zur Prüfung erstattet/).waitFor();
+  assert.equal(await tournamentDialog.locator('[name="stake"]').count(), 0);
+  await admin.keyboard.press('Escape');
+  await tournamentBets.getByRole('button', { name: 'Tipps ansehen', exact: true }).click();
+  await tournamentDialog.locator('[data-tip-group]').selectOption('Turniersieger');
+  await tournamentDialog.locator('[data-tip-refund-notice]').getByText(/Turniersiegertipp zur Prüfung erstattet/).waitFor();
+  await tournamentDialog.locator('[data-tip-group]').selectOption('Halbfinale');
+  assert.equal(await tournamentDialog.locator('[data-tip-refund-notice]').count(), 0, 'refund notices belong only to the selected market');
   await admin.keyboard.press('Escape');
   await admin.locator(`[data-open-result="${fixture.id}"]`).click();
   await admin.getByRole('dialog', { name: 'Ergebnis', exact: true }).waitFor();
@@ -621,7 +720,7 @@ test('real LAN account, automatic orga credits, own-game betting notification, h
   await lateControls.waitFor();
   assert.equal(await lateControls.locator('summary, [data-lock-round], [data-refund-round]').count(), 0,
     'a fallback anchor is a direct picker entry, never an action on an unspecified fixture');
-  await lateControls.getByRole('button', { name: 'Tipps öffnen', exact: true }).click();
+  await lateControls.getByRole('button', { name: 'Tipps ansehen', exact: true }).click();
   const lateDialog = member.getByRole('dialog', { name: 'Sieger tippen', exact: true });
   await lateDialog.waitFor();
   assert.equal(await lateDialog.locator('[data-tip-group] option[value="Turniersieger"]').count(), 0);
@@ -643,15 +742,15 @@ test('real LAN account, automatic orga credits, own-game betting notification, h
   const lateOpen = member.locator('.matchmaking-open-draws');
   if (!await lateOpen.evaluate((element) => (element as HTMLDetailsElement).open)) await lateOpen.locator(':scope > summary').click();
   const lateTile = member.locator(`[data-history-item="t-${lateCup.id}"]`);
-  await lateTile.locator('.matchmaking-history-head').getByRole('button', { name: 'Tipps öffnen', exact: true }).click();
+  await lateTile.locator('.matchmaking-history-head').getByRole('button', { name: 'Tipps ansehen', exact: true }).click();
   await lateDialog.waitFor();
   await lateDialog.locator('[data-tip-group]').selectOption(ownRoundLabel);
   assert.equal(await lateDialog.locator('[name="stake"]').inputValue(), '1', 'Match entry opens the same saved game tip');
   await lateDialog.getByRole('button', { name: 'Spiel starten (Tipps schließen)', exact: true }).waitFor();
   await member.keyboard.press('Escape');
   await admin.evaluate((id) => { window.location.hash = `#tournaments/${id}`; }, lateCup.id);
-  await admin.locator('[aria-label="Turnierwetten"]').getByRole('button', { name: 'Tipps öffnen', exact: true }).click();
-  await admin.getByRole('dialog').getByRole('button', { name: 'Runde erstatten', exact: true }).waitFor();
+  await admin.locator('[aria-label="Turnierwetten"]').getByRole('button', { name: 'Tipps ansehen', exact: true }).click();
+  await admin.getByRole('dialog').getByRole('button', { name: 'Alle Einsätze erstatten', exact: true }).waitFor();
   await admin.keyboard.press('Escape');
   await navigate(member, 'points');
   await member.getByRole('region', { name: 'Mein Punktekonto' }).waitFor();
@@ -743,12 +842,13 @@ test('token-only kiosk pages every result participant and removes point columns 
         return rows.length > 0 && rows.every((row) => row.getBoundingClientRect().bottom <= bottom + 1);
       });
       const names = new Set<string>();
-      for (let turn = 0; turn < 8; turn++) {
+      for (let turn = 0; turn < 40 && names.size < 8; turn++) {
         const measured = await results.evaluate((element) => {
           const area = element.getBoundingClientRect();
           return {
             fits: document.documentElement.scrollWidth <= document.documentElement.clientWidth,
             captionHeight: element.querySelector('.kiosk-result-caption')!.getBoundingClientRect().height,
+            caption: element.querySelector('.kiosk-result-caption')!.textContent,
             rows: Array.from(element.querySelectorAll('tbody tr')).filter((row) => !(row as HTMLElement).hidden).map((row) => ({
               name: row.querySelector('.kiosk-result-name')!.textContent!, bottom: row.getBoundingClientRect().bottom,
             })), bottom: area.bottom,
@@ -759,14 +859,18 @@ test('token-only kiosk pages every result participant and removes point columns 
         assert.ok(measured.captionHeight >= 14, `game title remains visible at ${viewport.width}`);
         for (const row of measured.rows) {
           assert.ok(row.bottom <= measured.bottom + 1, `visible row fits at ${viewport.width}: ${JSON.stringify(measured)}`);
-          names.add(row.name);
+          if (measured.caption === game.name) names.add(row.name);
         }
         await kiosk.clock.runFor(10_000);
       }
       assert.equal(names.size, 8, `all eight participants rotate at ${viewport.width}`);
     }
+    const correctionRefresh = kiosk.waitForResponse((response) => response.url().endsWith('/api/results/feed') && response.ok());
     await api(`/api/matches/${match.id}`, 'PATCH', { gameId: game.id, teams: teams.map((team, i) => ({ ...team, score: 8 - i })) });
-    await results.getByText('korrigiert', { exact: true }).waitFor();
+    await correctionRefresh;
+    // A correction updates values without forcing the result page to the front.
+    for (let turn = 0; turn < 40 && !await results.getByText('korrigiert', { exact: true }).count(); turn++) await kiosk.clock.runFor(10_000);
+    await results.getByText('korrigiert', { exact: true }).waitFor({ state: 'attached' });
     await api(`/api/events/${event.id}/points-visibility`, 'PATCH', { visible: false, revision: 2 });
     await results.getByRole('columnheader', { name: 'Spielpunkte', exact: true }).waitFor({ state: 'detached' });
     await results.getByRole('table', { name: game.name, exact: true }).waitFor();
@@ -775,7 +879,7 @@ test('token-only kiosk pages every result participant and removes point columns 
     await kiosk.screenshot({ path: 'test-results/kiosk-results-desktop.png' });
     await kiosk.setViewportSize({ width: 390, height: 900 });
     await kiosk.screenshot({ path: 'test-results/kiosk-results-phone.png' });
-    await api('/api/tournaments', 'POST', {
+    const tournament = await api('/api/tournaments', 'POST', {
       gameId: game.id, name: 'Broadcast-Pokal', format: 'single_elimination',
       teams: ids.slice(0, 2).map((id) => ({ playerIds: [id] })),
     });
@@ -787,9 +891,101 @@ test('token-only kiosk pages every result participant and removes point columns 
     await results.waitFor({ state: 'visible' });
     assert.equal(await results.getByRole('columnheader', { name: 'Spielpunkte', exact: true }).count(), 0);
 
+    await api(`/api/events/${event.id}/points-visibility`, 'PATCH', { visible: true, revision: 3 });
+    await api('/api/me/active-event', 'PUT', { eventId: event.id }, bob.cookie);
+    const rounds = (await api(`/api/points?eventId=${event.id}`)).rounds;
+    const market = rounds.find((r: any) => r.sourceType === 'tournament_match' && r.tournament.id === tournament.id);
+    const refreshed = kiosk.waitForResponse((response) => response.url().endsWith('/api/results/points') && response.ok());
+    await api(`/api/points/rounds/${market.id}/tip`, 'PUT', { outcomeId: market.outcomes[0].id, stake: 10 }, bob.cookie);
+    await refreshed;
+    const seenRankings = new Set<string>();
+    let sawTip = false;
+    let sawChampion = false;
+    for (const viewport of [{ width: 390, height: 900 }, { width: 1440, height: 900 }]) {
+      await kiosk.setViewportSize(viewport);
+      seenRankings.clear();
+      sawTip = false;
+      sawChampion = false;
+      for (let turn = 0; turn < 90 && (seenRankings.size < 4 || !sawTip || !sawChampion); turn++) {
+        if (await results.isVisible()) {
+          const caption = await results.locator('.kiosk-result-caption').textContent() ?? '';
+          if (await results.locator('.kiosk-result-table--ranking').count()) seenRankings.add(caption);
+          if (caption.includes('Turniersieger')) sawChampion = true;
+          if (caption.includes('Finale') && (await results.textContent())?.includes('Points Bob')) {
+            sawTip = true;
+            assert.match(await results.textContent() ?? '', /Topf (10|11) P\./);
+          }
+          const geometry = await results.evaluate((element) => ({
+            bottom: element.getBoundingClientRect().bottom,
+            rows: Array.from(element.querySelectorAll('tbody tr')).filter((r) => !(r as HTMLElement).hidden)
+              .map((r) => r.getBoundingClientRect().bottom),
+          }));
+          assert.ok(geometry.rows.every((bottom) => bottom <= geometry.bottom + 1), `points rows fit at ${viewport.width}: ${caption}`);
+        }
+        await kiosk.clock.runFor(10_000);
+      }
+      assert.equal(seenRankings.size, 4, `all four rankings rotate at ${viewport.width}`);
+      assert.equal(sawChampion, true);
+      assert.equal(sawTip, true, 'the betting signal reaches the anonymous screen and names the tipper');
+    }
+    await api(`/api/events/${event.id}/points-visibility`, 'PATCH', { visible: false, revision: 4 });
+    await kiosk.waitForFunction(() => !document.querySelector('#kiosk-results .kiosk-result-table--ranking') &&
+      !document.querySelector('#kiosk-results')!.textContent!.includes('Topf'));
+    // A focused presentation fixture freezes only the rotation clock. This
+    // isolates repeated input changes from unrelated dashboard startup timers.
+    const probe = await context.newPage();
+    await probe.route('**/rotation-probe', (route) => route.fulfill({ contentType: 'text/html', body: `
+      <link rel="stylesheet" href="/css/style.css"><link rel="stylesheet" href="/css/kiosk.css">
+      <h2 id="heading"></h2><div id="rows" class="kiosk-results" style="height:200px;width:360px;overflow:hidden"></div><div id="board"></div>` }));
+    await probe.goto(`${server.baseUrl}/rotation-probe`);
+    await probe.clock.install({ time: new Date('2026-01-01T00:00:00Z') });
+    await probe.clock.pauseAt(new Date('2026-01-01T01:00:00Z'));
+    await probe.evaluate(async () => {
+      const { createKioskResultsPanel } = await new Function('return import("/js/kioskResults.js")')();
+      const w = window as any;
+      w.rotationPanel = createKioskResultsPanel({ results: document.querySelector('#rows'), tournament: document.querySelector('#board'), title: document.querySelector('#heading') });
+      w.rotationFeed = { showPoints: true, items: [{ id: 'result', gameName: 'Ergebnis', activityAt: Date.now(),
+        teams: Array.from({ length: 8 }, (_, n) => ({ name: '', place: n + 1, winner: n === 0, players: [{ name: `Person ${n}`, points: 1 }] })) }] };
+      w.rotationPoints = { showPoints: true, rounds: [{ id: 'market', title: 'Finale', tournament: { name: 'Pokal', phase: 'Finale' }, sourceType: 'tournament_match', status: 'open', pot: 10, tipCount: 1,
+        outcomes: [{ label: 'Team A', stake: 10, winner: false, tippers: [{ name: 'Tippende', stake: 10 }] }] }],
+        rankings: ['Gesamt', 'Wetten', 'Orga-Punkte', 'Spielpunkte'].map((title, category) => ({ category, title,
+          rows: Array.from({ length: 8 }, (_, n) => ({ rank: n + 1, name: `Person ${n}`, points: 8 - n })) })) };
+      w.rotationPanel.update(w.rotationFeed); w.rotationPanel.updatePoints(w.rotationPoints);
+      w.rotationPanel.setTournament('Turnier', true);
+    });
+    const seen = new Map<string, Set<string>>();
+    for (let turn = 0; turn < 120 && [...seen.values()].filter((names) => names.size === 8).length < 4; turn++) {
+      const shown = await probe.evaluate(() => {
+        const panel = document.querySelector('#rows') as HTMLElement;
+        return panel.hidden || !panel.querySelector('.kiosk-result-table--ranking') ? null : {
+          title: panel.querySelector('.kiosk-result-caption')!.textContent!,
+          names: Array.from(panel.querySelectorAll('tbody tr:not([hidden]) .kiosk-result-name'), (el) => el.textContent!),
+        };
+      });
+      if (shown) { const names = seen.get(shown.title) ?? new Set<string>(); shown.names.forEach((name) => names.add(name)); seen.set(shown.title, names); }
+      await probe.clock.runFor(9_000);
+      const stable = await probe.evaluate(() => {
+        const w = window as any, panel = document.querySelector('#rows')!;
+        const cursor = () => [panel.querySelector('.kiosk-result-caption')?.textContent, panel.querySelector('.kiosk-result-pages')?.textContent, (panel as HTMLElement).hidden];
+        const before = cursor();
+        w.rotationFeed.items[0].activityAt++;
+        w.rotationPoints.rounds[0].pot++;
+        w.rotationPanel.update(w.rotationFeed); w.rotationPanel.updatePoints(w.rotationPoints);
+        return { before, after: cursor() };
+      });
+      assert.deepEqual(stable.after, stable.before, 'live feeds preserve the current page and participant offset');
+      await probe.clock.runFor(1_000);
+    }
+    assert.deepEqual([...seen.keys()].sort(), ['Gesamt', 'Orga-Punkte', 'Spielpunkte', 'Wetten']);
+    assert.ok([...seen.values()].every((names) => names.size === 8), 'every participant page rotates despite changes every nine seconds');
+    await probe.evaluate(() => (window as any).rotationPanel.dispose());
+    await probe.close();
+    assert.deepEqual(errors, []);
+
   } finally {
     await context.close();
     await api('/api/me/active-event', 'PUT', { eventId });
+    await api('/api/me/active-event', 'PUT', { eventId }, bob.cookie);
   }
 });
 
@@ -1051,5 +1247,45 @@ test('a participant reports awarded points, the sole admin reviews anonymously, 
   const exported = JSON.parse(readFileSync((await download.path())!, 'utf8'));
   assert.equal(exported.revision, final.revisions[0].revision);
   assert.deepEqual(exported.standings, final.standings);
+  // Ending the LAN removes its active context, but its own account, journal
+  // and explicit-event snapshot remain reachable from the historical card.
+  await api(`/api/events/${eventId}/end`, 'POST', {});
+  await member.locator('.desktop-nav-btn[data-view="points"]').waitFor({ state: 'detached' });
+  await navigate(member, 'events');
+  const eventHistory = member.locator('[data-event-history="event"]');
+  if (!await eventHistory.evaluate((el) => (el as HTMLDetailsElement).open)) await eventHistory.locator(':scope > summary').click();
+  const endedCard = member.locator(`[data-event-card="${eventId}"]`);
+  const expandEnded = endedCard.locator('[data-event-card-toggle]');
+  if (await expandEnded.count() && await expandEnded.getAttribute('aria-expanded') === 'false') await expandEnded.click();
+  let switchedContext = false;
+  const observeContext = (request: any) => { if (request.method() === 'PUT' && request.url().includes('/api/me/active-event')) switchedContext = true; };
+  member.on('request', observeContext);
+  await endedCard.getByRole('button', { name: 'Punktekonto & Endstand', exact: true }).click();
+  const account = member.getByRole('dialog', { name: 'Punktekonto & Endstand', exact: true });
+  await account.getByText(/Nur lesbar/).waitFor();
+  await openSection(member, 'history');
+  await account.locator('[data-category-account]').selectOption('wallet');
+  const ownEntry = account.locator('[data-point-entry]').first();
+  await ownEntry.click();
+  await member.getByRole('dialog', { name: 'Punktebuchung', exact: true }).getByText('Buchung', { exact: true }).waitFor();
+  assert.equal(await member.getByRole('dialog', { name: 'Punktebuchung', exact: true }).locator('button:not([data-close])').count(), 0);
+  await member.keyboard.press('Escape');
+  for (const width of [320, 1440]) {
+    await member.setViewportSize({ width, height: 900 });
+    assert.equal(await account.evaluate((el) => el.scrollWidth <= el.clientWidth), true);
+  }
+  const [historicDownload] = await Promise.all([member.waitForEvent('download'), account.getByRole('button', { name: 'Endstand herunterladen', exact: true }).click()]);
+  const historic = JSON.parse(readFileSync((await historicDownload.path())!, 'utf8'));
+  assert.deepEqual(historic, exported, 'the historical download uses the ended event rather than the base workspace');
+  assert.equal(switchedContext, false);
+  member.off('request', observeContext);
+  await account.locator('[data-point-entry]').first().click();
+  await member.getByRole('dialog', { name: 'Punktebuchung', exact: true }).waitFor();
+  const ended = await api(`/api/events/${eventId}`);
+  await api(`/api/events/${eventId}/points-visibility`, 'PATCH', { visible: false, revision: ended.pointsVisibilityRevision });
+  await account.waitFor({ state: 'detached' });
+  await member.getByRole('dialog', { name: 'Punktebuchung', exact: true }).waitFor({ state: 'detached' });
+  await endedCard.locator('[data-event-points-history]').waitFor({ state: 'detached' });
+
   assert.deepEqual(pageErrors, []);
 });

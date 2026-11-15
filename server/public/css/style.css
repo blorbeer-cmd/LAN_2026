@@ -2849,7 +2849,7 @@ button.profile-row-main {
   text-align: right;
 }
 @media (min-width: 640px) { /* --bp-md */
-  .ranked-list {
+  .ranked-list:not(.ranked-list--single) {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     grid-template-rows: repeat(var(--ranked-list-rows, 1), auto);
@@ -2858,11 +2858,11 @@ button.profile-row-main {
     margin-bottom: calc(-1 * var(--space-2));
   }
   /* In two columns the right column starts at the break row, too. */
-  .ranked-list-row.is-column-top {
+  .ranked-list:not(.ranked-list--single) > .ranked-list-row.is-column-top {
     padding-top: 0;
     border-top: 0;
   }
-  .ranked-list-row:last-child {
+  .ranked-list:not(.ranked-list--single) > .ranked-list-row:last-child {
     padding-bottom: var(--space-2);
   }
 }

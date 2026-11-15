@@ -38,10 +38,35 @@ function resultHtml(item, rows, showPoints) {
   </div>`;
 }
 
-// This panel shares the existing tournament tile. Pages alternate with the
-// tournament every ten seconds, and all participant rows eventually appear.
+function marketRows(item) {
+  return item.outcomes.flatMap((outcome) => (outcome.tippers.length ? outcome.tippers : [null])
+    .map((tipper) => ({ label: outcome.label, winner: outcome.winner, total: outcome.stake,
+      count: outcome.tippers.length, name: tipper?.name ?? (tipper ? 'Anonym' : 'Noch keine Tipps'), stake: tipper?.stake })));
+}
+
+function pointsHtml(page, rows) {
+  const ranking = page.kind === 'ranking';
+  const item = page.item;
+  const caption = ranking ? item.title
+    : `${item.tournament.name} · ${item.sourceType === 'tournament' ? 'Turniersieger' : item.tournament.phase}`;
+  const meta = ranking ? '' : `${item.status === 'settled' ? 'Abgerechnet' : item.status === 'open' ? 'Tipps offen' : 'Tipps geschlossen'} · Topf ${item.pot} P. · ${item.tipCount} Tipps`;
+  return `<div class="kiosk-result-page">
+    <div class="kiosk-result-caption">${escapeHtml(caption)}</div>
+    ${meta ? `<div class="kiosk-result-meta">${escapeHtml(meta)}</div>` : ''}
+    <table class="kiosk-result-table${ranking ? ' kiosk-result-table--ranking' : ' kiosk-result-table--market'}" aria-label="${escapeHtml(caption)}">
+      <thead><tr>${ranking ? '<th scope="col">Rang</th><th scope="col">Spieler</th><th scope="col">Punkte</th>' : '<th scope="col">Team</th><th scope="col">Tipps</th><th scope="col" aria-label="Einsatz in Punkten">P.</th>'}</tr></thead>
+      <tbody>${rows.map((row) => ranking
+        ? `<tr><td>${row.rank === null ? '–' : `${escapeHtml(row.rank)}.`}</td><td><span class="kiosk-result-name">${escapeHtml(row.name)}</span></td><td>${escapeHtml(row.points)}</td></tr>`
+        : `<tr${row.winner ? ' class="is-winner"' : ''}><td><span class="kiosk-result-name">${escapeHtml(row.label)}</span>${row.winner ? '<span class="kiosk-result-win">Sieg</span>' : ''}<div class="kiosk-result-meta">${row.count} Tipps · ${row.total} P.</div></td><td><span class="kiosk-result-name">${escapeHtml(row.name)}</span></td><td>${row.stake === undefined ? '–' : `${row.stake} P.`}</td></tr>`).join('')}</tbody>
+    </table><div class="kiosk-result-pages"></div>
+  </div>`;
+}
+
+// All rows of results, markets and rankings rotate in the existing tile.
+// The existing tournament view still alternates with each data page.
 export function createKioskResultsPanel({ results, tournament, title }) {
   let feed = { showPoints: false, items: [] };
+  let points = { showPoints: false, rounds: [], rankings: [] };
   let loaded = false;
   let failed = false;
   let showingResults = true;
@@ -50,19 +75,25 @@ export function createKioskResultsPanel({ results, tournament, title }) {
   let index = 0;
   let offset = 0;
   let nextOffset = 0;
-  let payloadKey = '';
+
+  function pages() {
+    return [
+      ...feed.items.map((item) => ({ key: `result:${item.id}`, kind: 'result', item, rows: resultRows(item) })),
+      ...(points.showPoints ? [
+        ...points.rounds.map((item) => ({ key: `market:${item.id}`, kind: 'market', item, rows: marketRows(item) })),
+        ...points.rankings.map((item) => ({ key: `ranking:${item.category}`, kind: 'ranking', item, rows: item.rows })),
+      ] : []),
+    ];
+  }
 
   function fit() {
     if (results.hidden) return;
     const rows = [...results.querySelectorAll('tbody tr')];
     if (!rows.length) return;
-    rows.forEach((row) => {
-      row.hidden = false;
-    });
+    rows.forEach((row) => { row.hidden = false; });
     results.classList.remove('is-compact');
     const footer = results.querySelector('.kiosk-result-pages');
-    const total = resultRows(feed.items[index]).length;
-    // Reserve the footer while measuring, even when the final page is short.
+    const total = pages()[index]?.rows.length ?? 0;
     footer.textContent = `${offset + 1}–${total} von ${total}`;
     const available = results.getBoundingClientRect().bottom - footer.getBoundingClientRect().height;
     if (rows[0].getBoundingClientRect().bottom > available) results.classList.add('is-compact');
@@ -73,36 +104,30 @@ export function createKioskResultsPanel({ results, tournament, title }) {
   }
 
   function render() {
-    if (!feed.items.length) showingResults = !hasTournament;
+    const list = pages();
+    if (index >= list.length) { index = 0; offset = 0; }
+    if (!list.length) showingResults = !hasTournament;
     results.hidden = !showingResults;
     tournament.hidden = showingResults;
-    title.innerHTML = `${icon(domainIcon('tournaments'))} ${escapeHtml(showingResults ? 'Ergebnisse' : tournamentTitle)}`;
-    const item = feed.items[index];
-    if (!item) {
-      results.innerHTML = emptyStateHtml(
-        failed ? 'Ergebnisse gerade nicht erreichbar.' : loaded ? 'Noch keine Ergebnisse.' : 'Lädt…',
-        { className: 'kiosk-empty-state' },
-      );
+    const page = list[index];
+    const heading = page?.kind === 'ranking' ? 'LAN-Punkte' : page?.kind === 'market' ? 'Wetten' : 'Ergebnisse';
+    title.innerHTML = `${icon(domainIcon('tournaments'))} ${escapeHtml(showingResults ? heading : tournamentTitle)}`;
+    if (!page) {
+      results.innerHTML = emptyStateHtml(failed ? 'Ergebnisse gerade nicht erreichbar.' : loaded ? 'Noch keine Ergebnisse.' : 'Lädt…', { className: 'kiosk-empty-state' });
       return;
     }
-    results.innerHTML = resultHtml(item, resultRows(item).slice(offset), feed.showPoints);
+    results.innerHTML = page.kind === 'result'
+      ? resultHtml(page.item, page.rows.slice(offset), feed.showPoints)
+      : pointsHtml(page, page.rows.slice(offset));
     fit();
   }
 
-  function advance() {
-    const item = feed.items[index];
-    if (!item) return;
-    if (nextOffset < resultRows(item).length) offset = nextOffset;
-    else {
-      index = (index + 1) % feed.items.length;
-      offset = 0;
-    }
-  }
-
   const timer = setInterval(() => {
-    if (!feed.items.length) return;
+    const list = pages();
+    if (!list.length) return;
     if (showingResults) {
-      advance();
+      if (nextOffset < list[index].rows.length) offset = nextOffset;
+      else { index = (index + 1) % list.length; offset = 0; }
       showingResults = !hasTournament;
     } else showingResults = true;
     render();
@@ -111,37 +136,46 @@ export function createKioskResultsPanel({ results, tournament, title }) {
   observer.observe(results);
   render();
 
+  // Refresh values without restarting the rotation. If a page disappears,
+  // continue at its next surviving neighbour rather than starving later pages.
+  function updatePages(change) {
+    const before = pages();
+    const currentKey = before[index]?.key;
+    const neighbours = [...before.slice(index + 1), ...before.slice(0, index)].map((page) => page.key);
+    change();
+    const after = pages();
+    let position = after.findIndex((page) => page.key === currentKey);
+    if (position < 0) {
+      const next = neighbours.find((key) => after.some((page) => page.key === key));
+      position = after.findIndex((page) => page.key === next);
+      offset = 0;
+    }
+    index = position < 0 ? Math.min(index, Math.max(0, after.length - 1)) : position;
+    offset = Math.min(offset, Math.max(0, (after[index]?.rows.length ?? 0) - 1));
+    render();
+  }
+  function reset() { index = 0; offset = 0; showingResults = true; }
+  function hidePoints() {
+    feed = { ...feed, showPoints: false };
+    points = { showPoints: false, rounds: [], rankings: [] };
+    reset();
+    render();
+  }
   return {
     update(payload) {
-      const key = JSON.stringify(payload);
       loaded = true;
       failed = false;
-      feed = { showPoints: payload.showPoints === true, items: Array.isArray(payload.items) ? payload.items : [] };
-      if (key !== payloadKey) {
-        payloadKey = key;
-        index = 0;
-        offset = 0;
-        showingResults = true;
-      }
-      render();
+      updatePages(() => {
+        feed = { showPoints: payload.showPoints === true, items: Array.isArray(payload.items) ? payload.items : [] };
+      });
     },
-    setTournament(name, present) {
-      tournamentTitle = name || 'Turnier';
-      hasTournament = present;
-      render();
+    updatePoints(payload) {
+      if (payload.showPoints !== true) return hidePoints();
+      updatePages(() => { points = payload; });
     },
-    hidePoints() {
-      feed = { ...feed, showPoints: false };
-      render();
-    },
-    error() {
-      failed = true;
-      feed = { ...feed, showPoints: false };
-      render();
-    },
-    dispose() {
-      clearInterval(timer);
-      observer.disconnect();
-    },
+    setTournament(name, present) { tournamentTitle = name || 'Turnier'; hasTournament = present; render(); },
+    hidePoints,
+    error() { failed = true; hidePoints(); },
+    dispose() { clearInterval(timer); observer.disconnect(); },
   };
 }

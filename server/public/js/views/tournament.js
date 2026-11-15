@@ -392,6 +392,9 @@ function openResultDialog(t, match, phaseLabel, ctx) {
       showToast(t.status !== 'completed' && champion ? `Turnier beendet – Sieger: ${champion.name}` : 'Ergebnis gespeichert.');
     },
   });
+  if (decided && correction.readOnly) {
+    el.querySelectorAll('[data-result-entry] input, [data-result-entry] button').forEach((control) => { control.disabled = true; });
+  }
 }
 
 // ---------- entry point ----------

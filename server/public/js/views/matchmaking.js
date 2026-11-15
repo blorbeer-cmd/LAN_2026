@@ -443,6 +443,9 @@ function openDrawResultDialog(draw, ctx) {
       showToast('Ergebnis gespeichert.');
     },
   });
+  if (recorded && correction.readOnly) {
+    el.querySelectorAll('[data-result-entry] input, [data-result-entry] button').forEach((control) => { control.disabled = true; });
+  }
 }
 
 // Wires D&D/touch/keyboard player moves and result buttons for every draw

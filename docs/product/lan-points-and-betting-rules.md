@@ -266,7 +266,7 @@ Einsatz beziehungsweise nach der Abrechnung den Nettowert. Turnierkarten fassen 
 zusammen: offene Tipprunden, sonst „Tipps geschlossen“, solange ein Ergebnis aussteht, danach
 „Abgerechnet“ oder, wenn alles erstattet wurde, „Erstattet“. Die Kachel „Ohne Ergebnis“ und der
 Tippfilter umfassen alle Spiele; die Spielauswahl steuert nur das nächste Auslosen, die Historie
-bleibt je Spiel. In der Turnieransicht steht genau einmal „Tipps öffnen“ beziehungsweise
+bleibt je Spiel. In der Turnieransicht steht genau einmal „Tipps ansehen“ beziehungsweise
 „Wetten“ direkt unter Titel und Turnierinfos. Turniersieger
 und einzelne Spiele wählt man im gemeinsamen Modal aus; im Match-Bereich führt die
 Turnierkachel in dasselbe Modal. Der Einstieg bleibt auch ohne Turniersiegermarkt verfügbar,
@@ -307,7 +307,14 @@ Phasenname.
 
 Die Punkteseite listet unter „Tipps“ alle Märkte des Events in drei Gruppen: „Noch nicht
 getippt“, „Deine offenen Tipps“ (Team und Einsatz) und „Abgerechnet“ (Netto); jede Zeile öffnet
-den Tippdialog. Gibt es offene Tipprunden, führt „Tipps ansehen“ auf Home dorthin. Admins finden in der
+den Tippdialog. Die drei Gruppen sind einzeln einklappbar und nennen ihre Anzahl. Offene Gruppen
+starten aufgeklappt, „Abgerechnet“ geschlossen; Live-Aktualisierungen erhalten die Auswahl.
+Wie die Unterbereiche der „Wertung“ verwenden sie eingerückte Karten mit nach Verschachtelung
+abwechselnder Hintergrundfläche, auch im geschlossenen Zustand.
+Auf schmalen Telefonen steht die Tippaktion unter dem Begegnungstext. Erstattete Märkte bleiben
+als Historie einsehbar und nennen im Tippdialog dauerhaft die Rückgabe aller Einsätze sowie den
+vorhandenen Erstattungsgrund. Das gilt auch nach erneutem Öffnen und bei einer Live-Erstattung.
+Gibt es offene Tipprunden, führt „Tipps ansehen“ auf Home dorthin. Admins finden in der
 Punkteverwaltung unter „Wettrunden“ alle Märkte mit Status, Topf, Tippanzahl und den Aktionen
 Schließen, Wiederöffnen, Erstatten und Stornieren. Vor „LAN-Endwertung festschreiben“ nennt die
 Bestätigung die noch nicht abgerechneten Runden.
@@ -330,3 +337,52 @@ geöffnete Bereiche. Neue Spielbuchungen speichern die erreichte Platzierung im 
 Buchungsdetails zeigen sie ausdrücklich. Historische Einträge ohne diese Angabe erhalten keine
 nachträglich erfundene Platzierung. „Punktefehler melden“ steht in Buchungs- und Ergebnisdetails,
 aber nicht in den Formularen zum Eintragen oder Korrigieren von Ergebnissen.
+
+## Wetten und Ranglisten im Broadcast
+
+`GET /api/results/points` liefert ausschließlich lesende Kiosk-Projektionen der Turniermärkte
+und vier LAN-Punkte-Ranglisten. Das Event stammt beim Broadcast-Token ausschließlich aus dessen
+Scope; ein übergebener Event-Selektor kann ihn nicht erweitern. Ein ausdrücklich für ein
+Testevent ausgestellter Token darf dessen Daten ohne persönlichen Admin-Modus anzeigen. Bei ausgeblendeten LAN-Punkten
+bleiben Märkte und Ranglisten leer. Der Abruf gleicht keine Märkte ab und schreibt keine Punkte.
+Er enthält keine Wallet, Spieler-IDs, Quoten, Gewinnschätzungen oder Verwaltungsaktionen.
+Die Kachel „Turnier/Ergebnisse“ rotiert die Wettseiten nach Turnier und die Ranglisten Gesamt,
+Wetten, Orga-Punkte und Spielpunkte mit automatischen Folgeseiten für alle Zeilen.
+Tipps und Ranglisten verwenden dieselbe Namensregel: Newsticker-Opt-out und Testkonten außerhalb
+von Testevents bleiben anonym. Platz, Rohwerte, Platzpunkte und Einsätze bleiben vollständig.
+`betting:changed` lädt auch im Broadcast die Wettprojektion neu; `leaderboard:changed` und
+`events:changed` entfernen Punkte vor dem Abruf aus dem DOM. Fehler verbergen alle Punktedaten.
+
+Der Newsticker verwendet nur aktuelle, sichtbare Märkte: offene Wetten nennen die Begegnung,
+Abrechnungen Sieger, Zahl falscher Tipps, Gesamtzahl und Topf. Auslosungen erscheinen erst nach
+der bestehenden Öffnungs-Wartezeit. Korrekturen, Opt-out, Schließen und Ausblenden entfernen
+veraltete Wettzeilen beim nächsten Abruf. Nach erfolgreichem Commit erhalten ausschließlich
+Gewinner mit positivem Netto persönlich „+10 P. aus <Spiel>“. Die Mitteilung nutzt die bestehende
+Empfänger-, Testkonto- und Stummschaltungsprüfung; sie wird je Runde, Abrechnungsversion und
+Gewinner nur einmal erzeugt. Bei ausgeblendeten LAN-Punkten läuft die Abrechnung weiter, erzeugt
+aber keine Gewinnmitteilung. Bereits gespeicherte Wettmitteilungen verschwinden solange auch aus
+dem persönlichen Feed. Zurückgerollte Abrechnungen senden nichts. Eine Ergebniskorrektur
+benachrichtigt bei sichtbaren Punkten die Gewinner der neuen Abrechnungsversion.
+
+Admin-Tippdetails bleiben bei ausgeblendeten LAN-Punkten nur lesbar verfügbar; weder Tippabgabe
+noch Verwaltungsaktionen werden dadurch freigeschaltet. Event-/Rollenwechsel schließen sie.
+Wiederöffnen wird nur angeboten, wenn die gemeinsame serverseitige Prüfung es erlaubt; eine
+begonnene Turnierpartie oder abgelaufene feste Frist sperrt es. `reopenBlockedReason` nennt den
+aktuellen Sperrgrund. Der Schreibzugriff prüft diese Bedingungen erneut in seiner Transaktion.
+Speichern ist bei unmöglichem Einsatz deaktiviert und erklärt fehlendes beziehungsweise negatives
+Guthaben. Beim Ändern zählt der vorhandene eigene Einsatz mit; Zurücknehmen bleibt möglich.
+„Alle Einsätze erstatten“ und „Abrechnung stornieren“ erklären die finanzielle Folge vor Bestätigung.
+Bereits finanziell abgerechnete Ergebnisse sind für Teilnehmer nur lesbar; das Ergebnisformular
+sperrt seine Eingaben und Speichern und nennt die erforderliche Adminrolle.
+
+Beendete LANs bieten auf der historischen Eventkarte bei sichtbaren Punkten „Punktekonto &
+Endstand“. Der nur lesende Dialog lädt mit expliziter Event-ID, ohne den aktiven Kontext zu
+wechseln. Eigene Konten, Buchungsdetails und gespeicherte Endstände bleiben erreichbar;
+Tippabgabe und Finanzkorrekturen werden dort nicht angeboten. Sichtbarkeit und Teilnehmerrechte
+prüft weiterhin die geschützte API. Kontextwechsel oder ausgeblendete historische Punkte
+schließen auch geöffnete Buchungsdetails. Konto-/Suchfilter erhalten Disclosure-Zustände.
+Die Wettkategorie erklärt bei fehlendem Mindestumfang direkt den Fortschritt der regulär
+abgerechneten Tipps; bei ausreichendem Umfang und nicht positivem Netto nennt sie den
+fehlenden Nettogewinn. Die Berechnungsregeln bleiben unverändert.
+Tippdetails und historische Ranglisten verwenden die gemeinsame einspaltige RankedList-Variante,
+damit die Dialogbreite auch auf einem Desktop für lesbare Ausgangsnamen verfügbar bleibt.
