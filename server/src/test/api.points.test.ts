@@ -553,9 +553,11 @@ test('creators decide match betting, tournament markets open automatically, and 
     .set('x-test-player-id', f.players[0]).send({})));
   assert.deepEqual(locks.map((response) => response.status).sort(), [200, 409]);
   assert.equal((await automaticMarket(f, 'tournament', tournament.body.id)).status, 'locked', 'manual closure retains an empty champion pool so it can be reopened before play');
+  assert.match((await automaticMarket(f, 'tournament', tournament.body.id)).reopenBlockedReason ?? '', /begonnen/);
   assert.equal((await request(app).post(`/api/points/rounds/${champion.id}/reopen`).send({})).status, 409,
     'the outright pool stays closed while a fixture is marked as started');
   assert.equal((await request(app).post(`/api/points/rounds/${fixtureRound.id}/reopen`).set('x-test-player-id', f.players[0]).send({})).status, 200);
+  assert.equal((await automaticMarket(f, 'tournament', tournament.body.id)).reopenBlockedReason, null);
   assert.equal((await request(app).post(`/api/points/rounds/${champion.id}/reopen`).send({})).status, 200);
   assert.equal((await request(app).post(`/api/points/rounds/${fixtureRound.id}/lock`).send({})).status, 200);
   assert.equal((await request(app).put(`/api/points/rounds/${champion.id}/tip`).set('x-test-player-id', f.players[0])
@@ -593,6 +595,7 @@ test('manual betting closure can be reopened before play without changing money;
   assert.equal((await reopen()).status, 409, 'an immutable paid pool awaiting a corrected result cannot accept new tips');
   db.prepare('UPDATE betting_rounds SET revision=0 WHERE id=?').run(r.id);
   db.prepare('UPDATE betting_rounds SET closes_at=? WHERE id=?').run(Date.now() - 1, r.id);
+  assert.match((await automaticMarket(f, 'draw', r.drawId)).reopenBlockedReason ?? '', /Tippschluss/);
   assert.equal((await reopen()).status, 409, 'a passed explicit deadline cannot be bypassed');
   db.prepare('UPDATE betting_rounds SET closes_at=0 WHERE id=?').run(r.id);
   assert.equal((await request(app).patch(`/api/events/${f.eventId}/points-visibility`).send({ visible: false, revision: 1 })).status, 200);

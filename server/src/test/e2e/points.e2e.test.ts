@@ -333,6 +333,36 @@ test('real LAN account, automatic orga credits, own-game betting notification, h
   for (let index = 0; index < 6; index++) await api('/api/matchmaking', 'POST', {
     gameId: game.id, playerIds: index === 0 ? [myId, bob.id] : [alice.id, bob.id], teamCount: 2,
   });
+  const spareMarkets = (await api(`/api/points?eventId=${eventId}`)).rounds.filter((row: any) => row.status === 'open' && row.id !== round.id);
+  const reservedMarkets = spareMarkets.slice(0, 5);
+  for (const [index, market] of reservedMarkets.entries()) await api(`/api/points/rounds/${market.id}/tip?eventId=${eventId}`, 'PUT',
+    { outcomeId: market.outcomes[0].id, stake: index < 4 ? 20 : 10 }, alice.cookie);
+  assert.equal((await api(`/api/points?eventId=${eventId}`, 'GET', undefined, alice.cookie)).wallet.available, 0);
+  await navigate(member, 'points');
+  await openSection(member, 'tips'); await openSection(member, 'tips-untipped');
+  await member.locator(`[data-tip-round="${spareMarkets[5].id}"]`).click();
+  await member.locator('[data-tip-stake-error]').getByText(/Kein frei verfügbares/).waitFor();
+  assert.equal(await member.locator('[data-tip-form] [type="submit"]').isDisabled(), true);
+  await member.keyboard.press('Escape');
+  await openSection(member, 'tips-pending');
+  await member.locator(`[data-tip-round="${round.id}"]`).click();
+  assert.equal(await member.locator('[data-tip-form] [type="submit"]').isEnabled(), true, 'the held own stake remains usable');
+  await member.locator('[name="stake"]').fill('11');
+  assert.equal(await member.locator('[data-tip-form] [type="submit"]').isDisabled(), true);
+  await member.locator('[name="stake"]').fill('10');
+  assert.equal(await member.locator('[data-tip-form] [type="submit"]').isEnabled(), true);
+  assert.equal(await member.locator('[data-remove-tip]').isEnabled(), true);
+  await member.keyboard.press('Escape');
+  for (const market of reservedMarkets) await api(`/api/points/rounds/${market.id}/tip?eventId=${eventId}`, 'DELETE', undefined, alice.cookie);
+  await setPointsVisibility(false);
+  await navigate(admin, 'pointsAdmin'); await openSection(admin, 'admin-rounds');
+  const adminRoundMenu = admin.locator(`[data-action-menu="admin-round-${round.id}"]`);
+  await adminRoundMenu.locator(':scope > summary').click();
+  await adminRoundMenu.getByRole('button', { name: 'Tippdetails', exact: true }).click();
+  await admin.getByRole('dialog').getByText(/Admin-Tippdetails sind nur lesbar/).waitFor();
+  assert.equal(await admin.locator('[data-tip-form] input, [data-tip-form] button, [data-tip-management]').count(), 0);
+  await admin.keyboard.press('Escape');
+  await setPointsVisibility(true);
   await navigate(member, 'matchmaking');
   const openDraws = member.locator('.matchmaking-open-draws');
   if (!await openDraws.evaluate((element) => (element as HTMLDetailsElement).open)) await openDraws.locator(':scope > summary').click();
@@ -462,6 +492,12 @@ test('real LAN account, automatic orga credits, own-game betting notification, h
   const recordedMatch = member.locator(`[data-history-toggle="${draw.id}"]`);
   if (await recordedMatch.getAttribute('aria-expanded') !== 'true') await recordedMatch.click();
   assert.equal(await recordedCard.locator('.matchmaking-history-head [data-tip-round]').count(), 1, 'recorded matches keep betting in the header');
+  await recordedCard.locator('[data-edit-draw-result]').click();
+  await member.getByRole('dialog').getByText('Diese Korrektur kann nur ein Admin durchführen.', { exact: true }).waitFor();
+  assert.equal(await member.locator('[data-result-save]').isDisabled(), true);
+  assert.equal(await member.locator('[data-result-entry] input:enabled').count(), 0);
+  await member.keyboard.press('Escape');
+
   assert.doesNotMatch(await member.locator('#view-container').innerText(), /Quoten?/i);
   await navigate(member, 'points');
   await member.getByRole('region', { name: 'Mein Punktekonto' }).getByText('101', { exact: true }).first().waitFor();
@@ -590,6 +626,17 @@ test('real LAN account, automatic orga credits, own-game betting notification, h
   await tournamentDialog.locator('[name="stake"]').waitFor();
   assert.equal(await tournamentDialog.locator('[name="stake"]').inputValue(), '3', 'management and round changes retain the draft');
   await tournamentDialog.locator('[data-tip-group]').selectOption('Turniersieger');
+  // While a fixture is started, the champion reopening action is absent.
+  await tournamentDialog.locator('[data-tip-group]').selectOption('Halbfinale');
+  await tournamentDialog.getByRole('button', { name: 'Spiel starten (Tipps schließen)', exact: true }).click();
+  await admin.getByRole('alertdialog').getByRole('button', { name: 'Spiel starten', exact: true }).click();
+  await tournamentDialog.getByRole('button', { name: 'Tipps wieder öffnen', exact: true }).waitFor();
+  await tournamentDialog.locator('[data-tip-group]').selectOption('Turniersieger');
+  assert.equal(await tournamentDialog.locator('[data-reopen-round]').count(), 0);
+  await tournamentDialog.locator('[data-tip-group]').selectOption('Halbfinale');
+  await tournamentDialog.getByRole('button', { name: 'Tipps wieder öffnen', exact: true }).click();
+  await tournamentDialog.locator('[name="stake"]').waitFor();
+  await tournamentDialog.locator('[data-tip-group]').selectOption('Turniersieger');
   // Closing a fixture also protects the champion market; reopening that market is explicit.
   await tournamentDialog.getByRole('button', { name: 'Turniersiegertipps wieder öffnen', exact: true }).click();
   await admin.getByRole('dialog', { name: 'Turniersieger tippen', exact: true }).waitFor();
@@ -629,7 +676,7 @@ test('real LAN account, automatic orga credits, own-game betting notification, h
   await refundNotice.getByText(/Turniersiegertipp zur Prüfung erstattet/).waitFor();
   assert.equal(await tournamentDialog.locator('[name="stake"]').count(), 0);
   await admin.keyboard.press('Escape');
-  await tournamentBets.getByRole('button', { name: 'Tipps öffnen', exact: true }).click();
+  await tournamentBets.getByRole('button', { name: 'Tipps ansehen', exact: true }).click();
   await tournamentDialog.locator('[data-tip-group]').selectOption('Turniersieger');
   await tournamentDialog.locator('[data-tip-refund-notice]').getByText(/Turniersiegertipp zur Prüfung erstattet/).waitFor();
   await tournamentDialog.locator('[data-tip-group]').selectOption('Halbfinale');
@@ -662,7 +709,7 @@ test('real LAN account, automatic orga credits, own-game betting notification, h
   await lateControls.waitFor();
   assert.equal(await lateControls.locator('summary, [data-lock-round], [data-refund-round]').count(), 0,
     'a fallback anchor is a direct picker entry, never an action on an unspecified fixture');
-  await lateControls.getByRole('button', { name: 'Tipps öffnen', exact: true }).click();
+  await lateControls.getByRole('button', { name: 'Tipps ansehen', exact: true }).click();
   const lateDialog = member.getByRole('dialog', { name: 'Sieger tippen', exact: true });
   await lateDialog.waitFor();
   assert.equal(await lateDialog.locator('[data-tip-group] option[value="Turniersieger"]').count(), 0);
@@ -684,15 +731,15 @@ test('real LAN account, automatic orga credits, own-game betting notification, h
   const lateOpen = member.locator('.matchmaking-open-draws');
   if (!await lateOpen.evaluate((element) => (element as HTMLDetailsElement).open)) await lateOpen.locator(':scope > summary').click();
   const lateTile = member.locator(`[data-history-item="t-${lateCup.id}"]`);
-  await lateTile.locator('.matchmaking-history-head').getByRole('button', { name: 'Tipps öffnen', exact: true }).click();
+  await lateTile.locator('.matchmaking-history-head').getByRole('button', { name: 'Tipps ansehen', exact: true }).click();
   await lateDialog.waitFor();
   await lateDialog.locator('[data-tip-group]').selectOption(ownRoundLabel);
   assert.equal(await lateDialog.locator('[name="stake"]').inputValue(), '1', 'Match entry opens the same saved game tip');
   await lateDialog.getByRole('button', { name: 'Spiel starten (Tipps schließen)', exact: true }).waitFor();
   await member.keyboard.press('Escape');
   await admin.evaluate((id) => { window.location.hash = `#tournaments/${id}`; }, lateCup.id);
-  await admin.locator('[aria-label="Turnierwetten"]').getByRole('button', { name: 'Tipps öffnen', exact: true }).click();
-  await admin.getByRole('dialog').getByRole('button', { name: 'Runde erstatten', exact: true }).waitFor();
+  await admin.locator('[aria-label="Turnierwetten"]').getByRole('button', { name: 'Tipps ansehen', exact: true }).click();
+  await admin.getByRole('dialog').getByRole('button', { name: 'Alle Einsätze erstatten', exact: true }).waitFor();
   await admin.keyboard.press('Escape');
   await navigate(member, 'points');
   await member.getByRole('region', { name: 'Mein Punktekonto' }).waitFor();

@@ -128,3 +128,13 @@ test('a tournament card tells open, waiting and finished markets apart', () => {
   assert.equal(tournamentBettingSummary(rounds('settled', 'refunded')), 'Abgerechnet · 1 eigener Tipp');
   assert.equal(tournamentBettingSummary(rounds('refunded', 'refunded', 'refunded', 'refunded')), 'Erstattet · 1 eigener Tipp');
 });
+
+test('tip stake validation reuses reservations but blocks zero, negative and insufficient funds', async () => {
+  const { tipStakeError } = await import('./pointsPresentation.js');
+  assert.match(tipStakeError(1, 0, 0, 20), /Kein frei verfügbares/);
+  assert.equal(tipStakeError(10, 0, 10, 20), '');
+  assert.match(tipStakeError(11, 0, 10, 20), /Höchstens 10 P/);
+  assert.match(tipStakeError(1, -1, 10, 20), /negativ/);
+  for (const stake of [0, 1.5, NaN, 21]) assert.ok(tipStakeError(stake, 100, 0, 20));
+  assert.equal(tipStakeError(20, 100, 0, 20), '');
+});

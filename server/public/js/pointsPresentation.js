@@ -88,3 +88,15 @@ export function tournamentTipGroups(rounds) {
   }
   return [...groups.values()];
 }
+
+// A held own stake can be reused when editing, but negative available funds
+// forbid every change except removing the tip (the server remains authoritative).
+export function tipStakeError(stake, available, previousStake, maxStake) {
+  const capacity = available + previousStake;
+  if (available < 0) return 'Dein verfügbares Wettguthaben ist negativ. Du kannst deinen offenen Tipp weiterhin zurücknehmen.';
+  if (capacity < 1) return 'Kein frei verfügbares Wettguthaben. Du kannst vorhandene offene Tipps zurücknehmen.';
+  if (stake > capacity) return `Für diesen Einsatz fehlen frei verfügbare Punkte. Höchstens ${capacity} P. sind verfügbar.`;
+  if (!Number.isInteger(stake) || stake < 1 || stake > maxStake)
+    return `Bitte einen ganzen Einsatz von 1 bis ${maxStake} P. eingeben.`;
+  return '';
+}

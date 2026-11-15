@@ -161,3 +161,14 @@ Die Kontoauswahl umfasst alle vier Konten. Nur Wettguthaben bietet zusätzlich d
 Buchungsart-Auswahl; seine Details behalten Einsatz, Auszahlung und Originalbuchung. Die
 Konten werden weder addiert noch ineinander umgerechnet. Die Kurve verwendet stets alle
 Buchungen des Kontos, unabhängig von Suchtext und Buchungsart.
+
+Admin-Tippdetails bleiben bei ausgeblendeten LAN-Punkten nur lesbar verfügbar; weder Tippabgabe
+noch Verwaltungsaktionen werden dadurch freigeschaltet. Event-/Rollenwechsel schließen sie.
+Wiederöffnen wird nur angeboten, wenn die gemeinsame serverseitige Prüfung es erlaubt; eine
+begonnene Turnierpartie oder abgelaufene feste Frist sperrt es. `reopenBlockedReason` nennt den
+aktuellen Sperrgrund. Der Schreibzugriff prüft diese Bedingungen erneut in seiner Transaktion.
+Speichern ist bei unmöglichem Einsatz deaktiviert und erklärt fehlendes beziehungsweise negatives
+Guthaben. Beim Ändern zählt der vorhandene eigene Einsatz mit; Zurücknehmen bleibt möglich.
+„Alle Einsätze erstatten“ und „Abrechnung stornieren“ erklären die finanzielle Folge vor Bestätigung.
+Bereits finanziell abgerechnete Ergebnisse sind für Teilnehmer nur lesbar; das Ergebnisformular
+sperrt seine Eingaben und Speichern und nennt die erforderliche Adminrolle.

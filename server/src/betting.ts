@@ -467,6 +467,7 @@ export function roundView(round: BettingRound, playerId: string) {
     result: round.result_key,
     replaced: round.refund_cause === 'replaced',
     rebooksOnCorrection: rebooksOnCorrection(round, tips),
+    reopenBlockedReason: bettingReopenBlockedReason(round),
     pot,
     tipCount: tips.length,
     outcomes: (JSON.parse(round.outcomes) as BetOutcome[]).map((outcome) => {
@@ -783,20 +784,33 @@ export function lockBettingRound(round: BettingRound): void {
   }).immediate();
   for (const closed of [...closedChampions, round]) resolveBettingNotice(getBettingRound(closed.group_id, closed.event_id, closed.id));
 }
+function bettingReopenBlockedReason(round: BettingRound): string | null {
+  try {
+    requirePointsOpen(round.event_id);
+    requirePointsVisible(round.event_id);
+    requireActiveBettingEvent(round.event_id);
+  } catch (error) {
+    if (error instanceof PointsError) return error.message;
+    throw error;
+  }
+  if (round.status !== 'locked') return 'Nur geschlossene Tippabgaben können wieder geöffnet werden.';
+  if (round.revision !== 0 || round.settled_at !== null)
+    return 'Bereits abgerechnete Einsätze bleiben auch nach einer Ergebniskorrektur unveränderlich.';
+  if (round.closes_at > 0 && round.closes_at <= Date.now())
+    return 'Der festgelegte Tippschluss ist bereits vorbei.';
+  const source = betSourceState(round.group_id, round.event_id, round.source_type, round.source_id);
+  if (source.started || source.finished || source.invalid || sourceChanged(round, source))
+    return 'Der Wettbewerb hat bereits begonnen oder wurde geändert.';
+  return null;
+}
 export function reopenBettingRound(round: BettingRound, actorId: string): void {
   db.transaction(() => {
     requirePointsOpen(round.event_id);
     requirePointsVisible(round.event_id);
     requireActiveBettingEvent(round.event_id);
     const fresh = getBettingRound(round.group_id, round.event_id, round.id);
-    if (fresh.status !== 'locked') throw new PointsError('Nur geschlossene Tippabgaben können wieder geöffnet werden.');
-    if (fresh.revision !== 0 || fresh.settled_at !== null)
-      throw new PointsError('Bereits abgerechnete Einsätze bleiben auch nach einer Ergebniskorrektur unveränderlich.');
-    if (fresh.closes_at > 0 && fresh.closes_at <= Date.now())
-      throw new PointsError('Der festgelegte Tippschluss ist bereits vorbei.');
-    const source = betSourceState(fresh.group_id, fresh.event_id, fresh.source_type, fresh.source_id);
-    if (source.started || source.finished || source.invalid || sourceChanged(fresh, source))
-      throw new PointsError('Der Wettbewerb hat bereits begonnen oder wurde geändert.');
+    const blockedReason = bettingReopenBlockedReason(fresh);
+    if (blockedReason) throw new PointsError(blockedReason);
     db.prepare("UPDATE betting_rounds SET status='open',locked_at=NULL WHERE id=? AND status='locked'").run(fresh.id);
     writeAdminAudit({ actorPlayerId: actorId, groupId: fresh.group_id, action: 'betting_round_reopened',
       targetType: 'betting_round', targetId: fresh.id });

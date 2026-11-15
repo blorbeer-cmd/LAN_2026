@@ -266,7 +266,7 @@ Einsatz beziehungsweise nach der Abrechnung den Nettowert. Turnierkarten fassen 
 zusammen: offene Tipprunden, sonst „Tipps geschlossen“, solange ein Ergebnis aussteht, danach
 „Abgerechnet“ oder, wenn alles erstattet wurde, „Erstattet“. Die Kachel „Ohne Ergebnis“ und der
 Tippfilter umfassen alle Spiele; die Spielauswahl steuert nur das nächste Auslosen, die Historie
-bleibt je Spiel. In der Turnieransicht steht genau einmal „Tipps öffnen“ beziehungsweise
+bleibt je Spiel. In der Turnieransicht steht genau einmal „Tipps ansehen“ beziehungsweise
 „Wetten“ direkt unter Titel und Turnierinfos. Turniersieger
 und einzelne Spiele wählt man im gemeinsamen Modal aus; im Match-Bereich führt die
 Turnierkachel in dasselbe Modal. Der Einstieg bleibt auch ohne Turniersiegermarkt verfügbar,
@@ -363,3 +363,14 @@ Gewinner nur einmal erzeugt. Bei ausgeblendeten LAN-Punkten läuft die Abrechnun
 aber keine Gewinnmitteilung. Bereits gespeicherte Wettmitteilungen verschwinden solange auch aus
 dem persönlichen Feed. Zurückgerollte Abrechnungen senden nichts. Eine Ergebniskorrektur
 benachrichtigt bei sichtbaren Punkten die Gewinner der neuen Abrechnungsversion.
+
+Admin-Tippdetails bleiben bei ausgeblendeten LAN-Punkten nur lesbar verfügbar; weder Tippabgabe
+noch Verwaltungsaktionen werden dadurch freigeschaltet. Event-/Rollenwechsel schließen sie.
+Wiederöffnen wird nur angeboten, wenn die gemeinsame serverseitige Prüfung es erlaubt; eine
+begonnene Turnierpartie oder abgelaufene feste Frist sperrt es. `reopenBlockedReason` nennt den
+aktuellen Sperrgrund. Der Schreibzugriff prüft diese Bedingungen erneut in seiner Transaktion.
+Speichern ist bei unmöglichem Einsatz deaktiviert und erklärt fehlendes beziehungsweise negatives
+Guthaben. Beim Ändern zählt der vorhandene eigene Einsatz mit; Zurücknehmen bleibt möglich.
+„Alle Einsätze erstatten“ und „Abrechnung stornieren“ erklären die finanzielle Folge vor Bestätigung.
+Bereits finanziell abgerechnete Ergebnisse sind für Teilnehmer nur lesbar; das Ergebnisformular
+sperrt seine Eingaben und Speichern und nennt die erforderliche Adminrolle.
