@@ -108,7 +108,8 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Routen, Rolle
 - Unter „Mein Profil → ChatGPT-Verbindungen“ öffnet „Verwalten“ die persönliche Seite
   `/mcp/manage`. Sie zeigt Event-Freigaben und erlaubt deren sofortigen Widerruf. Die Verbindung
   erfordert eine persönliche Anmeldung und gilt genau für das bei OAuth ausgewählte Event.
-- Admin bietet „ChatGPT & Aufräumen“ als zusätzliches Werkzeug. Dort lassen sich alte
+- Admin bietet „Auslosungen aufräumen“ unter `/admin/draw-cleanup` als eigenständiges Werkzeug,
+  getrennt von der persönlichen ChatGPT-Verbindungsverwaltung. Dort lassen sich alte
   automatische Match-Auslosungen ohne Ergebnis nach Alter in Stunden oder Tagen vorschauen.
   Captain-Drafts und Rematches werden nur bei ausdrücklicher Auswahl einbezogen. Turnier- und
   Wettverknüpfungen bleiben geschützt. Der Löschplan zeigt Stichtag, genaue Auswahl und

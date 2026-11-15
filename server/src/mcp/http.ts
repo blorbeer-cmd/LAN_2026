@@ -112,7 +112,7 @@ export function mountMcp(app: Express): void {
   });
   router.use('/mcp/oauth', express.urlencoded({ extended: false, limit: '16kb' }));
   mountOAuth(router);
-  router.get(['/mcp/connect', '/mcp/manage'], (_req, res) => {
+  router.get(['/mcp/connect', '/mcp/manage', '/admin/draw-cleanup'], (_req, res) => {
     res.sendFile(path.join(__dirname, '..', '..', 'public', 'mcp.html'));
   });
   router.options('/mcp', (_req, res) => {

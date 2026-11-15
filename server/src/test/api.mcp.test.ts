@@ -145,6 +145,7 @@ test('cleanup protects boundaries and linked results, requires browser approval,
   const auth = await connect(f, true);
   const preview = await rpc(auth.token, 'tools/call', { name: 'preview_draw_cleanup', arguments: { age: 1, unit: 'hours' } });
   const plan = preview.body.result.structuredContent.data;
+  assert.equal(plan.confirmationUrl, `${base}/admin/draw-cleanup?plan=${plan.id}`);
   assert.equal(plan.deletable, 1, JSON.stringify(preview.body));
   assert.equal(plan.protectedCount, 1);
   assert.deepEqual(plan.entries.filter((entry: { protectedReason: string | null }) => !entry.protectedReason).map((entry: { id: string }) => entry.id), [old]);
@@ -284,6 +285,7 @@ test('disabled MCP does not affect health, personal management or browser cleanu
   assert.equal((await request(app).post('/mcp').send({})).status, 404);
   assert.equal((await request(app).get('/api/health')).status, 200);
   assert.equal((await request(app).get('/mcp/manage')).status, 200);
+  assert.equal((await request(app).get('/admin/draw-cleanup')).status, 200);
   assert.equal((await request(app).post('/api/integrations/cleanup/preview').set('Cookie', f.cookie).set('Origin', base)
     .send({ eventId: f.event, age: 7, unit: 'days' })).status, 200);
 });

@@ -887,8 +887,8 @@ function renderPanel(container, ctx) {
     action: `<button type="button" class="btn btn-sm" data-navigate="${view}">Öffnen</button>`,
   });
   const tools = [
-    { title: 'ChatGPT & Aufräumen', meta: 'Verbindungen und alte Match-Auslosungen ohne Ergebnis',
-      action: '<a class="btn btn-sm" href="/mcp/manage">Öffnen</a>' },
+    { title: 'Auslosungen aufräumen', meta: 'Alte Match-Auslosungen ohne Ergebnis prüfen und löschen',
+      action: '<a class="btn btn-sm" href="/admin/draw-cleanup">Öffnen</a>' },
     state.activeEvent?.eventType === 'lan' ? openTool('LAN-Punkte', 'Grundstock, Orga-Budget, Wetten und Endwertung', 'pointsAdmin') : null,
     trackingEnabled ? openTool('Auswertung', 'Rangliste, Statistiken und Hall of Fame', 'leaderboard') : null,
     openTool('Feedback', 'Rückmeldungen aus der App', 'adminFeedback'),

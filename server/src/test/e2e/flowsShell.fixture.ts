@@ -32,7 +32,7 @@ import { assertControlHeights, assertNoOverflow } from './visualHelpers';
 
 registerFlowFixture('shell');
 
-flowTest('MCP management uses personal sessions and previews cleanup without deleting on phone and laptop', async (t) => {
+flowTest('personal MCP management and standalone admin cleanup work on phone and laptop', async (t) => {
   const server = await startE2EServer(authenticatedServerEnv());
   t.after(() => server.process.kill());
   const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
@@ -51,8 +51,12 @@ flowTest('MCP management uses personal sessions and previews cleanup without del
   assert.equal(participants.status(), 200, await participants.text());
   const integrationPage = await context.newPage();
   await integrationPage.goto(`${server.baseUrl}/mcp/manage`);
+  await integrationPage.getByRole('heading', { name: 'ChatGPT-Verbindungen', level: 2, exact: true }).waitFor();
+  assert.equal(await integrationPage.locator('#mcp-cleanup').count(), 0);
+  await integrationPage.goto(`${server.baseUrl}/admin/draw-cleanup`);
   await integrationPage.locator('#mcp-cleanup').waitFor({ state: 'visible' });
-  assert.equal(await integrationPage.getByRole('heading', { name: 'ChatGPT-Verbindungen', exact: true }).count(), 1);
+  assert.equal(await integrationPage.getByRole('heading', { name: 'Auslosungen aufräumen', level: 1, exact: true }).count(), 1);
+  assert.equal(await integrationPage.getByRole('heading', { name: 'ChatGPT-Verbindungen', exact: true }).count(), 0);
   const options = await integrationPage.locator('#cleanup-event option').count();
   assert.ok(options > 0, 'admin has an accepted event for scoped cleanup');
   await integrationPage.locator('#cleanup-age').fill('876000');
@@ -1515,7 +1519,8 @@ flowTest('the authenticated admin role owns the seating editor and backup tools'
   assert.equal(await page.locator('#admin-feature-usage-refresh').count(), 0);
   assert.equal(await page.locator('#admin-feedback-title').count(), 0);
   assert.equal(await page.locator('[aria-label="Werkzeuge"] .profile-row').count(), 7);
-  assert.equal(await page.locator('[aria-label="Werkzeuge"] a[href="/mcp/manage"]').count(), 1);
+  const drawCleanupTool = page.locator('[aria-label="Werkzeuge"] .profile-row').filter({ hasText: 'Auslosungen aufräumen' });
+  assert.equal(await drawCleanupTool.locator('a[href="/admin/draw-cleanup"]').count(), 1);
   assert.equal(await page.locator('[data-navigate="pointsAdmin"]').count(), 1);
   await page.click('[data-navigate="adminFeatureUsage"]');
   await page.waitForSelector('#admin-feature-usage-refresh');

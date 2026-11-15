@@ -81,7 +81,7 @@ export function previewCleanup(principal: Principal, input: CleanupOptions, conn
   })();
   return { id, eventId: principal.eventId, eventName: principal.eventName, cutoff, expiresAt,
     options, total: all.length, deletable: payload.candidates.length, protectedCount: payload.protectedCount,
-    entries: all.map(({ fingerprint: _fingerprint, ...row }) => row), confirmationPath: `/mcp/manage?plan=${encodeURIComponent(id)}` };
+    entries: all.map(({ fingerprint: _fingerprint, ...row }) => row), confirmationPath: `/admin/draw-cleanup?plan=${encodeURIComponent(id)}` };
 }
 
 export function getCleanupPlan(playerId: string, id: string): PlanRow {

@@ -10,6 +10,10 @@ const content = document.querySelector('#mcp-content');
 const status = document.querySelector('#mcp-status');
 const query = new URLSearchParams(location.search);
 const requestId = query.get('request');
+const cleanupPage = location.pathname === '/admin/draw-cleanup' || query.has('plan');
+const title = requestId ? 'Respawn mit ChatGPT verbinden' : cleanupPage ? 'Auslosungen aufräumen' : 'ChatGPT-Verbindungen';
+document.title = `${title} – Respawn`;
+document.querySelector('.view-title').textContent = title;
 let account;
 
 function message(text) { status.textContent = text; }
@@ -107,7 +111,7 @@ async function showPlan(id) {
 function manage() {
   message(`Angemeldet als ${account.name}`);
   const adminEvents = account.events.filter((event) => event.cleanupEnabled && ['owner', 'admin'].includes(event.role));
-  content.innerHTML = `<section class="card stack grouped-page-section">
+  const connectionsSection = `<section class="card stack grouped-page-section">
     <h2>ChatGPT-Verbindungen</h2>
     ${account.endpoint ? `<label class="field-label" for="mcp-endpoint">MCP-Server-URL</label>
       <input id="mcp-endpoint" readonly value="${escapeHtml(account.endpoint)}" />
@@ -118,8 +122,8 @@ function manage() {
         <span class="profile-row-title">${escapeHtml(connection.eventName)}</span>
         <span class="profile-row-meta">Bis ${escapeHtml(formatDateTime(connection.expiresAt))} · ${escapeHtml(scopeLabels(connection.scopes))}</span>
       </span></div><div class="profile-row-action"><button class="btn btn-sm" data-revoke="${escapeHtml(connection.id)}">Widerrufen</button></div></div>`).join('') : '<p>Keine aktiven Verbindungen.</p>'}</div>
-    </section>
-    ${adminEvents.length ? `<section class="card stack grouped-page-section">
+    </section>`;
+  const cleanupSection = adminEvents.length ? `<section class="card stack grouped-page-section">
       <h2>Alte Match-Auslosungen aufräumen</h2>
       <form id="mcp-cleanup" class="stack">
         <label class="field-label is-required" for="cleanup-event">Event</label>
@@ -134,7 +138,8 @@ function manage() {
         <label><input type="checkbox" name="draft" /> Abgeschlossene Captain-Drafts einbeziehen</label>
         <label><input type="checkbox" name="rematch" /> Rematches einbeziehen</label>
         <div class="row" style="justify-content:flex-end;"><button class="btn btn-primary" type="submit">Vorschau erstellen</button></div>
-      </form></section>` : ''}`;
+      </form></section>` : '<section class="card"><p>Keine zugänglichen Events mit Admin-Berechtigung zur Bereinigung vorhanden.</p></section>';
+  content.innerHTML = cleanupPage ? cleanupSection : connectionsSection;
   content.querySelectorAll('[data-revoke]').forEach((button) => button.addEventListener('click', () => busy(button, async () => {
     if (!(await confirmDialog('Diese ChatGPT-Verbindung widerrufen?', { confirmText: 'Widerrufen' }))) return;
     await apiFetch(`/api/integrations/connections/${encodeURIComponent(button.dataset.revoke)}`, { method: 'DELETE' });

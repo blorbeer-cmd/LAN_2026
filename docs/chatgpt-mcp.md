@@ -31,8 +31,8 @@ eine vorgeschaltete interaktive Cloudflare-Access-Anmeldung darf diese Serverauf
 blockieren. Die MCP-Endpunkte selbst verlangen die persönliche OAuth-Freigabe.
 
 Ohne `MCP_ENABLED=1` bleibt der externe MCP-Zugang geschlossen. Die manuelle Admin-Bereinigung
-ist unabhängig davon unter `/mcp/manage` verfügbar. Eine ungültige `PUBLIC_BASE_URL` wird dort
-als Konfigurationsfehler angezeigt; das übrige LAN-Tool bleibt erreichbar.
+ist unabhängig davon unter `/admin/draw-cleanup` verfügbar. Eine ungültige `PUBLIC_BASE_URL` wird
+in der Verbindungsverwaltung als Konfigurationsfehler angezeigt; das übrige LAN-Tool bleibt erreichbar.
 
 Prüfen:
 
@@ -123,7 +123,8 @@ werden durch eine einzelne Event-Freigabe nicht zugänglich.
 
 ## Admin-Bereinigung
 
-Über **Admin → ChatGPT & Aufräumen** oder direkt `/mcp/manage` erreichbar. Auch ohne MCP nutzbar.
+Über **Admin → Auslosungen aufräumen** oder direkt `/admin/draw-cleanup` erreichbar. Die Seite
+enthält ausschließlich die Bereinigung und ist auch ohne ChatGPT oder aktiviertes MCP nutzbar.
 
 1. Ein zugängliches Event und ein positives Alter in ganzen Stunden oder Tagen auswählen.
    Ein Tag entspricht 24 Stunden. Standard sind sieben Tage und automatische Auslosungen.

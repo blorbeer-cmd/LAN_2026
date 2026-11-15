@@ -182,7 +182,7 @@ in derselben SQLite-Datenbank gespeichert. Token werden nur gehasht abgelegt. Vo
 ein Backup kann ältere Freigaben enthalten. Kurzlebige, noch nicht eingelöste OAuth-Anfragen
 werden bei Neustart verworfen und müssen erneut begonnen werden.
 
-Die Admin-Seite `/mcp/manage` bietet auch bei deaktiviertem MCP eine manuelle, bestätigte
+Die eigenständige Admin-Seite `/admin/draw-cleanup` bietet auch bei deaktiviertem MCP eine manuelle, bestätigte
 Bereinigung alter Match-Auslosungen ohne Ergebnis. Geschützte Turnier-/Wettbezüge bleiben
 erhalten. Es wird kein Cleanup-Scheduler eingerichtet. Details und Prüfschritte:
 [ChatGPT/MCP](../docs/chatgpt-mcp.md).
