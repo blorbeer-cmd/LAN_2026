@@ -189,6 +189,12 @@ erhalten. Es wird kein Cleanup-Scheduler eingerichtet. Details und Prüfschritte
 
 ### Regulärer Ablauf
 
+Die drei Browser-E2E-Jobs und die Bestätigung einer Testlauf-Regression verwenden ausdrücklich
+`ubuntu-24.04`. Playwright 1.56.1 unterstützt das inzwischen von `ubuntu-latest` gelieferte
+Ubuntu 26.04 nicht; ohne diese Festlegung scheitert bereits die Chromium-Installation vor den
+Tests. Die übrigen Jobs behalten ihre bisherige Runner-Auswahl. Der visuelle Bildvergleich
+verwendet weiterhin unverändert seinen separat gepinnten Referenzcontainer.
+
 Der Workflow `.github/workflows/deploy.yml` baut bereits in jedem Pull Request das vollständige
 Runtime-Image, veröffentlicht es dort aber nicht. Für jeden relevanten Push auf `main` wird das mit
 dem Commit-SHA getaggte Image anschließend veröffentlicht. Reine Markdown- und `docs/`-Änderungen
