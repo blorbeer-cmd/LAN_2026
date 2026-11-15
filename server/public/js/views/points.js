@@ -11,6 +11,7 @@ import { POINT_SOURCES, signedPoints, pointsSectionHtml, journalSourceState, cat
 import { categoryPointsHtml, pointsHistoryHtml, adminCategoryJournalHtml, categoryEntryFactsHtml } from '../pointsCategories.js';
 import { pointsReportButton, wirePointsReportButtons } from '../pointsReports.js';
 import { actionMenuHtml, wireActionMenus } from '../actionMenu.js';
+import { captureViewRenderState, restoreViewRenderState } from '../viewRenderState.js';
 import { profileRow } from '../profileRow.js';
 import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
 
@@ -34,6 +35,7 @@ let adminCategoryEntries = null;
 let adminCategoryLoading = false;
 let adminCategoryError = '';
 const participantDialogs = new Map();
+const historicalPointDialogs = new Map();
 // Open tip dialogs follow tips, closing and settlements of other devices.
 const bettingListeners = new Set();
 export function announceBettingChange(roundId) {
@@ -48,7 +50,13 @@ export function openPointsModal(title, body, options = {}) {
   participantDialogs.set(dialog.close, state.activeEvent?.id);
   return dialog;
 }
+function historicalPointsVisible(eventId) {
+  return [...(state.endedEvents ?? []), ...(state.managedEvents ?? [])].some((event) => event.id === eventId && event.pointsEnabled);
+}
 export function syncPointsDialogVisibility() {
+  for (const [close, context] of historicalPointDialogs) {
+    if (context.key !== scopeKey() || !historicalPointsVisible(context.eventId)) close();
+  }
   for (const [close, eventId] of participantDialogs) {
     if (eventId !== state.activeEvent?.id || !state.activeEvent?.pointsEnabled) close();
   }
@@ -241,10 +249,10 @@ function tipperText(outcome) {
 
 function roundOutcomesHtml(round) {
   return rankedListHtml(round.outcomes.map((outcome) => ({
-    title: e(outcome.label), sortKey: outcome.label,
+    title: `<span title="${e(outcome.label)}">${e(outcome.label)}</span>`, sortKey: outcome.label,
     meta: e([round.result === outcome.id ? 'Gewinner' : '', round.mine?.outcomeId === outcome.id ? 'Dein Tipp' : '', tipperText(outcome)].filter(Boolean).join(' · ')),
     value: `${outcome.stake} P.`,
-  })), { label: 'Einsätze nach Ergebnis' });
+  })), { label: 'Einsätze nach Ergebnis', columns: 1 });
 }
 
 export function competitionMatchesTipFilter(type, id, filter) {
@@ -576,7 +584,7 @@ export function competitionCorrection(type, sourceId, fixtureIds = []) {
   };
 }
 
-function entryDetails(entry, allEntries) {
+function entryDetails(entry, allEntries, { open = state.activeEvent?.pointsEnabled ? openPointsModal : openModal, reports = true } = {}) {
   let details = {};
   try {
     details = JSON.parse(entry.details);
@@ -584,7 +592,7 @@ function entryDetails(entry, allEntries) {
     /* Legacy entries may carry no details. */
   }
   const original = allEntries.find((r) => r.id === entry.original_id);
-  (state.activeEvent?.pointsEnabled ? openPointsModal : openModal)(
+  open(
     'Punktebuchung',
     `<dl class="checklist-detail-facts">
     <dt>Buchung</dt><dd>${e(entry.title)}</dd><dt>Zeitpunkt</dt><dd>${e(formatDateTime(entry.created_at))}</dd>
@@ -593,8 +601,8 @@ function entryDetails(entry, allEntries) {
     ${details.stake !== undefined ? `<dt>Einsatz</dt><dd>${details.stake} P.</dd><dt>Auszahlung</dt><dd>${details.payout} P.</dd>` : ''}
     ${details.reason ? `<dt>Begründung</dt><dd>${e(details.reason)}</dd>` : ''}
     ${original ? `<dt>Originalbuchung</dt><dd>${e(original.title)} · ${signedPoints(original.amount)} P. · ${e(formatDateTime(original.created_at))}</dd>` : ''}
-    <dt>Buchungs-ID</dt><dd>${e(entry.id)}</dd></dl>${pointsReportButton('journal', entry.id)}`,
-    { onMount: wirePointsReportButtons },
+    <dt>Buchungs-ID</dt><dd>${e(entry.id)}</dd></dl>${reports ? pointsReportButton('journal', entry.id) : ''}`,
+    { onMount: reports ? wirePointsReportButtons : undefined },
   );
 }
 
@@ -651,19 +659,59 @@ function savedStandingsHtml(data) {
     <label class="stack"><span class="field-label">Endstand auswählen</span><select data-points-revision>${data.revisions.map((r) => `<option value="${r.revision}">Version ${r.revision} · ${e(formatDateTime(r.createdAt))}</option>`).join('')}</select></label>
     <div class="row" style="justify-content:flex-end"><button type="button" class="btn btn-sm" data-download-points-revision>Endstand herunterladen</button></div></div></section>`;
 }
-function wireSavedStandings(container) {
-  const eventId = state.activeEvent?.id;
+function wireSavedStandings(container, eventId = state.activeEvent?.id, stillAccessible = () => true) {
   const key = scopeKey();
   container.querySelector('[data-download-points-revision]')?.addEventListener('click', (event) => {
     const revision = container.querySelector('[data-points-revision]').value;
     perform(event.currentTarget, async () => {
       const snapshot = await pointsRequest(`/snapshots/${encodeURIComponent(revision)}`, {}, eventId);
-      if (key !== scopeKey()) return;
+      if (key !== scopeKey() || !stillAccessible()) return;
       const url = URL.createObjectURL(new Blob([JSON.stringify(snapshot, null, 2)], { type: 'application/json' }));
       const link = document.createElement('a'); link.href = url; link.download = `lan-punkte-${eventId}-v${revision}.json`;
       link.click(); URL.revokeObjectURL(url);
     });
   });
+}
+
+// Historical accounts use an explicit event scope. They do not switch the
+// active LAN, share its cache, or expose any write action.
+export async function openHistoricalPoints(eventId, eventName) {
+  const key = scopeKey();
+  const data = await pointsRequest('', {}, eventId);
+  if (key !== scopeKey() || !historicalPointsVisible(eventId)) return;
+  if (!data.settings) throw new Error('Für diese LAN gibt es noch kein Punktekonto.');
+  const open = (title, body, options = {}) => {
+    const modal = openModal(title, body, { ...options, onClose() {
+      historicalPointDialogs.delete(modal.close);
+      options.onClose?.();
+    } });
+    historicalPointDialogs.set(modal.close, { key, eventId });
+    return modal;
+  };
+  const dialog = open('Punktekonto & Endstand', '');
+  let account = 'orga', query = '', source = '';
+  function render() {
+    const body = dialog.el.querySelector('.modal-body');
+    const snapshot = captureViewRenderState(body);
+    body.innerHTML = `<div class="stack"><p class="muted">${e(eventName)} · Nur lesbar${data.settings.closed_at ? ' · Endwertung festgeschrieben' : ''}</p>
+      ${categoryPointsHtml(data, { columns: 1 })}
+      <p>Wettguthaben: ${e(data.wallet.total)} P. · verfügbar ${e(data.wallet.available)} P. · reserviert ${e(data.wallet.held)} P.</p>
+      ${pointsHistoryHtml(data, { account, query, source })}${savedStandingsHtml(data)}</div>`;
+    body.querySelector('[data-category-account]').addEventListener('change', (event) => { account = event.target.value; render(); });
+    body.querySelector('[data-category-query]').addEventListener('change', (event) => { query = event.target.value; render(); });
+    body.querySelector('[data-points-source]')?.addEventListener('change', (event) => { source = event.target.value; render(); });
+    body.querySelectorAll('[data-category-entry]').forEach((button) => button.addEventListener('click', () => {
+      const entry = data.categoryJournal.find((row) => row.id === button.dataset.categoryEntry);
+      if (entry) open('Kategorie-Buchung', categoryEntryFactsHtml(entry));
+    }));
+    body.querySelectorAll('[data-point-entry]').forEach((button) => button.addEventListener('click', () => {
+      const entry = data.entries.find((row) => row.id === button.dataset.pointEntry);
+      if (entry) entryDetails(entry, data.entries, { open, reports: false });
+    }));
+    wireSavedStandings(body, eventId, () => dialog.el.isConnected && historicalPointsVisible(eventId));
+    restoreViewRenderState(body, snapshot);
+  }
+  render();
 }
 
 export function renderPoints(container, ctx) {

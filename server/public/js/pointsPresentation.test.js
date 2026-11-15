@@ -67,6 +67,12 @@ test('category views keep each full history when searching and escape journal co
   assert.match(html, /aria-label="Spielen-Rangliste"/);
   assert.match(html, /aria-label="Wetten-Rangliste"/);
   assert.ok(html.indexOf('&lt;Alice&gt;') < html.indexOf('Bob'), 'tied category leaders stay ordered by name');
+  const oneTip = categoryPointsHtml({ ...data, categoryBalances: { ...data.categoryBalances, betting: 10 },
+    bettingParticipation: { settledTips: 1, minimumTips: 2, hasMinimum: false } });
+  assert.match(oneTip, /1\/2 abgerechnet/);
+  assert.match(oneTip, /Noch ein regulär abgerechneter Tipp/);
+  const noProfit = categoryPointsHtml({ ...data, bettingParticipation: { settledTips: 2, minimumTips: 2, hasMinimum: true } });
+  assert.match(noProfit, /Noch kein Platz: Für die Wettwertung ist positiver Nettogewinn nötig/);
   const wallet = pointsHistoryHtml({ ...data, entries: [
     { id: 'start', source: 'start', title: 'Wett-Startguthaben', amount: 100, created_at: 1000 },
     { id: 'reservation', source: 'reservation', title: 'Spiel', amount: -15, created_at: 2000 },

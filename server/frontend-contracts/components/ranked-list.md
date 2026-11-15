@@ -20,7 +20,7 @@ der Aufrufer nach ihrem Wert; eine Liste ohne Rang sortiert die Komponente selbs
 ## 2. Quelle
 
 - Helper: `public/js/rankedList.js`
-- Markup: `rankedListHtml(items, { ranked = false, label = '' })`
+- Markup: `rankedListHtml(items, { ranked = false, label = '', columns = 2 })`
 - Spaltengrenze: `rankedListColumnBreak(count)` liefert den Index der ersten Zeile der rechten
   Spalte (`Math.ceil(count / 2)`).
 - Platzberechnung: `sharedRankNumbers(values)` erhält bereits fachlich absteigend sortierte
@@ -48,6 +48,7 @@ nur die umgebende Karte und den Inhalt der Einträge.
 |---|---|---|---|
 | Wertliste | `rankedListHtml(items)` | umgesetzt | ohne Rangbedeutung, alphabetisch sortiert, etwa Erfolge |
 | Rangliste | `rankedListHtml(items, { ranked: true })` | umgesetzt | Reihenfolge ist eine Rangfolge; jede Zeile trägt ihre Platznummer |
+| Schmaler Dialog | `columns: 1` / `.ranked-list--single` | umgesetzt | eine Spalte unabhängig von der Fensterbreite |
 | Mit Führungselement | Eintrag mit `lead` | umgesetzt | Avatar oder Spielersymbol vor dem Titel, etwa Spieler-Ranglisten |
 | Geteilte Plätze | Eintrag mit `rank` | umgesetzt | gleicher Wert, gleiche Platznummer, etwa Zählungen in Statistiken |
 
@@ -75,7 +76,7 @@ Alphabet.
 - **Nummerierung:** Nur eine Rangliste trägt Platznummern. Sie beginnen bei 1, stehen in einer
   festen grauen Spalte vor dem Titel und laufen durch beide Spalten. Platz 1 bekommt keine
   Sonderfarbe und keinen Rahmen.
-- **Spaltenordnung:** Ab `--bp-md` belegt die Liste zwei gleich breite Spalten und füllt sie
+- **Spaltenordnung:** Standardmäßig ab `--bp-md` belegt die Liste zwei gleich breite Spalten und füllt sie
   spaltenweise, für Rang- und Wertlisten gleich: erst die linke Spalte von oben nach unten, dann
   die rechte. Links stehen die Einträge 1 bis `ceil(n / 2)`, rechts der Rest. Bei ungerader
   Anzahl ist die linke Spalte eine Zeile länger. Unter `--bp-md` ist die Liste einspaltig.
@@ -135,3 +136,14 @@ Keine Control-Klassen; die Zeilen sind nicht interaktiv. Befristet bestehen `lb-
 `leaderboard-list-grid` in Arcade und Vote weiter.
 Löschkriterium: Umstellung dieser Aufrufer auf RankedList im Folgepaket. Der TV-Kiosk behält
 seine Kacheln bewusst, weil er aus der Ferne gelesen wird.
+
+## Einspaltige Dialogvariante
+
+`columns: 1` / `.ranked-list--single`: umgesetzt. Der Helper bietet für schmale Dialogcontainer
+bewusst eine durchgehend einspaltige Variante unabhängig von der Fensterbreite. Eigentümer
+bleibt `style.css`; Aufrufer überschreiben keine Listengeometrie. Sortierung, Wertspalte,
+Haarlinien und Semantik bleiben unverändert; nur die erste Zeile ist Spaltenanfang.
+Repräsentative Aufrufer sind `views/points.js` (Tippdetails und historisches Punktekonto)
+bei 320 und 1440 Pixeln. Lange Ausgangsnamen erhalten im Tippdialog einen nativen Titel.
+`rankedList.test.js` prüft die Zeilenkennungen und Reihenfolge; `points.e2e.test.ts` prüft die
+vertikale Zeilenfolge im echten schmalen Dialog bei breitem Browserfenster.

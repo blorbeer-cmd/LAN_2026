@@ -1357,7 +1357,7 @@ async function main() {
   });
   socket.on('votes:changed', refreshVotes);
   socket.on('events:changed', () => { void refreshVotes(); void refreshResults(true); void refreshNewsticker(); });
-  socket.on('leaderboard:changed', () => { void refreshResults(true); void refreshNewsticker(); });
+  socket.on('leaderboard:changed', () => { void refreshResults(); void refreshNewsticker(); });
   socket.on('betting:changed', () => { void refreshResults(); void refreshNewsticker(); });
   socket.on('tournaments:changed', refreshTournament);
   socket.on('music:changed', refreshMusic);

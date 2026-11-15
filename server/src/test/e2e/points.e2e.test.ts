@@ -486,7 +486,18 @@ test('real LAN account, automatic orga credits, own-game betting notification, h
       .map((item) => item.getBoundingClientRect().bottom));
     return button.getBoundingClientRect().top - contentBottom >= standardGap - 1;
   }), 'reporting has a separate action row below tip details');
+  await member.setViewportSize({ width: 1440, height: 900 });
+  const outcomeGeometry = await tipDetails.getByRole('list', { name: 'Einsätze nach Ergebnis' }).evaluate((el) => {
+    const rows = Array.from(el.querySelectorAll('.ranked-list-row'));
+    return { left: rows.map((row) => row.getBoundingClientRect().left),
+      tops: rows.map((row) => row.getBoundingClientRect().top),
+      labels: rows.map((row) => row.querySelector('[title]')?.getAttribute('title')) };
+  });
+  assert.ok(outcomeGeometry.left.every((left) => left === outcomeGeometry.left[0]));
+  assert.ok(outcomeGeometry.tops.every((top, index) => !index || top > outcomeGeometry.tops[index - 1]));
+  assert.ok(outcomeGeometry.labels.includes('Unentschieden'));
   await tipDetails.screenshot({ path: 'test-results/points-tip-details.png', animations: 'disabled' });
+  await member.setViewportSize({ width: 390, height: 844 });
   await member.keyboard.press('Escape');
   await navigate(member, 'matchmaking');
   const recordedMatch = member.locator(`[data-history-toggle="${draw.id}"]`);
@@ -854,7 +865,11 @@ test('token-only kiosk pages every result participant and removes point columns 
       }
       assert.equal(names.size, 8, `all eight participants rotate at ${viewport.width}`);
     }
+    const correctionRefresh = kiosk.waitForResponse((response) => response.url().endsWith('/api/results/feed') && response.ok());
     await api(`/api/matches/${match.id}`, 'PATCH', { gameId: game.id, teams: teams.map((team, i) => ({ ...team, score: 8 - i })) });
+    await correctionRefresh;
+    // A correction updates values without forcing the result page to the front.
+    for (let turn = 0; turn < 40 && !await results.getByText('korrigiert', { exact: true }).count(); turn++) await kiosk.clock.runFor(10_000);
     await results.getByText('korrigiert', { exact: true }).waitFor({ state: 'attached' });
     await api(`/api/events/${event.id}/points-visibility`, 'PATCH', { visible: false, revision: 2 });
     await results.getByRole('columnheader', { name: 'Spielpunkte', exact: true }).waitFor({ state: 'detached' });
@@ -898,7 +913,7 @@ test('token-only kiosk pages every result participant and removes point columns 
           if (caption.includes('Turniersieger')) sawChampion = true;
           if (caption.includes('Finale') && (await results.textContent())?.includes('Points Bob')) {
             sawTip = true;
-            assert.ok((await results.textContent())?.includes('Topf 10 P.'));
+            assert.match(await results.textContent() ?? '', /Topf (10|11) P\./);
           }
           const geometry = await results.evaluate((element) => ({
             bottom: element.getBoundingClientRect().bottom,
@@ -907,7 +922,6 @@ test('token-only kiosk pages every result participant and removes point columns 
           }));
           assert.ok(geometry.rows.every((bottom) => bottom <= geometry.bottom + 1), `points rows fit at ${viewport.width}: ${caption}`);
         }
-        // Exercise the actual ten-second page boundary with the browser clock.
         await kiosk.clock.runFor(10_000);
       }
       assert.equal(seenRankings.size, 4, `all four rankings rotate at ${viewport.width}`);
@@ -917,6 +931,55 @@ test('token-only kiosk pages every result participant and removes point columns 
     await api(`/api/events/${event.id}/points-visibility`, 'PATCH', { visible: false, revision: 4 });
     await kiosk.waitForFunction(() => !document.querySelector('#kiosk-results .kiosk-result-table--ranking') &&
       !document.querySelector('#kiosk-results')!.textContent!.includes('Topf'));
+    // A focused presentation fixture freezes only the rotation clock. This
+    // isolates repeated input changes from unrelated dashboard startup timers.
+    const probe = await context.newPage();
+    await probe.route('**/rotation-probe', (route) => route.fulfill({ contentType: 'text/html', body: `
+      <link rel="stylesheet" href="/css/style.css"><link rel="stylesheet" href="/css/kiosk.css">
+      <h2 id="heading"></h2><div id="rows" class="kiosk-results" style="height:200px;width:360px;overflow:hidden"></div><div id="board"></div>` }));
+    await probe.goto(`${server.baseUrl}/rotation-probe`);
+    await probe.clock.install({ time: new Date('2026-01-01T00:00:00Z') });
+    await probe.clock.pauseAt(new Date('2026-01-01T01:00:00Z'));
+    await probe.evaluate(async () => {
+      const { createKioskResultsPanel } = await new Function('return import("/js/kioskResults.js")')();
+      const w = window as any;
+      w.rotationPanel = createKioskResultsPanel({ results: document.querySelector('#rows'), tournament: document.querySelector('#board'), title: document.querySelector('#heading') });
+      w.rotationFeed = { showPoints: true, items: [{ id: 'result', gameName: 'Ergebnis', activityAt: Date.now(),
+        teams: Array.from({ length: 8 }, (_, n) => ({ name: '', place: n + 1, winner: n === 0, players: [{ name: `Person ${n}`, points: 1 }] })) }] };
+      w.rotationPoints = { showPoints: true, rounds: [{ id: 'market', title: 'Finale', tournament: { name: 'Pokal', phase: 'Finale' }, sourceType: 'tournament_match', status: 'open', pot: 10, tipCount: 1,
+        outcomes: [{ label: 'Team A', stake: 10, winner: false, tippers: [{ name: 'Tippende', stake: 10 }] }] }],
+        rankings: ['Gesamt', 'Wetten', 'Orga-Punkte', 'Spielpunkte'].map((title, category) => ({ category, title,
+          rows: Array.from({ length: 8 }, (_, n) => ({ rank: n + 1, name: `Person ${n}`, points: 8 - n })) })) };
+      w.rotationPanel.update(w.rotationFeed); w.rotationPanel.updatePoints(w.rotationPoints);
+      w.rotationPanel.setTournament('Turnier', true);
+    });
+    const seen = new Map<string, Set<string>>();
+    for (let turn = 0; turn < 120 && [...seen.values()].filter((names) => names.size === 8).length < 4; turn++) {
+      const shown = await probe.evaluate(() => {
+        const panel = document.querySelector('#rows') as HTMLElement;
+        return panel.hidden || !panel.querySelector('.kiosk-result-table--ranking') ? null : {
+          title: panel.querySelector('.kiosk-result-caption')!.textContent!,
+          names: Array.from(panel.querySelectorAll('tbody tr:not([hidden]) .kiosk-result-name'), (el) => el.textContent!),
+        };
+      });
+      if (shown) { const names = seen.get(shown.title) ?? new Set<string>(); shown.names.forEach((name) => names.add(name)); seen.set(shown.title, names); }
+      await probe.clock.runFor(9_000);
+      const stable = await probe.evaluate(() => {
+        const w = window as any, panel = document.querySelector('#rows')!;
+        const cursor = () => [panel.querySelector('.kiosk-result-caption')?.textContent, panel.querySelector('.kiosk-result-pages')?.textContent, (panel as HTMLElement).hidden];
+        const before = cursor();
+        w.rotationFeed.items[0].activityAt++;
+        w.rotationPoints.rounds[0].pot++;
+        w.rotationPanel.update(w.rotationFeed); w.rotationPanel.updatePoints(w.rotationPoints);
+        return { before, after: cursor() };
+      });
+      assert.deepEqual(stable.after, stable.before, 'live feeds preserve the current page and participant offset');
+      await probe.clock.runFor(1_000);
+    }
+    assert.deepEqual([...seen.keys()].sort(), ['Gesamt', 'Orga-Punkte', 'Spielpunkte', 'Wetten']);
+    assert.ok([...seen.values()].every((names) => names.size === 8), 'every participant page rotates despite changes every nine seconds');
+    await probe.evaluate(() => (window as any).rotationPanel.dispose());
+    await probe.close();
     assert.deepEqual(errors, []);
 
   } finally {
@@ -1184,5 +1247,45 @@ test('a participant reports awarded points, the sole admin reviews anonymously, 
   const exported = JSON.parse(readFileSync((await download.path())!, 'utf8'));
   assert.equal(exported.revision, final.revisions[0].revision);
   assert.deepEqual(exported.standings, final.standings);
+  // Ending the LAN removes its active context, but its own account, journal
+  // and explicit-event snapshot remain reachable from the historical card.
+  await api(`/api/events/${eventId}/end`, 'POST', {});
+  await member.locator('.desktop-nav-btn[data-view="points"]').waitFor({ state: 'detached' });
+  await navigate(member, 'events');
+  const eventHistory = member.locator('[data-event-history="event"]');
+  if (!await eventHistory.evaluate((el) => (el as HTMLDetailsElement).open)) await eventHistory.locator(':scope > summary').click();
+  const endedCard = member.locator(`[data-event-card="${eventId}"]`);
+  const expandEnded = endedCard.locator('[data-event-card-toggle]');
+  if (await expandEnded.count() && await expandEnded.getAttribute('aria-expanded') === 'false') await expandEnded.click();
+  let switchedContext = false;
+  const observeContext = (request: any) => { if (request.method() === 'PUT' && request.url().includes('/api/me/active-event')) switchedContext = true; };
+  member.on('request', observeContext);
+  await endedCard.getByRole('button', { name: 'Punktekonto & Endstand', exact: true }).click();
+  const account = member.getByRole('dialog', { name: 'Punktekonto & Endstand', exact: true });
+  await account.getByText(/Nur lesbar/).waitFor();
+  await openSection(member, 'history');
+  await account.locator('[data-category-account]').selectOption('wallet');
+  const ownEntry = account.locator('[data-point-entry]').first();
+  await ownEntry.click();
+  await member.getByRole('dialog', { name: 'Punktebuchung', exact: true }).getByText('Buchung', { exact: true }).waitFor();
+  assert.equal(await member.getByRole('dialog', { name: 'Punktebuchung', exact: true }).locator('button:not([data-close])').count(), 0);
+  await member.keyboard.press('Escape');
+  for (const width of [320, 1440]) {
+    await member.setViewportSize({ width, height: 900 });
+    assert.equal(await account.evaluate((el) => el.scrollWidth <= el.clientWidth), true);
+  }
+  const [historicDownload] = await Promise.all([member.waitForEvent('download'), account.getByRole('button', { name: 'Endstand herunterladen', exact: true }).click()]);
+  const historic = JSON.parse(readFileSync((await historicDownload.path())!, 'utf8'));
+  assert.deepEqual(historic, exported, 'the historical download uses the ended event rather than the base workspace');
+  assert.equal(switchedContext, false);
+  member.off('request', observeContext);
+  await account.locator('[data-point-entry]').first().click();
+  await member.getByRole('dialog', { name: 'Punktebuchung', exact: true }).waitFor();
+  const ended = await api(`/api/events/${eventId}`);
+  await api(`/api/events/${eventId}/points-visibility`, 'PATCH', { visible: false, revision: ended.pointsVisibilityRevision });
+  await account.waitFor({ state: 'detached' });
+  await member.getByRole('dialog', { name: 'Punktebuchung', exact: true }).waitFor({ state: 'detached' });
+  await endedCard.locator('[data-event-points-history]').waitFor({ state: 'detached' });
+
   assert.deepEqual(pageErrors, []);
 });

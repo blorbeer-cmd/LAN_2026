@@ -172,3 +172,15 @@ Guthaben. Beim Ändern zählt der vorhandene eigene Einsatz mit; Zurücknehmen b
 „Alle Einsätze erstatten“ und „Abrechnung stornieren“ erklären die finanzielle Folge vor Bestätigung.
 Bereits finanziell abgerechnete Ergebnisse sind für Teilnehmer nur lesbar; das Ergebnisformular
 sperrt seine Eingaben und Speichern und nennt die erforderliche Adminrolle.
+
+Beendete LANs bieten auf der historischen Eventkarte bei sichtbaren Punkten „Punktekonto &
+Endstand“. Der nur lesende Dialog lädt mit expliziter Event-ID, ohne den aktiven Kontext zu
+wechseln. Eigene Konten, Buchungsdetails und gespeicherte Endstände bleiben erreichbar;
+Tippabgabe und Finanzkorrekturen werden dort nicht angeboten. Sichtbarkeit und Teilnehmerrechte
+prüft weiterhin die geschützte API. Kontextwechsel oder ausgeblendete historische Punkte
+schließen auch geöffnete Buchungsdetails. Konto-/Suchfilter erhalten Disclosure-Zustände.
+Die Wettkategorie erklärt bei fehlendem Mindestumfang direkt den Fortschritt der regulär
+abgerechneten Tipps; bei ausreichendem Umfang und nicht positivem Netto nennt sie den
+fehlenden Nettogewinn. Die Berechnungsregeln bleiben unverändert.
+Tippdetails und historische Ranglisten verwenden die gemeinsame einspaltige RankedList-Variante,
+damit die Dialogbreite auch auf einem Desktop für lesbare Ausgangsnamen verfügbar bleibt.

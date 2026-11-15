@@ -75,15 +75,13 @@ export function createKioskResultsPanel({ results, tournament, title }) {
   let index = 0;
   let offset = 0;
   let nextOffset = 0;
-  let payloadKey = '';
-  let pointsKey = '';
 
   function pages() {
     return [
-      ...feed.items.map((item) => ({ kind: 'result', item, rows: resultRows(item) })),
+      ...feed.items.map((item) => ({ key: `result:${item.id}`, kind: 'result', item, rows: resultRows(item) })),
       ...(points.showPoints ? [
-        ...points.rounds.map((item) => ({ kind: 'market', item, rows: marketRows(item) })),
-        ...points.rankings.map((item) => ({ kind: 'ranking', item, rows: item.rows })),
+        ...points.rounds.map((item) => ({ key: `market:${item.id}`, kind: 'market', item, rows: marketRows(item) })),
+        ...points.rankings.map((item) => ({ key: `ranking:${item.category}`, kind: 'ranking', item, rows: item.rows })),
       ] : []),
     ];
   }
@@ -138,28 +136,42 @@ export function createKioskResultsPanel({ results, tournament, title }) {
   observer.observe(results);
   render();
 
+  // Refresh values without restarting the rotation. If a page disappears,
+  // continue at its next surviving neighbour rather than starving later pages.
+  function updatePages(change) {
+    const before = pages();
+    const currentKey = before[index]?.key;
+    const neighbours = [...before.slice(index + 1), ...before.slice(0, index)].map((page) => page.key);
+    change();
+    const after = pages();
+    let position = after.findIndex((page) => page.key === currentKey);
+    if (position < 0) {
+      const next = neighbours.find((key) => after.some((page) => page.key === key));
+      position = after.findIndex((page) => page.key === next);
+      offset = 0;
+    }
+    index = position < 0 ? Math.min(index, Math.max(0, after.length - 1)) : position;
+    offset = Math.min(offset, Math.max(0, (after[index]?.rows.length ?? 0) - 1));
+    render();
+  }
   function reset() { index = 0; offset = 0; showingResults = true; }
   function hidePoints() {
     feed = { ...feed, showPoints: false };
     points = { showPoints: false, rounds: [], rankings: [] };
-    pointsKey = '';
     reset();
     render();
   }
   return {
     update(payload) {
-      const key = JSON.stringify(payload);
       loaded = true;
       failed = false;
-      feed = { showPoints: payload.showPoints === true, items: Array.isArray(payload.items) ? payload.items : [] };
-      if (key !== payloadKey) { payloadKey = key; reset(); }
-      render();
+      updatePages(() => {
+        feed = { showPoints: payload.showPoints === true, items: Array.isArray(payload.items) ? payload.items : [] };
+      });
     },
     updatePoints(payload) {
-      const key = JSON.stringify(payload);
-      points = payload.showPoints === true ? payload : { showPoints: false, rounds: [], rankings: [] };
-      if (key !== pointsKey) { pointsKey = key; reset(); }
-      render();
+      if (payload.showPoints !== true) return hidePoints();
+      updatePages(() => { points = payload; });
     },
     setTournament(name, present) { tournamentTitle = name || 'Turnier'; hasTournament = present; render(); },
     hidePoints,

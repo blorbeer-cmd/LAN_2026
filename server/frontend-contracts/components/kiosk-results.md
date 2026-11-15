@@ -73,3 +73,11 @@ Wettmärkte, Tippnamen, Topf, alle vier rotierenden Ranglisten und passende Zeil
 
 `registry:kiosk-results` besitzt die nichtinteraktive Präsentation in `kiosk.css`.
 Keine befristeten Ausnahmen.
+
+Live-Daten ändern weder den laufenden Zehnsekundentakt noch die aktuelle Daten-/Turnierseite.
+Ergebnisse und Märkte werden über Art und ID, Ranglisten über ihre Kategorie wiedergefunden.
+Die Teilnehmerposition bleibt erhalten und wird bei verkürzten Listen auf gültige Zeilen begrenzt.
+Entfällt die aktuelle Seite, folgt der nächste noch vorhandene Nachbar aus der bisherigen Rotation.
+Nur Ausblenden/Fehler setzen die Punkteseiten sofort zurück. Der Punkte-Browser-Owner prüft echte Wett-Signale sowie mit der realen Präsentationskomponente
+und kontrollierter Browseruhr alle neun Sekunden geänderte Ergebnis-/Wettfeeds. Alle vier
+Ranglisten und sämtliche Teilnehmerseiten müssen dabei weiter rotieren; Updates erhalten den Cursor.

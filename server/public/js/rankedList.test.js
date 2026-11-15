@@ -21,6 +21,10 @@ test('a ranking keeps its order, numbers every place and marks both column tops'
   assert.equal((html.match(/is-column-top/g) ?? []).length, 2);
   assert.match(html, /style="--ranked-list-rows:3"/);
   assert.match(html, /role="list" aria-label="Spielzeit pro Spiel"/);
+  const single = rankedListHtml(items, { ranked: true, columns: 1 });
+  assert.match(single, /ranked-list--single/);
+  assert.equal((single.match(/is-column-top/g) ?? []).length, 1);
+  assert.deepEqual(ranks(single), [1, 2, 3, 4, 5]);
 });
 
 test('shared places keep the number the caller passes', () => {
