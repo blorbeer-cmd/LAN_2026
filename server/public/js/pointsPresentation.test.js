@@ -67,6 +67,12 @@ test('category views keep each full history when searching and escape journal co
   assert.match(html, /aria-label="Spielen-Rangliste"/);
   assert.match(html, /aria-label="Wetten-Rangliste"/);
   assert.ok(html.indexOf('&lt;Alice&gt;') < html.indexOf('Bob'), 'tied category leaders stay ordered by name');
+  const oneTip = categoryPointsHtml({ ...data, categoryBalances: { ...data.categoryBalances, betting: 10 },
+    bettingParticipation: { settledTips: 1, minimumTips: 2, hasMinimum: false } });
+  assert.match(oneTip, /1\/2 abgerechnet/);
+  assert.match(oneTip, /Noch ein regulär abgerechneter Tipp/);
+  const noProfit = categoryPointsHtml({ ...data, bettingParticipation: { settledTips: 2, minimumTips: 2, hasMinimum: true } });
+  assert.match(noProfit, /Noch kein Platz: Für die Wettwertung ist positiver Nettogewinn nötig/);
   const wallet = pointsHistoryHtml({ ...data, entries: [
     { id: 'start', source: 'start', title: 'Wett-Startguthaben', amount: 100, created_at: 1000 },
     { id: 'reservation', source: 'reservation', title: 'Spiel', amount: -15, created_at: 2000 },
@@ -127,4 +133,14 @@ test('a tournament card tells open, waiting and finished markets apart', () => {
   assert.equal(tournamentBettingSummary(rounds('open'), true), 'Tipps geschlossen · 1 eigener Tipp', 'final standings close open rounds');
   assert.equal(tournamentBettingSummary(rounds('settled', 'refunded')), 'Abgerechnet · 1 eigener Tipp');
   assert.equal(tournamentBettingSummary(rounds('refunded', 'refunded', 'refunded', 'refunded')), 'Erstattet · 1 eigener Tipp');
+});
+
+test('tip stake validation reuses reservations but blocks zero, negative and insufficient funds', async () => {
+  const { tipStakeError } = await import('./pointsPresentation.js');
+  assert.match(tipStakeError(1, 0, 0, 20), /Kein frei verfügbares/);
+  assert.equal(tipStakeError(10, 0, 10, 20), '');
+  assert.match(tipStakeError(11, 0, 10, 20), /Höchstens 10 P/);
+  assert.match(tipStakeError(1, -1, 10, 20), /negativ/);
+  for (const stake of [0, 1.5, NaN, 21]) assert.ok(tipStakeError(stake, 100, 0, 20));
+  assert.equal(tipStakeError(20, 100, 0, 20), '');
 });

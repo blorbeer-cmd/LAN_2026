@@ -38,9 +38,9 @@ export function sortUnrankedItems(items) {
   return [...items].sort((a, b) => collator.compare(keyOf(a), keyOf(b)));
 }
 
-export function rankedListHtml(entries, { ranked = false, label = '' } = {}) {
+export function rankedListHtml(entries, { ranked = false, label = '', columns = 2 } = {}) {
   const items = ranked ? entries : sortUnrankedItems(entries);
-  const columnBreak = rankedListColumnBreak(items.length);
+  const columnBreak = columns === 1 ? items.length : rankedListColumnBreak(items.length);
   const rows = items.map((item, index) => {
     const top = index === 0 || index === columnBreak;
     return `
@@ -54,5 +54,5 @@ export function rankedListHtml(entries, { ranked = false, label = '' } = {}) {
         <span class="ranked-list-value">${item.value}</span>
       </div>`;
   });
-  return `<div class="ranked-list" role="list"${label ? ` aria-label="${escapeHtml(label)}"` : ''} style="--ranked-list-rows:${columnBreak}">${rows.join('')}</div>`;
+  return `<div class="ranked-list${columns === 1 ? ' ranked-list--single' : ''}" role="list"${label ? ` aria-label="${escapeHtml(label)}"` : ''} style="--ranked-list-rows:${columnBreak}">${rows.join('')}</div>`;
 }

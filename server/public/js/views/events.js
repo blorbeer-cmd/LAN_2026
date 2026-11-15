@@ -27,6 +27,7 @@ import { getMyId } from '../whoami.js';
 import { emptyStateHtml } from '../emptyState.js';
 import { compareEventsByStartAscending, eventStatusBadgeHtml } from '../eventStatus.js';
 import { isGroupAdmin } from '../groupContext.js';
+import { openHistoricalPoints } from './points.js';
 import { openPointsReports } from '../pointsReports.js';
 import { formatEuroCents, normalizePaypalInput, paypalEmailFromLink, paypalPayUrl } from '../paypal.js';
 import { eventHasFeature } from '../eventFeatures.js';
@@ -834,10 +835,12 @@ function trackingChip(event) {
 
 function renderEventPointsVisibility(event) {
   if (!event.pointsAvailable || event.eventType !== 'lan' || !['published', 'ended'].includes(event.status)) return '';
+  const history = (event.isEnded || event.status === 'ended') && event.pointsEnabled
+    ? `<button type="button" class="btn btn-sm" data-event-points-history="${escapeHtml(event.id)}">Punktekonto &amp; Endstand</button>` : '';
   const reports = `<button type="button" class="btn btn-sm" data-event-points-reports="${escapeHtml(event.id)}">Punktefehler-Meldungen</button>`;
   const toggle = isGroupAdmin() || isEventCreator(event)
     ? `<label class="check-row" style="padding:0;border-bottom:0"><input type="checkbox" data-points-visibility="${escapeHtml(event.id)}" data-points-visible="${event.pointsEnabled ? 'false' : 'true'}" data-points-revision="${event.pointsVisibilityRevision ?? 0}"${event.pointsEnabled ? ' checked' : ''}>LAN-Punkte anzeigen</label>` : '';
-  return `<section class="event-card-section"><div class="row points-actions">${toggle}${reports}</div></section>`;
+  return `<section class="event-card-section"><div class="row points-actions">${toggle}${history}${reports}</div></section>`;
 }
 
 function renderEventCardShell(event, { collapsible, managed }) {
@@ -1604,6 +1607,15 @@ export function renderOrgaEvents(container, ctx) {
     });
   });
 
+  container.querySelectorAll('[data-event-points-history]').forEach((button) => button.addEventListener('click', async () => {
+    const id = button.dataset.eventPointsHistory;
+    const event = [...(state.endedEvents ?? []), ...(state.managedEvents ?? [])].find((row) => row.id === id);
+    if (!event) return;
+    button.disabled = true;
+    try { await openHistoricalPoints(id, event.name); }
+    catch (error) { showToast(error.message, { error: true }); }
+    finally { button.disabled = false; }
+  }));
   container.querySelectorAll('[data-event-points-reports]').forEach((button) => button.addEventListener('click', () => openPointsReports(button.dataset.eventPointsReports)));
   wireActionMenus(container);
   container.querySelectorAll('[data-points-visibility]').forEach((button) => {

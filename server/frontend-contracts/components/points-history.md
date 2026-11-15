@@ -94,7 +94,15 @@ Erstattung offener/gesperrter Märkte und den heruntergeladenen Endstand.
 
 Kategorien, Gesamtwertung und Verläufe verwenden native Disclosures mit stabilen
 `data-points-section`-Kennungen. Die LAN-Punkteansicht enthält keine Spiele- oder Wettrundenliste.
-Kategorie-Ranglisten bleiben flache Zeilen innerhalb ihrer Hauptkarte (`flat`).
+Kategorie-Ranglisten und Gesamtwertung sind eingerückte, einzeln einklappbare Unterkarten
+innerhalb der „Wertung“. Ihre Kartenflächen wechseln mit der Verschachtelung gemäß Designsystem,
+unabhängig vom offenen Zustand; die Ranglisteneinträge selbst bleiben flache Zeilen.
+Dasselbe Muster gliedert „Tipps“ in „Noch nicht getippt“, „Deine offenen Tipps“ und „Abgerechnet“
+mit jeweiliger Anzahl und stabilen `tips-untipped`-, `tips-pending`- und `tips-finished`-Kennungen.
+Offene Tipps starten aufgeklappt, die Abrechnungen geschlossen. Live-Updates erhalten die
+individuellen Disclosure-Zustände, auch wenn ein Markt zwischen Gruppen wechselt.
+Unterhalb von `--bp-sm` steht die Tippaktion unter dem Text und bleibt rechts ausgerichtet;
+die zusätzliche Kartenebene darf lange Begegnungsnamen nicht auf eine schmale Textspalte drücken.
 RankedList sortiert nach den fachlichen Kategorieplätzen einschließlich Gleichständen. Die
 persönlichen Kategoriepunkte (UI-Bezeichnung „Punkte“) bleiben auch bei geschlossener Rangliste
 im Header sichtbar.
@@ -130,6 +138,10 @@ Berechtigte Mitspieler können die ausgewählte Spiel-Tippabgabe im Modal schlie
 wieder öffnen; Admins erreichen zusätzlich begründete Erstattung/Storno. Dieselben Regeln
 liefern die Match-Controls. Ein oder zwei Verwaltungsaktionen sind direkte Standardbuttons.
 Vorbelegte eigene Tipps lassen sich ändern; geschlossene oder abgerechnete Märkte sind nur lesbar.
+Erstattete Märkte zeigen unabhängig vom Einstieg und auch nach erneutem Öffnen einen dauerhaften
+Statushinweis, dass alle Einsätze zurückgegeben wurden. Der vorhandene Buchungsgrund wird escaped
+angezeigt; die früheren Tipps bleiben schreibgeschützte Historie. Der Hinweis wechselt mit dem
+ausgewählten Markt und erscheint nicht an anderen Turnierspielen.
 Wettbenachrichtigungen mit einer alten Punkte-Rundenroute öffnen direkt diesen Kontextdialog,
 ohne eine Spieleliste auf der Punkteansicht einzublenden.
 Die Turnierpräsentation rendert ausschließlich Teams, Ergebnisse und Ergebnisaktionen. Bracket-Höhe,
@@ -149,3 +161,26 @@ Die Kontoauswahl umfasst alle vier Konten. Nur Wettguthaben bietet zusätzlich d
 Buchungsart-Auswahl; seine Details behalten Einsatz, Auszahlung und Originalbuchung. Die
 Konten werden weder addiert noch ineinander umgerechnet. Die Kurve verwendet stets alle
 Buchungen des Kontos, unabhängig von Suchtext und Buchungsart.
+
+Admin-Tippdetails bleiben bei ausgeblendeten LAN-Punkten nur lesbar verfügbar; weder Tippabgabe
+noch Verwaltungsaktionen werden dadurch freigeschaltet. Event-/Rollenwechsel schließen sie.
+Wiederöffnen wird nur angeboten, wenn die gemeinsame serverseitige Prüfung es erlaubt; eine
+begonnene Turnierpartie oder abgelaufene feste Frist sperrt es. `reopenBlockedReason` nennt den
+aktuellen Sperrgrund. Der Schreibzugriff prüft diese Bedingungen erneut in seiner Transaktion.
+Speichern ist bei unmöglichem Einsatz deaktiviert und erklärt fehlendes beziehungsweise negatives
+Guthaben. Beim Ändern zählt der vorhandene eigene Einsatz mit; Zurücknehmen bleibt möglich.
+„Alle Einsätze erstatten“ und „Abrechnung stornieren“ erklären die finanzielle Folge vor Bestätigung.
+Bereits finanziell abgerechnete Ergebnisse sind für Teilnehmer nur lesbar; das Ergebnisformular
+sperrt seine Eingaben und Speichern und nennt die erforderliche Adminrolle.
+
+Beendete LANs bieten auf der historischen Eventkarte bei sichtbaren Punkten „Punktekonto &
+Endstand“. Der nur lesende Dialog lädt mit expliziter Event-ID, ohne den aktiven Kontext zu
+wechseln. Eigene Konten, Buchungsdetails und gespeicherte Endstände bleiben erreichbar;
+Tippabgabe und Finanzkorrekturen werden dort nicht angeboten. Sichtbarkeit und Teilnehmerrechte
+prüft weiterhin die geschützte API. Kontextwechsel oder ausgeblendete historische Punkte
+schließen auch geöffnete Buchungsdetails. Konto-/Suchfilter erhalten Disclosure-Zustände.
+Die Wettkategorie erklärt bei fehlendem Mindestumfang direkt den Fortschritt der regulär
+abgerechneten Tipps; bei ausreichendem Umfang und nicht positivem Netto nennt sie den
+fehlenden Nettogewinn. Die Berechnungsregeln bleiben unverändert.
+Tippdetails und historische Ranglisten verwenden die gemeinsame einspaltige RankedList-Variante,
+damit die Dialogbreite auch auf einem Desktop für lesbare Ausgangsnamen verfügbar bleibt.

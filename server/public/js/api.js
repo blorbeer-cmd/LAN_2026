@@ -190,6 +190,7 @@ export const api = {
     exchangeHandoff: (code) => apiFetch('/api/kiosk/handoff', { method: 'POST', body: JSON.stringify({ code }) }),
     newsticker: () => apiFetch('/api/newsticker'),
     results: () => apiFetch('/api/results/feed'),
+    points: () => apiFetch('/api/results/points'),
   },
   me: () => apiFetch('/api/me'),
 

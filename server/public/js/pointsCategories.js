@@ -22,7 +22,7 @@ function rowsHtml(entries, admin = false) {
   </li>`).join('')}</ol>`;
 }
 
-export function categoryPointsHtml(data) {
+export function categoryPointsHtml(data, { columns = 2 } = {}) {
   const categories = Object.entries(POINT_CATEGORIES).map(([key, label]) => {
     const score = data.categoryStanding?.categories?.[key];
     const leaders = (data.standings ?? []).filter((row) => row.categories[key].rank !== null)
@@ -30,10 +30,15 @@ export function categoryPointsHtml(data) {
     const ranking = leaders.length ? rankedListHtml(leaders.map((row) => ({
       rank: row.categories[key].rank, title: e(row.name),
       meta: `${e(row.categories[key].raw)} Punkte`, value: `${e(row.categories[key].placePoints)} P.`,
-    })), { ranked: true, label: `${label}-Rangliste` }) : emptyStateHtml('Noch keine Platzierung.');
-    return pointsSectionHtml(`ranking-${key}`, label, ranking, {
-      flat: true,
-      metaHtml: `<span data-category-balance="${key}">${e(data.categoryBalances?.[key] ?? 0)}</span> Punkte${score ? ` · <span data-category-score="${key}">${score.rank === null ? 'Kein Platz' : `Platz ${score.rank}`} · ${e(score.placePoints)} Platzpunkte</span>` : ''}`,
+    })), { ranked: true, columns, label: `${label}-Rangliste` }) : emptyStateHtml('Noch keine Platzierung.');
+    const participation = data.bettingParticipation;
+    const needsMinimum = key === 'betting' && score?.rank == null && participation && !participation.hasMinimum;
+    const missing = needsMinimum ? participation.minimumTips - participation.settledTips : 0;
+    const hint = key !== 'betting' || score?.rank != null ? '' : needsMinimum
+      ? `${participation.settledTips}/${participation.minimumTips} abgerechnete Tipps · Noch ${missing === 1 ? 'ein regulär abgerechneter Tipp' : `${missing} regulär abgerechnete Tipps`} nötig. Für einen Platz muss dein Nettogewinn positiv sein.`
+      : participation && (data.categoryBalances?.betting ?? 0) <= 0 ? 'Noch kein Platz: Für die Wettwertung ist positiver Nettogewinn nötig.' : '';
+    return pointsSectionHtml(`ranking-${key}`, label, `${hint ? `<p class="muted">${e(hint)}</p>` : ''}${ranking}`, {
+      metaHtml: `<span data-category-balance="${key}">${e(data.categoryBalances?.[key] ?? 0)}</span> Punkte${score ? ` · <span data-category-score="${key}">${score.rank === null ? 'Kein Platz' : `Platz ${score.rank}`} · ${e(score.placePoints)} Platzpunkte</span>` : ''}${needsMinimum ? ` · ${e(participation.settledTips)}/${e(participation.minimumTips)} abgerechnet` : ''}`,
       label: `${label}-Rangliste`,
     });
   }).join('');
@@ -41,7 +46,7 @@ export function categoryPointsHtml(data) {
     rankedListHtml((data.standings ?? []).map((row) => ({ rank: row.rank, title: e(row.name),
       meta: Object.entries(POINT_CATEGORIES).map(([key, label]) => `${label} ${row.categories[key].placePoints}`).join(' · '),
       value: `${e(row.points ?? 0)} P.`,
-    })), { ranked: true, label: 'LAN-Rangliste' }), { flat: true, label: 'LAN-Rangliste' });
+    })), { ranked: true, columns, label: 'LAN-Rangliste' }), { label: 'LAN-Rangliste' });
   const summary = pointsSectionHtml('categories', 'Wertung', `<div class="stack">${categories}${overall}</div>`, {
     open: true, label: 'Meine Kategorien',
     meta: data.categoryStanding ? `Gesamt ${data.categoryStanding.points} P. · Platz ${data.categoryStanding.rank}` : 'Ohne Wertung',

@@ -172,7 +172,7 @@ export interface PushDeliveryResult {
 }
 
 const ACTIVE_PUSH_SQL = 'resolved_at IS NULL AND (expires_at IS NULL OR expires_at > ?)';
-const VISIBLE_POINTS_PUSH_SQL = `(COALESCE(notification_type,'') != 'betting-open' OR EXISTS (
+const VISIBLE_POINTS_PUSH_SQL = `(COALESCE(notification_type,'') NOT IN ('betting-open', 'betting-win') OR EXISTS (
   SELECT 1 FROM points_settings s JOIN events e ON e.id = s.event_id
   WHERE s.event_id = push_log.event_id AND s.visible = 1 AND e.event_type_key = 'lan'))`;
 

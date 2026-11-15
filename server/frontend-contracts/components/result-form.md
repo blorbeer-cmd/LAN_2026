@@ -76,3 +76,7 @@ kein horizontaler Überlauf. `resultRanks` prüft Gleichstände mit mindestens d
 
 Registry-IDs `registry:result-fields`, `registry:result-pick` und
 `registry:result-score-row`; keine befristete Ausnahme.
+
+Bei finanziell abgerechneten Match-/Turnierergebnissen sperrt der Aufrufer für Nicht-Admins die
+nativen Eingaben und Buttons des Ergebnisformulars. Das gespeicherte Ergebnis und ein Hinweis
+auf die nötige Adminrolle bleiben lesbar; der Server prüft die Korrekturberechtigung unverändert.
