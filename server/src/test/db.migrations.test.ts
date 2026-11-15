@@ -20,6 +20,42 @@ import { EVENT_FEATURE_KEYS } from '../eventFeatureCatalog';
 const DB_JS_PATH = path.join(__dirname, '..', 'db.js');
 const BOOTSTRAP_ADMINS_JS_PATH = path.join(__dirname, '..', 'bootstrapAdmins.js');
 
+test('migration 138 upgrades legacy data atomically and preserves MCP grants and cleanup plans across replay', (t) => {
+  const dbFile = makeTempDbPath('mcp-connections');
+  t.after(() => fs.rmSync(path.dirname(dbFile), { recursive: true, force: true }));
+  runMigrations(dbFile);
+  const legacy = new Database(dbFile);
+  legacy.exec(`DROP TABLE draw_cleanup_plans; DROP TABLE mcp_connections; DROP TABLE mcp_clients;
+    DELETE FROM schema_migrations WHERE version=138;
+    INSERT INTO players(id,name,api_key,created_at) VALUES('mcp-legacy-user','MCP Legacy','mcp-legacy-key',1);
+    INSERT INTO events(id,name,starts_at,group_id,status) VALUES('mcp-legacy-event','Legacy',1,'default-group','published');
+    CREATE VIEW draw_cleanup_plans AS SELECT id FROM players;`);
+  const before = legacy.prepare("SELECT id,name FROM players WHERE id='mcp-legacy-user'").get();
+  legacy.close();
+  assert.throws(() => runMigrations(dbFile), /views may not be indexed/);
+  const failed = new Database(dbFile);
+  assert.equal(failed.prepare('SELECT 1 FROM schema_migrations WHERE version=138').get(), undefined);
+  assert.equal(failed.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='mcp_clients'").get(), undefined);
+  assert.deepEqual(failed.prepare("SELECT id,name FROM players WHERE id='mcp-legacy-user'").get(), before);
+  failed.exec('DROP VIEW draw_cleanup_plans'); failed.close();
+  runMigrations(dbFile);
+  const upgraded = new Database(dbFile);
+  upgraded.exec(`INSERT INTO mcp_clients(id,redirect_uri,created_at) VALUES('legacy-client','https://chatgpt.com/connector_platform_oauth_redirect',1);
+    INSERT INTO mcp_connections(id,client_id,player_id,group_id,event_id,scopes,access_hash,refresh_hash,access_expires_at,expires_at,created_at)
+      VALUES('legacy-grant','legacy-client','mcp-legacy-user','default-group','mcp-legacy-event','event:read','access-digest','refresh-digest',2,3,1);
+    INSERT INTO draw_cleanup_plans(id,player_id,group_id,event_id,connection_id,payload,created_at,expires_at)
+      VALUES('legacy-plan','mcp-legacy-user','default-group','mcp-legacy-event','legacy-grant','{}',1,2);`);
+  const grants = upgraded.prepare('SELECT * FROM mcp_connections').all();
+  const plans = upgraded.prepare('SELECT * FROM draw_cleanup_plans').all();
+  upgraded.exec('DELETE FROM schema_migrations WHERE version=138'); upgraded.close();
+  runMigrations(dbFile); runMigrations(dbFile);
+  const restarted = new Database(dbFile);
+  assert.deepEqual(restarted.prepare('SELECT * FROM mcp_connections').all(), grants);
+  assert.deepEqual(restarted.prepare('SELECT * FROM draw_cleanup_plans').all(), plans);
+  assert.deepEqual(restarted.pragma('foreign_key_check'), []);
+  restarted.close();
+});
+
 test('points migrations leave legacy LANs hidden and preserve background balances across replay', () => {
   const dbFile = makeTempDbPath('points-opt-in');
   runMigrations(dbFile);
@@ -1845,10 +1881,10 @@ test('records the complete migration history and does not duplicate it on restar
     name: string;
   }>;
 
-  assert.equal(migrations.length, 137);
+  assert.equal(migrations.length, 138);
   assert.deepEqual(
     migrations.map((migration) => migration.version),
-    Array.from({ length: 137 }, (_, index) => index + 1),
+    Array.from({ length: 138 }, (_, index) => index + 1),
   );
   assert.ok(migrations.every((migration) => migration.name.length > 0));
   for (const table of ['scribble_drawings', 'scribble_drawing_reactions', 'scribble_drawing_favorites']) {
@@ -2450,8 +2486,8 @@ test('runs migrations in ascending version order regardless of declaration order
   );
   assert.deepEqual(
     order,
-    Array.from({ length: 137 }, (_, index) => index + 1),
-    'every version 1..137 runs exactly once',
+    Array.from({ length: 138 }, (_, index) => index + 1),
+    'every version 1..138 runs exactly once',
   );
 });
 

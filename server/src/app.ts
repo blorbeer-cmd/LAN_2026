@@ -10,6 +10,7 @@ import path from 'path';
 import { apiRouter } from './routes';
 import { agentRouter } from './routes/agent';
 import { config } from './config';
+import { mountMcp } from './mcp/http';
 
 export function createApp(): express.Express {
   const app = express();
@@ -24,6 +25,7 @@ export function createApp(): express.Express {
   // Avatars and game icons are sent as data URLs. Keep the parser limit above
   // the 400 KB validation limit and return a useful 413 when it is exceeded.
   app.use(express.json({ limit: '1mb' }));
+  mountMcp(app);
 
   // Public metadata needed before login by the dedicated kiosk client.
   app.get('/api/meta', (_req, res) => {
