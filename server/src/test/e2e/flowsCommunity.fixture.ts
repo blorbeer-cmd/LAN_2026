@@ -820,11 +820,14 @@ flowTest('Kiosk: centers tournament content and shows only the latest feature pu
     await setOwnNote(null);
     await page.waitForFunction(() => document.querySelectorAll('#kiosk-live-games > .kiosk-live-active .kiosk-live-game:not(.kiosk-live-more)').length === 2);
     await page.waitForFunction(() => document.querySelectorAll('#kiosk-live > .kiosk-live-grid .kiosk-live-row').length === 1);
-    const compactRow = await page.locator('#kiosk-live > .kiosk-live-grid').evaluate((roster) => ({
+    const stretchedRow = await page.locator('#kiosk-live > .kiosk-live-grid').evaluate((roster) => ({
       rowHeight: roster.querySelector('.kiosk-live-row')!.getBoundingClientRect().height,
       rosterHeight: roster.getBoundingClientRect().height,
     }));
-    assert.ok(compactRow.rowHeight < compactRow.rosterHeight / 2, 'a lone player row keeps its compact height');
+    assert.ok(
+      Math.abs(stretchedRow.rowHeight - stretchedRow.rosterHeight) <= 1,
+      `a lone player row fills the available card height: ${JSON.stringify(stretchedRow)}`,
+    );
     liveBoardEdit = (board) => [withGames(board[0], ['Portal, Portal 2'])];
     await setOwnNote(null);
     await page.waitForFunction(() => {

@@ -14,7 +14,7 @@ import { installDomainIcons } from './domainIcons.js';
 import { snakeArenaLegendHtml } from './arcade/shared/snakeArenaLegend.js';
 import { emptyStateHtml } from './emptyState.js';
 import { kioskMusicQueueHtml, kioskMusicQueueKey } from './kioskMusic.js';
-import { fitKioskLiveActive, kioskLiveActiveHtml, kioskLiveRowHtml } from './kioskLive.js';
+import { fitKioskLiveActive, kioskLiveActiveHtml, kioskLiveRowHtml, sortKioskLivePlayers } from './kioskLive.js';
 import { createKioskResultsPanel } from './kioskResults.js';
 import {
   connectLocalSpotifyPlayer,
@@ -29,7 +29,6 @@ installIconReplacement();
 installDomainIcons();
 setKioskMode(true);
 
-const STATE_RANK = { playing: 0, online: 1, paused: 2, offline: 3 };
 const GAME_NAMES = { quiz: 'Gaming-Quiz', tetris: 'Tetris', scribble: 'Scribble', blobby: 'Blobby Volley', pong: 'Pong', snake: 'Snake', 'challenge-rush': 'Challenge Rush', chimp: 'Chimp Test' };
 const KIOSK_REFRESH_INTERVAL_MS = 60_000;
 const cssColor = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
@@ -425,18 +424,6 @@ function renderLivePageContent() {
   }
 }
 
-// Playing first, then by name; the id breaks name ties so two players with
-// the same name never swap places between refreshes.
-function sortLivePlayers(players) {
-  return [...players].sort((a, b) => {
-    const rankDiff = STATE_RANK[a.state] - STATE_RANK[b.state];
-    if (rankDiff !== 0) return rankDiff;
-    const nameDiff = a.name.localeCompare(b.name, 'de');
-    if (nameDiff !== 0) return nameDiff;
-    return String(a.id).localeCompare(String(b.id));
-  });
-}
-
 async function renderLive(players) {
   liveLatestPlayers = players;
   const container = document.getElementById('kiosk-live');
@@ -458,7 +445,7 @@ async function renderLive(players) {
     updateHtml('kiosk-live', emptyStateHtml('Noch keine Spieler.', { className: 'kiosk-empty-state' }));
     return;
   }
-  const sorted = sortLivePlayers(players);
+  const sorted = sortKioskLivePlayers(players);
   const rowsHtml = sorted.map(kioskLiveRowHtml).join('');
   // Measure below the updated heading, which can wrap on narrow cards.
   const layoutKey = `${sorted.length}|${container.clientWidth}x${container.clientHeight}`;
