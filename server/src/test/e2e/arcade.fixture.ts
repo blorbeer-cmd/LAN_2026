@@ -756,7 +756,9 @@ arcadeTest('multiplayer', 'Tetris fits a short laptop screen and fullscreen grow
 
   // Wide-but-short desktop viewport: exactly the shape where the board used
   // to overflow below the fold, the layout overflowed sideways (decorative
-  // glow) and the overlays were misaligned.
+  // glow) and the overlays were misaligned. The desktop rail would scroll at
+  // this height, so Automatic shows the laptop shell: the board must fit
+  // between topbar and bottom navigation, the tightest vertical budget.
   const host = await openArcadeAs(hostPlayer.id, { viewport: { width: 1280, height: 640 } });
   const guest = await openArcadeAs(guestPlayer.id);
   try {
@@ -769,8 +771,14 @@ arcadeTest('multiplayer', 'Tetris fits a short laptop screen and fullscreen grow
     await host.page.click('#tetris-start');
 
     await host.page.waitForSelector('.arcade-game-shell #tetris-boards .tetris-canvas');
-    await host.page.waitForFunction(() =>
-      Boolean((document.querySelector('.arcade-game-shell') as HTMLElement | null)?.style.getPropertyValue('--arcade-h-budget').trim()));
+    // The fit may settle over more than one animation frame (the first pass
+    // can leave a few pixels of overflow that the next measurement removes),
+    // so wait for a fitted budget that no longer overflows the view.
+    await host.page.waitForFunction(() => {
+      const view = document.getElementById('view-container') as HTMLElement;
+      return Boolean((document.querySelector('.arcade-game-shell') as HTMLElement | null)?.style.getPropertyValue('--arcade-h-budget').trim())
+        && view.scrollHeight - view.clientHeight <= 0;
+    });
     const fitted = await readGameRoomFit(host.page);
     // Without any toggle the board fits the remaining height: header and
     // match controls stay on screen and nothing scrolls in either direction.
@@ -821,9 +829,15 @@ arcadeTest('multiplayer', 'Tetris fits a short laptop screen and fullscreen grow
     await host.page.click('[data-arcade-fullscreen]');
     await host.page.waitForSelector('.topbar', { state: 'visible' });
     // The refit follows the restored chrome asynchronously (resize observer
-    // plus animation frame): wait for the shrunken board, as on entry.
-    await host.page.waitForFunction((full) =>
-      (document.querySelector('.tetris-canvas') as HTMLElement).getBoundingClientRect().height < full - 20, fullscreen.boardHeight);
+    // plus animation frame) and may settle over more than one frame: the
+    // laptop shell's restored chrome first shrinks the board most of the way,
+    // and the next measurement removes the remaining few pixels. Wait for the
+    // shrunken board that no longer overflows the view.
+    await host.page.waitForFunction((full) => {
+      const view = document.getElementById('view-container') as HTMLElement;
+      return (document.querySelector('.tetris-canvas') as HTMLElement).getBoundingClientRect().height < full - 20
+        && view.scrollHeight - view.clientHeight <= 0;
+    }, fullscreen.boardHeight);
     const restored = await readGameRoomFit(host.page);
     assert.equal(restored.fullscreenClass, false);
     assert.equal(restored.pressed, 'false');
@@ -840,7 +854,7 @@ arcadeTest('multiplayer', 'Tetris fits a short laptop screen and fullscreen grow
 
     // Leaving the Arcade area must not strand an active match. "Läuft gerade"
     // offers the own match as "Weiterspielen" so the host can still finish it.
-    await host.page.locator('.desktop-nav-btn[data-view="home"]:visible').click();
+    await host.page.locator('.desktop-nav-btn[data-view="home"]:visible, .nav-btn[data-view="home"]:visible').click();
     await host.page.waitForFunction(() => (document.getElementById('view-container') as HTMLElement | null)?.dataset.view === 'home');
     await navigateToArcade(host.page);
     await host.page.waitForSelector('[data-arcade-resume="tetris"]');

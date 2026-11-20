@@ -226,7 +226,7 @@ columns; below that it keeps the shared modal width.
 `--search-select-results-max-height` (320px) keeps a long searchable option list usable without
 letting it cover the full page; additional results scroll inside the dark listbox.
 `--shell-bottom-inset` reserves the phone/laptop bottom navigation plus safe area and becomes zero
-for the wide desktop side rail. `--desktop-nav-width` (176px) keeps that rail compact while labels
+for the wide desktop side rail. `--desktop-nav-width` (192px) keeps that rail compact while labels
 remain visible, while `--desktop-supporting-pane-min-width` (320px) prevents supporting dashboard
 cards from collapsing below a useful scan width. Wide-desktop content may grow to 1600px; its
 centering calculation explicitly subtracts the rail so the navigation never narrows the usable
@@ -234,8 +234,10 @@ content column by accident. Mein Profil offers Automatic/Desktop/Laptop as one a
 choice. Automatic follows `--bp-xl`; below that breakpoint every preference intentionally retains
 compact geometry.
 The desktop rail uses standard 32px rows for a hovering fine pointer, with compact group spacing.
-Coarse-pointer navigation retains 44px targets. Labels and keyboard focus remain fully visible;
-the main list scrolls only when the available window height still cannot fit its entries.
+Coarse-pointer navigation retains 44px targets. Labels and keyboard focus remain fully visible.
+When the window is too short for the whole main list, Automatic uses the laptop shell instead of a
+scrolling rail and returns to the rail once the window is tall enough; an explicit Desktop choice
+keeps the rail and lets only its main list scroll.
 
 ## Breakpoints
 
