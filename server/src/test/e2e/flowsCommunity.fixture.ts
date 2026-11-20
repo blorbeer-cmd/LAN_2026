@@ -754,6 +754,23 @@ flowTest('Kiosk: centers tournament content and shows only the latest feature pu
     assert.ok(strip.counts.every(Boolean), `no shown player count is cut off: ${JSON.stringify(strip)}`);
     assert.equal(Number(/\d+/.exec(strip.more ?? '')?.[0]) + strip.names.length, 8, 'shown and summed-up games add up to all running games');
 
+    // The strip follows a change of groups even when every row reads the
+    // same: two games "Portal" and "Portal 2" become one game whose name
+    // holds a comma.
+    const withGames = (player: KioskLivePlayer, names: string[]): KioskLivePlayer => ({
+      ...playing(player, player.player_id, player.name, names[0]),
+      games: names.map((name) => ({ game_id: `game-${name}`, game_name: name, game_icon: null, since: Date.now(), foreground: true })),
+    });
+    liveBoardEdit = (board) => [withGames(board[0], ['Portal', 'Portal 2'])];
+    await setOwnNote(null);
+    await page.waitForFunction(() => document.querySelectorAll('#kiosk-live > .kiosk-live-active .kiosk-live-game:not(.kiosk-live-more)').length === 2);
+    liveBoardEdit = (board) => [withGames(board[0], ['Portal, Portal 2'])];
+    await setOwnNote(null);
+    await page.waitForFunction(() => {
+      const names = Array.from(document.querySelectorAll('#kiosk-live > .kiosk-live-active .kiosk-live-game:not(.kiosk-live-more) strong'), (name) => name.textContent);
+      return names.length === 1 && names[0] === 'Portal, Portal 2';
+    });
+
     // A largest game that fits on its own keeps its whole name, even when a
     // smaller group would need the "+N" pill next to it.
     const longGame = 'Die Siedler – Aufstieg eines Königreichs';

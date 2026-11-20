@@ -482,8 +482,10 @@ async function renderLive(players) {
   // times a minute; those must not touch the card at all. The board this
   // card already shows is still the newest one, though: a settle started
   // for an in-between board (a game that has already ended again) must not
-  // paint over it once its measuring finishes.
-  if (layoutKey === liveLayoutKey && rowsHtml === liveRowsHtml) {
+  // paint over it once its measuring finishes. The strip is compared on its
+  // own: two games "Portal" and "Portal 2" and one game "Portal, Portal 2"
+  // read the same in a row but are different groups.
+  if (layoutKey === liveLayoutKey && rowsHtml === liveRowsHtml && activeHtml === liveActiveHtml) {
     liveSettleToken += 1;
     return;
   }
