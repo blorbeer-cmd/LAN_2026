@@ -4,7 +4,7 @@
 // recognize what's running (FR-07, FR-10). See server/CLAUDE.md games reorg
 // for why this replaced the old separate games/game_catalog split.
 
-import { Router } from 'express';
+import { Router, type Request } from 'express';
 import { nanoid } from 'nanoid';
 import { db } from '../db';
 import { broadcast, Events } from '../realtime';
@@ -241,6 +241,9 @@ gamesRouter.post(
   ...withBodyPlayerIdentity,
   requireGroupRole('member'),
   (req, res) => {
+    if (req.body?.status !== 'suggestion' && !memberMayChangeCatalog(req)) {
+      return res.status(403).json({ error: CATALOG_FROZEN_ERROR });
+    }
     const {
       name,
       icon,
@@ -463,6 +466,7 @@ gamesRouter.patch('/:id', resolveGame, requireGroupRole('member'), (req, res) =>
 // of silently re-broadcasting.
 gamesRouter.post('/:id/promote', resolveGame, requireGroupRole('member'), (req, res) => {
   const existing = req.groupResource as GameRow;
+  if (!memberMayChangeCatalog(req)) return res.status(403).json({ error: CATALOG_FROZEN_ERROR });
   if (existing.status !== 'suggestion') return res.status(409).json({ error: 'Spiel ist bereits im Katalog.' });
 
   let creditedEvents: string[];
@@ -485,6 +489,7 @@ gamesRouter.post('/:id/promote', resolveGame, requireGroupRole('member'), (req, 
 // racing itself.
 gamesRouter.post('/:id/demote', resolveGame, requireGroupRole('member'), (req, res) => {
   const existing = req.groupResource as GameRow;
+  if (!memberMayChangeCatalog(req)) return res.status(403).json({ error: CATALOG_FROZEN_ERROR });
   if (existing.status !== 'catalog') return res.status(409).json({ error: 'Spiel ist bereits ein Vorschlag.' });
 
   const trailerUrl = isYoutubeUrl(existing.trailer_url)
@@ -512,6 +517,22 @@ const GAME_HISTORY_TABLES = ['play_sessions', 'votes', 'drafts', 'matchmaking_dr
 
 function gameHasHistory(gameId: string): boolean {
   return GAME_HISTORY_TABLES.some((table) => db.prepare(`SELECT 1 FROM ${table} WHERE game_id = ? LIMIT 1`).get(gameId) !== undefined);
+}
+
+// A running round without an explicit selection puts every catalog game on
+// its ballot, so adding, promoting or demoting a game would change ballots
+// voters may already have filled in. While such a round runs, only admins
+// change which games are in the catalog.
+function wholeCatalogVoteIsRunning(groupId: string): boolean {
+  return db
+    .prepare('SELECT 1 FROM vote_rounds WHERE group_id = ? AND closed_at IS NULL AND selected_game_ids IS NULL LIMIT 1')
+    .get(groupId) !== undefined;
+}
+
+const CATALOG_FROZEN_ERROR = 'Gerade läuft eine Abstimmung über alle Katalogspiele. Bis zu ihrem Ende ändern nur Community-Admins den Katalog.';
+
+function memberMayChangeCatalog(req: Request): boolean {
+  return req.groupMembership?.role !== 'member' || !wholeCatalogVoteIsRunning(req.group!.id);
 }
 
 // A running vote can carry a game before anyone has voted for it: listed in

@@ -137,8 +137,8 @@ test('votes and drafts stay roles-gated and event-scoped inside the one real gro
       // event, and always over exactly that round's winners.
       const gameB = await scoped(app, 'post', '/api/games', alice).send({ name: 'Vote Game B', status: 'catalog' });
       assert.equal(gameB.status, 201, JSON.stringify(gameB.body));
-      async function closedPointsRound(pointsA, pointsB) {
-        const started = await scoped(app, 'post', '/api/votes/start', alice).send({ mode: 'points', gameIds: [gameA.body.id, gameB.body.id] });
+      async function closedPointsRound(pointsA, pointsB, options = {}) {
+        const started = await scoped(app, 'post', '/api/votes/start', alice).send({ mode: 'points', gameIds: [gameA.body.id, gameB.body.id], ...options });
         assert.equal(started.status, 201, JSON.stringify(started.body));
         const ballot = await scoped(app, 'post', '/api/votes/points', bob).send({
           round: started.body.round,
@@ -149,16 +149,22 @@ test('votes and drafts stay roles-gated and event-scoped inside the one real gro
         return started.body.round;
       }
       const clearRound = await closedPointsRound(5, 1);
-      const tieRound = await closedPointsRound(3, 3);
+      const tieRound = await closedPointsRound(3, 3, { anonymous: true, hideLiveResults: false });
       const memberRunoff = (body) => scoped(app, 'post', '/api/votes/start', bob).send({ mode: 'single', ...body });
       assert.equal((await memberRunoff({ gameIds: [gameA.body.id, gameB.body.id] })).status, 400, 'a member runoff needs its source round');
       assert.equal((await memberRunoff({ sourceRound: voteA.body.round })).status, 404, 'a round of another event is no source');
       assert.equal((await memberRunoff({ sourceRound: clearRound })).status, 409, 'a round without a tie has nothing to decide');
-      const tieRunoff = await memberRunoff({ sourceRound: tieRound, title: 'Stichwahl', gameIds: [gameA.body.id] });
+      const tieRunoff = await memberRunoff({
+        sourceRound: tieRound, title: 'Stichwahl', gameIds: [gameA.body.id], anonymous: false, hideLiveResults: true,
+      });
       assert.equal(tieRunoff.status, 201, JSON.stringify(tieRunoff.body));
-      const storedRunoff = db.prepare('SELECT selected_game_ids AS selected, created_by AS createdBy FROM vote_rounds WHERE source_round = ?').get(tieRound);
+      const storedRunoff = db.prepare(
+        'SELECT selected_game_ids AS selected, created_by AS createdBy, anonymous, hide_live_results AS hideLiveResults FROM vote_rounds WHERE source_round = ?',
+      ).get(tieRound);
       assert.deepEqual(JSON.parse(storedRunoff.selected).sort(), [gameA.body.id, gameB.body.id].sort(), 'the server re-asks both tied winners');
       assert.equal(storedRunoff.createdBy, bob.account.id);
+      assert.equal(storedRunoff.anonymous, 1, 'a runoff of an anonymous round stays anonymous');
+      assert.equal(storedRunoff.hideLiveResults, 0, 'and keeps the interim visibility of the source round');
       assert.equal((await memberRunoff({ sourceRound: tieRound })).status, 409, 'one runoff per tie');
       assert.equal((await scoped(app, 'post', '/api/votes/cancel', alice).send({})).status, 200);
 
@@ -173,6 +179,16 @@ test('votes and drafts stay roles-gated and event-scoped inside the one real gro
         assert.equal(ballotRound.status, 201, JSON.stringify(ballotRound.body));
         const memberDelete = await scoped(app, 'delete', '/api/games/' + gameC.body.id, bob);
         assert.equal(memberDelete.status, 403, JSON.stringify(memberDelete.body));
+        if (!selection.gameIds) {
+          // A round over the whole catalog freezes catalog membership for
+          // members: no direct entry, promote or demote; suggestions still go.
+          assert.equal((await scoped(app, 'post', '/api/games/' + gameC.body.id + '/demote', bob).send({})).status, 403);
+          assert.equal((await scoped(app, 'post', '/api/games', bob).send({ name: 'Frozen Catalog', status: 'catalog' })).status, 403);
+          const frozenSuggestion = await scoped(app, 'post', '/api/games', bob).send({ name: 'Frozen Suggestion', status: 'suggestion' });
+          assert.equal(frozenSuggestion.status, 201, JSON.stringify(frozenSuggestion.body));
+          assert.equal((await scoped(app, 'post', '/api/games/' + frozenSuggestion.body.id + '/promote', bob).send({})).status, 403);
+          assert.equal(db.prepare('SELECT status FROM games WHERE id = ?').get(gameC.body.id).status, 'catalog');
+        }
         assert.equal((await scoped(app, 'post', '/api/votes/cancel', alice).send({ round: ballotRound.body.round })).status, 200);
       }
       assert.equal((await scoped(app, 'delete', '/api/games/' + gameC.body.id, bob)).status, 204, 'without a running ballot the unused game may go');
@@ -184,7 +200,21 @@ test('votes and drafts stay roles-gated and event-scoped inside the one real gro
         poolPlayerIds: [eve.account.id],
       });
       assert.equal(cancelDraft.status, 201, JSON.stringify(cancelDraft.body));
-      assert.equal((await scoped(app, 'post', '/api/draft/cancel', eve).send({})).status, 200);
+      assert.equal((await scoped(app, 'post', '/api/draft/cancel', eve).send({})).status, 400, 'a member names the draft to cancel');
+      assert.equal((await scoped(app, 'post', '/api/draft/cancel', eve).send({ draftId: cancelDraft.body.draft.id })).status, 200);
+
+      // A confirmation still open for the cancelled draft must not hit the
+      // next one, and two confirmations for the same draft cancel it once.
+      const nextDraft = await scoped(app, 'post', '/api/draft/start', bob).send({
+        gameId: gameA.body.id,
+        captainIds: [alice.account.id, bob.account.id],
+        poolPlayerIds: [eve.account.id],
+      });
+      assert.equal(nextDraft.status, 201, JSON.stringify(nextDraft.body));
+      assert.equal((await scoped(app, 'post', '/api/draft/cancel', bob).send({ draftId: cancelDraft.body.draft.id })).status, 409);
+      const parallelCancels = await Promise.all([bob, eve].map((member) =>
+        scoped(app, 'post', '/api/draft/cancel', member).send({ draftId: nextDraft.body.draft.id })));
+      assert.deepEqual(parallelCancels.map((response) => response.status).sort(), [200, 409]);
 
       const membershipDraft = await scoped(app, 'post', '/api/draft/start', alice).send({
         gameId: gameA.body.id,

@@ -119,7 +119,8 @@ Die Spielberechnung übernimmt die Platzregel des Zielkonzepts
   chips; the drafted teams are introduced by the parallel heading „Captains“. Decorative draft icons
   and the redundant local-turn hint are omitted. The live draft offers a compact neutral
   „Abbrechen“ beside its „Live“ badge in the card header; the confirmation dialog still names the
-  destructive „Draft abbrechen“.
+  destructive „Draft abbrechen“. Every member may start and cancel a draft; a confirmation only
+  cancels the draft it was opened for, never a draft started meanwhile.
   Every player row in both setup flows, the live draft and the drawn teams shows the shared activity
   icon followed by the selected game's `0–5` skill value; in the rating-balanced draw a missing
   self-rating shows the matchmaking fallback in parentheses, so the visible value matches the one
@@ -237,7 +238,10 @@ Die Spielberechnung übernimmt die Platzregel des Zielkonzepts
   catalog with „In Katalog übernehmen“ (the API also accepts a direct catalog entry). Deleting
   a game that already has play time, votes, drafts, draws, matches or tournaments would erase
   that history too, and a game on the ballot of a running vote would vanish from it, so such a
-  game can only be deleted by community admins.
+  game can only be deleted by community admins. While a vote over the whole catalog (a round
+  without an explicit game selection) runs, only community admins add, promote or demote catalog
+  games, because that would change ballots voters may already have filled in; suggestions stay
+  open to everyone.
   Below the tabs, the sort buttons and the filter controls share one compact
   `.tournament-section-panel` — the same bordered/accent-rail pattern the Tournament create form
   uses to separate sibling control groups, but one panel instead of two so the
@@ -518,7 +522,7 @@ Die Spielberechnung übernimmt die Platzregel des Zielkonzepts
   to the event's participants. After closing, the result is visible to them and, unless the round
   is anonymous, who voted how. Any member may start a round and, on a tie, the runoff. A
   member's runoff must name a closed round of the same event that ended in a tie, and the server
-  re-asks exactly that round's winners.
+  re-asks exactly that round's winners with that round's anonymity and interim visibility.
   A cancelled round is deleted together with its votes and the next round may reuse its number, so
   the client tells rounds apart by number and start time and never carries a cancelled round's
   ballot over.

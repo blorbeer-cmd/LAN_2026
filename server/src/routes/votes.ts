@@ -599,7 +599,8 @@ votesRouter.get('/mine', ...withQueryPlayerIdentity, (req, res) => {
 //   offered as a choice when starting a fresh round. Every member may start
 //   a runoff, but a plain member only for a closed round of the same event
 //   that ended in a tie (sourceRound required); the server then re-asks
-//   exactly that round's winners, ignoring any gameIds sent along.
+//   exactly that round's winners with that round's anonymous and
+//   hideLiveResults, ignoring any gameIds or privacy options sent along.
 // - title/info: optional free text shown to voters.
 // - gameIds: optional preselection of which games this round covers; omit
 //   for "every game in the catalog".
@@ -632,6 +633,8 @@ votesRouter.post('/start', requireGroupRole('member'), (req, res) => {
 
   let selectedGameIds: string[] | null = null;
   let requestedGameIds: unknown = gameIds;
+  let roundAnonymous = anonymous === true;
+  let roundHideLiveResults = hideLiveResults !== false;
   const runoffWinners = new Set<string>();
   let sourceRoundToStore: number | null = null;
   if (mode === 'single') {
@@ -666,6 +669,12 @@ votesRouter.post('/start', requireGroupRole('member'), (req, res) => {
         return res.status(409).json({ error: 'Diese Abstimmung endete nicht mit einem Gleichstand.' });
       }
       requestedGameIds = [...runoffWinners];
+      // A runoff decides its source round, so it keeps that round's privacy:
+      // an anonymous round must not get named ballots, a hidden interim
+      // result must not turn visible.
+      const sourceMeta = getRoundMeta(groupId, sourceRoundToStore!);
+      roundAnonymous = sourceMeta.anonymous;
+      roundHideLiveResults = sourceMeta.hideLiveResults;
     }
   }
   if (requestedGameIds !== undefined) {
@@ -709,8 +718,8 @@ votesRouter.post('/start', requireGroupRole('member'), (req, res) => {
       cleanTitle,
       cleanInfo,
       selectedGameIds ? JSON.stringify(selectedGameIds) : null,
-      anonymous === true ? 1 : 0,
-      hideLiveResults === false ? 0 : 1,
+      roundAnonymous ? 1 : 0,
+      roundHideLiveResults ? 1 : 0,
       sourceRoundToStore,
       req.player?.id ?? null,
     );

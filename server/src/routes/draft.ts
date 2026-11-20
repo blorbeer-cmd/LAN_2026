@@ -12,6 +12,7 @@
 import { Router } from 'express';
 import { nanoid } from 'nanoid';
 import { db } from '../db';
+import { isNonEmptyString } from '../validation';
 import { isSuggestionGame, SUGGESTION_GAME_ERROR } from './gameSelection';
 import { broadcast, Events } from '../realtime';
 import { notifyPlayers, resolvePushTopic } from '../push';
@@ -408,12 +409,25 @@ draftRouter.post('/pick', ...withBodyPlayerIdentity, (req, res) => {
 });
 
 // POST /api/draft/cancel - abandon the running draft (any group member).
+// Body: { draftId } - the draft the confirmation was shown for. Required for
+// plain members, so a confirmation left open for an already ended draft
+// cannot cancel the next one; admins may omit it to cancel whatever runs.
 draftRouter.post('/cancel', requireGroupRole('member'), (req, res) => {
+  const draftId = req.body?.draftId;
+  if (draftId !== undefined && !isNonEmptyString(draftId, 64)) {
+    return res.status(400).json({ error: 'draftId muss eine Draft-ID sein.' });
+  }
+  if (draftId === undefined && req.groupMembership?.role === 'member') {
+    return res.status(400).json({ error: 'draftId ist erforderlich.' });
+  }
   const scope = resolveRequestGroupEventScope(req, undefined);
   if (!scope.ok || !scope.eventId) return res.status(409).json({ error: 'Kein aktives Event verfügbar.' });
   if (!requireGroupEventAccess(req, res, scope.eventId)) return;
   const row = currentDraftRow(req.group!.id, scope.eventId);
   if (!row) return res.status(409).json({ error: 'Es läuft kein Draft.' });
+  if (draftId !== undefined && row.id !== draftId) {
+    return res.status(409).json({ error: 'Dieser Draft läuft nicht mehr.' });
+  }
 
   db.prepare("UPDATE drafts SET status = 'cancelled' WHERE id = ? AND group_id = ?").run(row.id, req.group!.id);
   resolvePushTopic(`draft:${row.id}`, false, { groupId: req.group!.id, eventId: row.event_id });
