@@ -938,6 +938,9 @@ function scrubAccountCopies(playerId: string, names: Set<string>): void {
   removeSubjectScopedPushes(playerId);
   removeIdFromJsonArrayTable('push_log', 'id', 'player_ids', playerId);
   scrubPushLogIdentifiers(playerId);
+  // A notification this account created stays history for its recipients,
+  // but no longer names its creator.
+  db.prepare('UPDATE push_log SET actor_player_id = NULL WHERE actor_player_id = ?').run(playerId);
   removeIdFromJsonArrayTable('broadcasts', 'id', 'recipient_ids', playerId);
   removeIdFromJsonArrayTable('tournament_teams', 'id', 'player_ids', playerId);
   for (const column of ['captain_ids', 'pool_ids', 'picks']) redactJsonColumn('drafts', 'id', column, playerId, names);

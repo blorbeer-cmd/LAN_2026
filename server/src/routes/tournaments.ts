@@ -454,10 +454,11 @@ function notifyTournamentStart(
   tournamentName: string,
   teams: TeamInput[],
   scope: { groupId: string; eventId: string },
+  actorId: string | undefined,
 ): void {
   notifyPlayers(
     [],
-    { title: 'Neues Turnier', body: tournamentName, url: `/#tournaments/${tournamentId}` },
+    { title: 'Neues Turnier', body: tournamentName, url: `/#tournaments/${tournamentId}`, actorId },
     'all',
     { key: `tournament:${tournamentId}` },
     scope,
@@ -742,7 +743,7 @@ tournamentsRouter.post('/', (req, res) => {
   notifyTournamentStart(tournamentId, tournamentName, teamsInput, {
     groupId: req.group!.id,
     eventId: communicationEventId(eventId),
-  });
+  }, req.player?.id);
   res.status(201).json(buildDetail(tournamentId, req.group!.id));
 });
 

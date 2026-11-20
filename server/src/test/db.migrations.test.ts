@@ -271,6 +271,57 @@ test('migration 137 keeps rounds and tips, rolls back on failure and limits uniq
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
 });
 
+test('migration 138 names the creator of running Durchsagen, rolls back on failure and replays without changes', () => {
+  const dbFile = makeTempDbPath('push-actor');
+  runMigrations(dbFile);
+  const fixture = new Database(dbFile);
+  // Pre-138 shape: no creator column; a Durchsage used its creator's name as
+  // its title. Unrelated notifications keep their own title.
+  fixture.exec(`ALTER TABLE push_log DROP COLUMN actor_player_id;
+    DELETE FROM schema_migrations WHERE version=138;
+    INSERT INTO players(id,name,api_key,created_at) VALUES ('actor-anna','Anna','actor-anna-key',1);
+    INSERT INTO group_memberships(group_id,player_id,role,status) VALUES ('default-group','actor-anna','member','active');
+    INSERT INTO broadcasts(id,group_id,event_id,player_id,player_name_snapshot,message,ends_at,recipient_ids,created_at)
+      VALUES ('actor-broadcast','default-group','instance-base-event','actor-anna','Anna','Pizza ist da',10,'[]',1);
+    INSERT INTO push_log(id,group_id,event_id,title,body,audience,player_ids,topic_key,created_at) VALUES
+      ('actor-push','default-group','instance-base-event','Anna','Pizza ist da','all','[]','broadcast:actor-broadcast',1),
+      ('actor-other','default-group','instance-base-event','Neue Abstimmung','Jetzt abstimmen','all','[]','vote:1',2),
+      ('actor-orphan','default-group','instance-base-event','Bob','Ohne Ursprung','all','[]','broadcast:gone',3);
+    CREATE TRIGGER fail_push_actor BEFORE UPDATE ON push_log
+      BEGIN SELECT RAISE(ABORT,'push actor migration failed'); END;`);
+  const legacyRows = fixture.prepare('SELECT * FROM push_log ORDER BY id').all();
+  fixture.close();
+
+  assert.throws(() => runMigrations(dbFile), /push actor migration failed/);
+  const failed = new Database(dbFile);
+  assert.ok(!(failed.pragma('table_info(push_log)') as Array<{ name: string }>).some((column) => column.name === 'actor_player_id'),
+    'the new column rolls back with the failed backfill');
+  assert.equal(failed.prepare('SELECT 1 FROM schema_migrations WHERE version=138').get(), undefined);
+  assert.deepEqual(failed.prepare('SELECT * FROM push_log ORDER BY id').all(), legacyRows);
+  failed.exec('DROP TRIGGER fail_push_actor');
+  failed.close();
+
+  runMigrations(dbFile);
+  const migrated = new Database(dbFile);
+  assert.deepEqual(
+    migrated.prepare('SELECT id, title, body, actor_player_id AS actorId FROM push_log ORDER BY id').all(),
+    [
+      { id: 'actor-orphan', title: 'Bob', body: 'Ohne Ursprung', actorId: null },
+      { id: 'actor-other', title: 'Neue Abstimmung', body: 'Jetzt abstimmen', actorId: null },
+      { id: 'actor-push', title: 'Durchsage', body: 'Pizza ist da', actorId: 'actor-anna' },
+    ],
+  );
+  migrated.exec('DELETE FROM schema_migrations WHERE version=138');
+  const migratedRows = migrated.prepare('SELECT * FROM push_log ORDER BY id').all();
+  migrated.close();
+  runMigrations(dbFile);
+  runMigrations(dbFile);
+  const replayed = new Database(dbFile);
+  assert.deepEqual(replayed.prepare('SELECT * FROM push_log ORDER BY id').all(), migratedRows);
+  replayed.close();
+  fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
+});
+
 test('migration 134 funds missed eligible wallets atomically and preserves spent balances, history and closed events on replay', () => {
   const dbFile = makeTempDbPath('returning-wallet-eligibility');
   runMigrations(dbFile);
@@ -1845,10 +1896,10 @@ test('records the complete migration history and does not duplicate it on restar
     name: string;
   }>;
 
-  assert.equal(migrations.length, 137);
+  assert.equal(migrations.length, 138);
   assert.deepEqual(
     migrations.map((migration) => migration.version),
-    Array.from({ length: 137 }, (_, index) => index + 1),
+    Array.from({ length: 138 }, (_, index) => index + 1),
   );
   assert.ok(migrations.every((migration) => migration.name.length > 0));
   for (const table of ['scribble_drawings', 'scribble_drawing_reactions', 'scribble_drawing_favorites']) {
@@ -2450,8 +2501,8 @@ test('runs migrations in ascending version order regardless of declaration order
   );
   assert.deepEqual(
     order,
-    Array.from({ length: 137 }, (_, index) => index + 1),
-    'every version 1..137 runs exactly once',
+    Array.from({ length: 138 }, (_, index) => index + 1),
+    'every version 1..138 runs exactly once',
   );
 });
 

@@ -271,6 +271,7 @@ draftRouter.post('/start', requireGroupRole('admin'), (req, res) => {
       title: 'Captain-Draft gestartet',
       body: `${game.name}: Die Captains picken jetzt ihre Teams.`,
       url: '/#matchmaking',
+      actorId: req.player?.id,
     },
     'all',
     { key: `draft:${row.id}` },
