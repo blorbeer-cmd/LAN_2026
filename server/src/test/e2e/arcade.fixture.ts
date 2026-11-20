@@ -823,9 +823,15 @@ arcadeTest('multiplayer', 'Tetris fits a short laptop screen and fullscreen grow
     await host.page.click('[data-arcade-fullscreen]');
     await host.page.waitForSelector('.topbar', { state: 'visible' });
     // The refit follows the restored chrome asynchronously (resize observer
-    // plus animation frame): wait for the shrunken board, as on entry.
-    await host.page.waitForFunction((full) =>
-      (document.querySelector('.tetris-canvas') as HTMLElement).getBoundingClientRect().height < full - 20, fullscreen.boardHeight);
+    // plus animation frame) and may settle over more than one frame: the
+    // laptop shell's restored chrome first shrinks the board most of the way,
+    // and the next measurement removes the remaining few pixels. Wait for the
+    // shrunken board that no longer overflows the view.
+    await host.page.waitForFunction((full) => {
+      const view = document.getElementById('view-container') as HTMLElement;
+      return (document.querySelector('.tetris-canvas') as HTMLElement).getBoundingClientRect().height < full - 20
+        && view.scrollHeight - view.clientHeight <= 0;
+    }, fullscreen.boardHeight);
     const restored = await readGameRoomFit(host.page);
     assert.equal(restored.fullscreenClass, false);
     assert.equal(restored.pressed, 'false');

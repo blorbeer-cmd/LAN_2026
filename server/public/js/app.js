@@ -373,10 +373,34 @@ function renderDesktopNavigation() {
 // when the desktop rail would have to scroll (see layoutMode.js).
 function syncLayoutMode() {
   const previous = document.documentElement.dataset.layoutMode;
+  const focused = document.activeElement;
   applyLayoutModeForPlayer(getMyId());
   if (document.documentElement.dataset.layoutMode !== previous) {
+    carryNavigationFocus(focused);
     window.dispatchEvent(new Event('respawn:layout-mode-changed'));
   }
+}
+
+// Switching shells hides whichever navigation held keyboard focus, which
+// would drop focus to <body>. Hand it to the visible navigation's matching
+// entry instead (or its „Mehr“/current entry), so the next key press
+// continues where the person was. Focus outside the navigation stays put.
+function carryNavigationFocus(focused) {
+  if (!(focused instanceof HTMLElement) || focused.getClientRects().length > 0) return;
+  const view = focused.dataset.view;
+  let target = null;
+  if (focused.closest('.desktop-nav')) {
+    const group = view ? navGroupForView(view, state.activeEvent) : null;
+    const buttons = [...document.querySelectorAll('.nav-btn')].filter((button) => !button.hidden && !button.disabled);
+    target = (group && buttons.find((button) => navGroupForView(button.dataset.view, state.activeEvent) === group))
+      ?? buttons.find((button) => button.dataset.view === 'more');
+  } else if (focused.closest('.bottom-nav')) {
+    const railView = view ? desktopNavTargetForView(view) : null;
+    target = (railView && document.querySelector(`.desktop-nav-btn[data-view="${railView}"]`))
+      ?? document.querySelector('.desktop-nav-btn[aria-current="page"]')
+      ?? document.querySelector('.desktop-nav-btn');
+  }
+  target?.focus({ preventScroll: true });
 }
 
 function queueSharedRefresh({ render = true } = {}) {
@@ -861,6 +885,12 @@ function wireNav() {
   // was opened from is captured automatically (see lastSubstantiveView).
   document.getElementById('feedback-btn').addEventListener('click', () => openFeedbackModal(lastSubstantiveView));
   window.matchMedia('(min-width: 1280px)').addEventListener('change', syncLayoutMode);
+  // Rail rows are 32px for a hovering fine pointer and 44px otherwise, so a
+  // change of input type changes the height the rail needs: measure afresh.
+  window.matchMedia('(hover: hover) and (pointer: fine)').addEventListener('change', () => {
+    forgetAutomaticRailFit();
+    syncLayoutMode();
+  });
   // Height changes (window resize, browser zoom) can make the rail fit or
   // overflow without crossing the width breakpoint. Once per frame is enough.
   let layoutSyncFrame = 0;
