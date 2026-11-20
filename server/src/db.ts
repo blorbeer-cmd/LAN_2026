@@ -6146,7 +6146,7 @@ registerMigration({ version: 137, name: 'replace betting rounds after lineup cha
       WHERE refund_cause IS NOT 'replaced';`);
 } });
 
-registerMigration({ version: 138, name: 'store optional server details on open matchmaking draws', up: () => {
+registerMigration({ version: 139, name: 'store optional server details on open matchmaking draws', up: () => {
   // Players note where an open Match is hosted (server address and password)
   // right on its draw. Both stay optional; existing draws simply have none.
   const columns = db.prepare('PRAGMA table_info(matchmaking_draws)').all() as Array<{ name: string }>;
