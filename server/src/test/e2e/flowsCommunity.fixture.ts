@@ -806,14 +806,15 @@ flowTest('Kiosk: centers tournament content and shows only the latest feature pu
 
     // A largest game that fits on its own keeps its whole name, even when a
     // smaller group would need the "+N" pill next to it.
-    const longGame = 'Die Siedler – Aufstieg eines Königreichs';
+    const longGame = 'Die Siedler – Aufstieg';
     liveBoardEdit = (board) => [
       playing(board[0], 'kiosk-long-player-1', 'Spieler Siedler 1', longGame),
       playing(board[0], 'kiosk-long-player-2', 'Spieler Siedler 2', longGame),
-      playing(board[0], 'kiosk-small-player', 'Spieler Factorio', 'Factorio'),
+      playing(board[0], 'kiosk-small-player', 'Spieler Factorio', 'Factorio mit vielen gleichzeitig aktiven Erweiterungen'),
     ];
     await setOwnNote(null);
     await page.waitForSelector('#kiosk-live > .kiosk-live-grid >> text=Spieler Factorio');
+    await page.waitForSelector('#kiosk-live-games > .kiosk-live-active .kiosk-live-more:not([hidden])');
     const longName = await page.locator('#kiosk-live-games > .kiosk-live-active').evaluate((element) => {
       const name = element.querySelector('.kiosk-live-game strong')!;
       return { overflow: element.scrollWidth - element.clientWidth, cut: name.scrollWidth - name.clientWidth, text: name.textContent };
