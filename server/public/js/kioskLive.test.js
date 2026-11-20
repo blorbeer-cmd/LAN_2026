@@ -2,23 +2,21 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { kioskLiveActiveHtml, kioskLiveRowHtml } from './kioskLive.js';
 
-const game = (id, name, extra = {}) => ({ game_id: id, game_name: name, game_icon: null, since: 0, ...extra });
-const player = (id, name, state, games = [], extra = {}) => ({ player_id: id, name, state, games, color: null, ...extra });
+const game = (id, name) => ({ game_id: id, game_name: name, game_icon: null, since: 0 });
+const player = (id, name, state, games = []) => ({ player_id: id, name, state, games, color: null });
 
-test('a playing row names its game below the name, the foreground game first', () => {
-  const html = kioskLiveRowHtml(player('p1', 'Anna', 'playing', [
-    game('g1', 'Factorio', { foreground: false }),
-    game('g2', 'CS2 <Ranked>', { foreground: true }),
-  ], { activity_tracked: true }));
+test('a playing row shows the player and status without naming their game', () => {
+  const html = kioskLiveRowHtml(player('p1', 'Anna', 'playing', [game('g1', 'Factorio')]));
 
-  assert.match(html, /<span class="kiosk-live-detail">CS2 &lt;Ranked&gt;, Factorio<\/span>/);
+  assert.match(html, /<span class="player-name">Anna<\/span>/);
+  assert.doesNotMatch(html, /Factorio/);
   assert.match(html, /class="kiosk-live-status is-playing" role="img" aria-label="Spielt"/);
 });
 
-test('a row without a running game shows its state in the same second line', () => {
+test('a row without a running game labels its status dot', () => {
   for (const [state, label] of [['online', 'Online'], ['paused', 'Pause'], ['offline', 'Offline']]) {
     const html = kioskLiveRowHtml(player('p1', 'Ben', state));
-    assert.match(html, new RegExp(`<span class="kiosk-live-detail">${label}</span>`), state);
+    assert.match(html, new RegExp(`class="kiosk-live-status is-${state}" role="img" aria-label="${label}"`));
   }
 });
 

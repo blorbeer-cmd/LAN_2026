@@ -3,17 +3,14 @@
 // content stays unit-testable.
 
 import { escapeHtml, stateLabel, avatarHtml } from './format.js';
-import { activeGameGroups, runningGameNames } from './liveActivity.js';
+import { activeGameGroups } from './liveActivity.js';
 import { icon } from './icons.js';
 
-// One roster row: avatar, name with a second line below it and the status
-// dot. The second line names the running game for a playing participant and
-// the state otherwise, so every row keeps the same height whatever happens.
+// Game activity is presented in the heading. The roster shows the player
+// and their status.
 export function kioskLiveRowHtml(p) {
   const label = escapeHtml(stateLabel(p.state));
-  const games = p.state === 'playing' ? runningGameNames(p) : [];
-  const detail = games.length > 0 ? escapeHtml(games.join(', ')) : label;
-  return `<div class="kiosk-live-row is-${escapeHtml(p.state)}">${avatarHtml(p, 32)}<span class="kiosk-live-text"><span class="player-name">${escapeHtml(p.name)}</span><span class="kiosk-live-detail">${detail}</span></span><span class="kiosk-live-status is-${escapeHtml(p.state)}" role="img" aria-label="${label}" title="${label}"></span></div>`;
+  return `<div class="kiosk-live-row is-${escapeHtml(p.state)}">${avatarHtml(p, 32)}<span class="player-name">${escapeHtml(p.name)}</span><span class="kiosk-live-status is-${escapeHtml(p.state)}" role="img" aria-label="${label}" title="${label}"></span></div>`;
 }
 
 // "Gerade aktiv" beside the Live-Status heading: one pill per running game with

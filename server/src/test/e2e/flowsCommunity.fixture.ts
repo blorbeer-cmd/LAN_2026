@@ -721,7 +721,7 @@ flowTest('Kiosk: centers tournament content and shows only the latest feature pu
     // The probe leaves once the parked settle has finished; a stale paint
     // would follow in the same task, before the next poll reads the card.
     await page.waitForFunction(() => !document.querySelector('#kiosk-live .kiosk-live-probe'));
-    assert.equal(await page.locator('#kiosk-live >> text=Kiosk-Zwischenspiel').count(), 0, 'a game that already ended again must not be painted');
+    assert.equal(await page.locator('#kiosk-live >> text=Neuer Spieler').count(), 0, 'an obsolete player row must not be painted');
     assert.equal(await page.locator('#kiosk-live-games > .kiosk-live-active').count(), 0);
     openLiveRequests();
 
@@ -743,10 +743,12 @@ flowTest('Kiosk: centers tournament content and shows only the latest feature pu
     await releaseKioskFrames();
     await page.waitForFunction(() => !document.querySelector('#kiosk-live .kiosk-live-probe'));
     assert.equal(
-      await page.locator('#kiosk-live > .kiosk-live-grid .kiosk-live-detail >> text=Kiosk-Neues-Spiel').count(),
+      await page.locator('#kiosk-live > .kiosk-live-grid >> text=Neuer Spieler').count(),
       1,
       'a resize must re-settle the newest board, not the one that was on screen',
     );
+    await page.waitForSelector('#kiosk-live-games >> text=Kiosk-Neues-Spiel');
+    assert.equal(await page.locator('#kiosk-live >> text=Kiosk-Neues-Spiel').count(), 0, 'game names appear only in the heading');
     openLiveRequests();
 
     // Many games on the 1280 px screen: the one-line strip keeps whole
@@ -754,7 +756,7 @@ flowTest('Kiosk: centers tournament content and shows only the latest feature pu
     liveBoardEdit = (board) => Array.from({ length: 8 }, (_, index) =>
       playing(board[0], `kiosk-game-player-${index}`, `Spieler ${index + 1}`, `Kiosk-Spiel mit langem Namen ${index + 1}`));
     await setOwnNote(null);
-    await page.waitForSelector('#kiosk-live > .kiosk-live-grid .kiosk-live-detail >> text=Kiosk-Spiel mit langem Namen 1');
+    await page.waitForSelector('#kiosk-live > .kiosk-live-grid >> text=Spieler 1');
     await page.waitForSelector('#kiosk-live-games > .kiosk-live-active .kiosk-live-more:not([hidden])');
     const strip = await page.locator('#kiosk-live-games > .kiosk-live-active').evaluate((element) => ({
       besideTitle: (() => {
@@ -797,6 +799,12 @@ flowTest('Kiosk: centers tournament content and shows only the latest feature pu
     liveBoardEdit = (board) => [withGames(board[0], ['Portal', 'Portal 2'])];
     await setOwnNote(null);
     await page.waitForFunction(() => document.querySelectorAll('#kiosk-live-games > .kiosk-live-active .kiosk-live-game:not(.kiosk-live-more)').length === 2);
+    await page.waitForFunction(() => document.querySelectorAll('#kiosk-live > .kiosk-live-grid .kiosk-live-row').length === 1);
+    const compactRow = await page.locator('#kiosk-live > .kiosk-live-grid').evaluate((roster) => ({
+      rowHeight: roster.querySelector('.kiosk-live-row')!.getBoundingClientRect().height,
+      rosterHeight: roster.getBoundingClientRect().height,
+    }));
+    assert.ok(compactRow.rowHeight < compactRow.rosterHeight / 2, 'a lone player row keeps its compact height');
     liveBoardEdit = (board) => [withGames(board[0], ['Portal, Portal 2'])];
     await setOwnNote(null);
     await page.waitForFunction(() => {
@@ -833,7 +841,7 @@ flowTest('Kiosk: centers tournament content and shows only the latest feature pu
       playing(board[0], 'kiosk-overlong-small', 'Spieler Klein', 'Factorio'),
     ];
     await setOwnNote(null);
-    // The previous strip was squeezed as well; wait for the new board first.
+    // Wait for the new board before measuring its strip.
     await page.waitForSelector('#kiosk-live > .kiosk-live-grid >> text=Spieler Lang');
     await page.waitForSelector('#kiosk-live-games > .kiosk-live-active .kiosk-live-game.is-squeezed');
     const squeezed = await page.locator('#kiosk-live-games > .kiosk-live-active').evaluate((element) => {

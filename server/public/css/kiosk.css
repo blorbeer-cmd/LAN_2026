@@ -637,13 +637,6 @@
      which is exactly what kiosk.js measures to decide whether to page. The
      parent #kiosk-live already clips visually; this only controls what the
      fit check can see. */
-  /* stretch, not start: a short roster used to pack at the top and leave the
-     rest of the tile empty. Stretching lets the (few) rows themselves grow
-     to fill the available height instead of the text/avatars growing, which
-     would fight readability across very different roster sizes. Only free
-     space is redistributed, so a full-to-overflowing roster behaves exactly
-     as before and the fit check above is unaffected. */
-  align-content: stretch;
 }
 .kiosk-live-row {
   display: flex;
@@ -666,24 +659,8 @@
   gap: var(--space-1);
   padding: var(--space-1) var(--space-2);
 }
-/* Name above the running game (or, without one, the state), so every row
-   keeps the same two-line height whatever its participant is doing. */
-.kiosk-live-text {
-  display: flex;
+.kiosk-live-row .player-name {
   flex: 1;
-  flex-direction: column;
-  min-width: 0;
-}
-.kiosk-live-detail {
-  min-width: 0;
-  overflow: hidden;
-  color: var(--text-muted);
-  font-size: var(--kiosk-font-meta);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.kiosk-live-row.is-playing .kiosk-live-detail {
-  color: var(--state-playing);
 }
 .kiosk-live-heading {
   display: flex;

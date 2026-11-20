@@ -273,9 +273,8 @@ function renderKioskLogin() {
 // the current page, because every agent report triggers live:changed and
 // re-settling on each of them made the card flicker and jump to page one.
 const LIVE_MAX_COLUMNS = 4;
-// Avatar, name (with the running game below it) and the status dot at the
-// TV text size, both lines shortened. Narrow on purpose: four columns with
-// cut names beat a rotating second page.
+// Avatar, shortened name and the status dot at the TV text size. Four
+// columns with shortened names beat a rotating second page.
 const LIVE_MIN_COLUMN_WIDTH = 140;
 const LIVE_MIN_PAGE_SIZE = 6;
 const LIVE_ROTATE_INTERVAL_MS = 6_000;
