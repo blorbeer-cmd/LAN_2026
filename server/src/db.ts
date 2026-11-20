@@ -6146,7 +6146,23 @@ registerMigration({ version: 137, name: 'replace betting rounds after lineup cha
       WHERE refund_cause IS NOT 'replaced';`);
 } });
 
-registerMigration({ version: 138, name: 'allow the same Jam track to be requested more than once', up: () => {
+// Notifications remember which account created what they announce, so the
+// banner can always name the creator. Running Durchsagen used the creator's
+// name as their title; they move to the same title + creator shape as new
+// ones. Every other legacy row keeps no creator and reads as before.
+registerMigration({ version: 138, name: 'remember the creator of push notifications', up: () => {
+  const columns = db.prepare('PRAGMA table_info(push_log)').all() as Array<{ name: string }>;
+  if (!columns.some((column) => column.name === 'actor_player_id')) {
+    db.exec('ALTER TABLE push_log ADD COLUMN actor_player_id TEXT');
+  }
+  db.exec(`UPDATE push_log
+    SET actor_player_id = (SELECT b.player_id FROM broadcasts b WHERE 'broadcast:' || b.id = push_log.topic_key),
+        title = 'Durchsage'
+    WHERE actor_player_id IS NULL
+      AND EXISTS (SELECT 1 FROM broadcasts b WHERE 'broadcast:' || b.id = push_log.topic_key)`);
+} });
+
+registerMigration({ version: 139, name: 'allow the same Jam track to be requested more than once', up: () => {
   // A song may wait in the queue several times. The heartbeat still looks
   // requests up by track, so a plain index replaces the unique one.
   db.exec(`DROP INDEX IF EXISTS idx_music_requests_active_track;

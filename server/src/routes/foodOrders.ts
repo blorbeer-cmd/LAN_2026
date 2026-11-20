@@ -281,8 +281,9 @@ foodOrdersRouter.post('/', ...withBodyPlayerIdentity, (req, res) => {
     allPlayerIds,
     {
       title: 'Neue Sammelbestellung',
-      body: `${row.title}${sendAtNote} (von ${player.name}) – jetzt eintragen!`,
+      body: `${row.title}${sendAtNote} – jetzt eintragen!`,
       url: `/#foodOrders/${row.id}`,
+      actorId: player.id,
     },
     'all',
     { key: `food-order:${row.id}`, expiresAt: row.send_at },

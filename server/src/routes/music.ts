@@ -640,7 +640,7 @@ musicRouter.post('/requests', ...withBodyPlayerIdentity, asyncRoute(async (req, 
   const track = validTrack(await issueMusicControllerCommand(req.group!.id, 'track', { trackId }));
   if (!track) return res.status(404).json({ error: 'Spotify-Titel nicht gefunden.' });
   const requestId = nanoid();
-  // The same song may wait several times (migration 138).
+  // The same song may wait several times (migration 139).
   db.prepare(
     `INSERT INTO music_requests
      (id, session_id, track_uri, track_id, track_name, artist_name, album_name, image_url, duration_ms,

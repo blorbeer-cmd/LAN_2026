@@ -577,7 +577,7 @@ export const api = {
     start: (data) => apiFetch('/api/draft/start', { method: 'POST', body: JSON.stringify(data) }),
     pick: (playerId, pickPlayerId) =>
       apiFetch('/api/draft/pick', { method: 'POST', body: JSON.stringify({ playerId, pickPlayerId }) }),
-    cancel: () => apiFetch('/api/draft/cancel', { method: 'POST' }),
+    cancel: (draftId) => apiFetch('/api/draft/cancel', { method: 'POST', body: JSON.stringify({ draftId }) }),
   },
 
   broadcasts: {
