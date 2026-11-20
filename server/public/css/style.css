@@ -406,13 +406,27 @@ textarea {
   flex: 1;
   font-size: var(--font-size-sm);
 }
-.notification-highlight-text strong,
-.notification-highlight-text span {
+.notification-highlight-heading {
+  display: flex;
+  align-items: baseline;
+  min-width: 0;
+}
+.notification-highlight-heading strong,
+.notification-highlight-body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.notification-highlight-text span {
+/* A long title truncates before the creator's name; a name wider than the
+   whole line wraps inside the text area instead of overflowing it. */
+.notification-highlight-actor {
+  flex: 0 0 auto;
+  max-width: 100%;
+  padding-left: var(--space-1);
+  overflow-wrap: anywhere;
+}
+.notification-highlight-body {
+  min-width: 0;
   color: inherit;
   opacity: .88;
 }

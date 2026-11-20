@@ -328,11 +328,12 @@ function notifyInvitees(
   url: string,
   pollId: string,
   expiresAt: number | null,
+  actorId: string,
 ): void {
   for (const playerId of playerIds) {
     notifyPlayers(
       [playerId],
-      { title, body, url },
+      { title, body, url, actorId },
       'direct',
       { key: pollOpenTopicKey(pollId, playerId), expiresAt },
       { groupId, eventId },
@@ -368,7 +369,13 @@ function pollOpenTopicKey(pollId: string, playerId: string): string {
   return `${pollOpenTopicPrefix(pollId)}:${playerId}`;
 }
 
-function notifyPreviouslyAnsweredPlayers(event: EventRow, poll: DatePollRow, playerIds: string[], kind: 'added' | 'changed' = 'added'): void {
+function notifyPreviouslyAnsweredPlayers(
+  event: EventRow,
+  poll: DatePollRow,
+  playerIds: string[],
+  actorId: string,
+  kind: 'added' | 'changed' = 'added',
+): void {
   for (const playerId of playerIds) {
     notifyPlayers(
       [playerId],
@@ -380,6 +387,7 @@ function notifyPreviouslyAnsweredPlayers(event: EventRow, poll: DatePollRow, pla
         url: `/#eventPolls/${poll.id}`,
         type: 'event-poll-updated',
         targetId: poll.id,
+        actorId,
       },
       'direct',
       { key: pollUpdateTopicKey(poll.id, playerId), expiresAt: poll.response_due_at },
@@ -638,6 +646,7 @@ eventDatePollsRouter.post('/', resolveEventForPolls, (req, res) => {
     `/#eventPolls/${result.poll.id}`,
     result.poll.id,
     result.poll.response_due_at,
+    playerId,
   );
   res.status(201).json(serializeDatePoll(result.poll, event, playerId, req.groupMembership?.role));
 });
@@ -756,7 +765,7 @@ eventDatePollsRouter.patch('/:pollId', resolveEventForPolls, (req, res) => {
     updatePushTopicExpiry(pollUpdateTopicPrefix(poll.id), result.poll.response_due_at, pollScope, true);
   }
   if (result.newlyIncompletePlayerIds.length > 0) {
-    notifyPreviouslyAnsweredPlayers(event, result.poll, result.newlyIncompletePlayerIds,
+    notifyPreviouslyAnsweredPlayers(event, result.poll, result.newlyIncompletePlayerIds, playerId,
       result.addedOptionCount > 0 ? 'added' : 'changed');
   }
   if (options !== undefined) {
@@ -817,7 +826,7 @@ eventDatePollsRouter.post('/:pollId/options', resolveEventForPolls, (req, res) =
   });
   broadcast(Events.eventsChanged, null, { groupId: event.group_id! });
   const updatedPoll = getDatePollForEvent(event.id, poll.id)!;
-  notifyPreviouslyAnsweredPlayers(event, updatedPoll, previouslyAnsweredPlayerIds);
+  notifyPreviouslyAnsweredPlayers(event, updatedPoll, previouslyAnsweredPlayerIds, playerId);
   res.status(201).json(serializeDatePoll(updatedPoll, event, playerId, req.groupMembership?.role));
 });
 
@@ -954,6 +963,7 @@ eventDatePollsRouter.post('/:pollId/reopen', resolveEventForPolls, (req, res) =>
     `/#eventPolls/${poll.id}`,
     poll.id,
     result.poll.response_due_at,
+    playerId,
   );
   res.json(serializeDatePoll(result.poll, event, playerId, req.groupMembership?.role));
 });
