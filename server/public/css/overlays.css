@@ -1323,6 +1323,29 @@ button.seating-seat {
 .music-queue-row.is-dragging {
   opacity: 0.55;
 }
+/* Ridged handle in front of a draggable request. Native drag and drop needs a
+   mouse, so touch layouts hide it and keep the detail dialog for sorting. */
+.music-queue-grip {
+  display: none;
+  place-items: center;
+  color: var(--text-muted);
+}
+@media (hover: hover) and (pointer: fine) {
+  .music-queue-list.is-sortable .music-queue-grip {
+    display: grid;
+  }
+  .music-queue-list.is-sortable .music-queue-row {
+    grid-template-columns: var(--space-4) var(--space-5) var(--avatar-size-md) minmax(0, 1fr) minmax(0, 11rem) 3.5rem;
+  }
+  .music-queue-list.is-sortable .music-queue-row:hover .music-queue-grip {
+    color: var(--text);
+  }
+}
+@media (hover: hover) and (pointer: fine) and (max-width: 639px) { /* --bp-md */
+  .music-queue-list.is-sortable .music-queue-row {
+    grid-template-columns: var(--space-4) var(--space-4) var(--avatar-size-md) minmax(0, 1fr) 2.75rem;
+  }
+}
 .music-queue-row.is-drag-target {
   border-top-color: var(--accent);
 }
