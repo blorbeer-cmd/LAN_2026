@@ -753,13 +753,30 @@ flowTest('Kiosk: centers tournament content and shows only the latest feature pu
 
     // Many games on the 1280 px screen: the one-line strip keeps whole
     // name/count pairs and sums up the rest instead of shrinking every name.
-    liveBoardEdit = (board) => Array.from({ length: 8 }, (_, index) =>
-      playing(board[0], `kiosk-game-player-${index}`, `Spieler ${index + 1}`, `Kiosk-Spiel mit langem Namen ${index + 1}`));
+    liveBoardEdit = (board) => [
+      ...Array.from({ length: 8 }, (_, index) =>
+        playing(board[0], `kiosk-game-player-${index}`, `Spieler ${index + 1}`, `Kiosk-Spiel mit langem Namen ${index + 1}`)),
+      ...['online', 'paused', 'offline'].map((state) => ({
+        ...board[0], player_id: `kiosk-status-${state}`, name: state, state, games: [],
+      })),
+    ];
     await setOwnNote(null);
     await page.waitForSelector('#kiosk-live > .kiosk-live-grid >> text=Spieler 1');
     const columnCount = await page.locator('#kiosk-live > .kiosk-live-grid').evaluate((grid) =>
       new Set(Array.from(grid.children, (row) => row.getBoundingClientRect().left)).size);
     assert.equal(columnCount, 4, 'the roster uses four columns when the card is wide enough');
+    await page.emulateMedia({ forcedColors: 'active' });
+    try {
+      const markers = await page.locator('#kiosk-live > .kiosk-live-grid').evaluate((grid) =>
+        ['playing', 'online', 'paused', 'offline'].map((state) => {
+          const marker = grid.querySelector(`.kiosk-live-status.is-${state}`)!;
+          const { backgroundColor, borderRadius, borderStyle, transform } = getComputedStyle(marker);
+          return [backgroundColor, borderRadius, borderStyle, transform].join('|');
+        }));
+      assert.equal(new Set(markers).size, 4, 'all four status markers are visually distinct in forced colors');
+    } finally {
+      await page.emulateMedia({ forcedColors: null });
+    }
     await page.waitForSelector('#kiosk-live-games > .kiosk-live-active .kiosk-live-more:not([hidden])');
     const strip = await page.locator('#kiosk-live-games > .kiosk-live-active').evaluate((element) => ({
       besideTitle: (() => {

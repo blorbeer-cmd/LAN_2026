@@ -728,10 +728,8 @@
   align-items: center;
   gap: var(--space-1);
 }
-/* The state is a dot instead of a text badge, which leaves room for a
-   fourth column at the larger TV text size. Each state also differs in
-   shape (glow, ring, hollow), and the German label stays in aria-label and
-   title, so the meaning never rests on the color alone. */
+/* The compact marker leaves room for a fourth column at TV text size.
+   Shape and fill distinguish states, including in forced colors. */
 .kiosk-live-status {
   flex-shrink: 0;
   width: var(--space-4);
@@ -741,6 +739,8 @@
 }
 .kiosk-live-status.is-playing {
   background: var(--state-playing);
+  border-radius: 0;
+  transform: rotate(45deg) scale(0.75);
   box-shadow: 0 0 var(--space-2) var(--state-playing);
 }
 .kiosk-live-status.is-online {
@@ -753,6 +753,19 @@
 .kiosk-live-status.is-offline {
   border-color: var(--state-offline);
   background: transparent;
+}
+@media (forced-colors: active) {
+  .kiosk-live-status {
+    forced-color-adjust: none;
+    border-color: CanvasText;
+  }
+  .kiosk-live-status:is(.is-playing, .is-online) {
+    background: CanvasText;
+  }
+  .kiosk-live-status.is-paused {
+    background: transparent;
+    border-style: dashed;
+  }
 }
 .kiosk-live-row.is-offline .player-name {
   color: var(--text-muted);
