@@ -276,8 +276,8 @@ test('self deletion revokes access and scrubs recipient, result and historical n
     `about-account:checklist-claim:${nanoid()}:${target.id}`,
     now,
   );
-  db.prepare("UPDATE push_log SET title = ?, body = ? WHERE id = ?")
-    .run('Delete Target Gamertag-Party', 'Delete Target GamertagA bleibt bestehen', pushId);
+  db.prepare("UPDATE push_log SET title = ?, body = ?, actor_player_id = ? WHERE id = ?")
+    .run('Delete Target Gamertag-Party', 'Delete Target GamertagA bleibt bestehen', target.id, pushId);
   db.prepare(
     `INSERT INTO broadcasts
        (id, group_id, event_id, player_id, player_name_snapshot, message, ends_at, recipient_ids, created_at)
@@ -373,13 +373,14 @@ test('self deletion revokes access and scrubs recipient, result and historical n
   assert.equal(db.prepare('SELECT 1 FROM sessions WHERE player_id = ?').get(target.id), undefined);
   assert.deepEqual(JSON.parse((db.prepare('SELECT player_ids FROM push_log WHERE id = ?').get(pushId) as { player_ids: string }).player_ids), [other.id]);
   const pushCopy = db.prepare(
-    'SELECT title, body, topic_key AS topicKey, target_id AS targetId FROM push_log WHERE id = ?',
-  ).get(pushId) as { title: string; body: string; topicKey: string | null; targetId: string | null };
+    'SELECT title, body, topic_key AS topicKey, target_id AS targetId, actor_player_id AS actorId FROM push_log WHERE id = ?',
+  ).get(pushId) as { title: string; body: string; topicKey: string | null; targetId: string | null; actorId: string | null };
   assert.deepEqual(pushCopy, {
     title: 'Delete Target Gamertag-Party',
     body: 'Delete Target GamertagA bleibt bestehen',
     topicKey: null,
     targetId: null,
+    actorId: null,
   });
   assert.deepEqual(JSON.parse((db.prepare('SELECT recipient_ids FROM broadcasts WHERE id = ?').get(broadcastId) as { recipient_ids: string }).recipient_ids), [other.id]);
   const matchResult = (db.prepare('SELECT result FROM matches WHERE id = ?').get(matchId) as { result: string }).result;
