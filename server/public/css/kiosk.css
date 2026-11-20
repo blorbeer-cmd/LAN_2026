@@ -654,6 +654,18 @@
   background: var(--bg-elevated-2);
   border-radius: var(--radius-sm);
 }
+/* Long names give way, never the avatar. */
+.kiosk-live-row > :first-child {
+  flex-shrink: 0;
+}
+/* Tighter rows before Live-Status would ever have to rotate pages. */
+.kiosk-live-grid.is-compact {
+  gap: var(--space-1);
+}
+.kiosk-live-grid.is-compact .kiosk-live-row {
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2);
+}
 /* Name above the running game (or, without one, the state), so every row
    keeps the same two-line height whatever its participant is doing. */
 .kiosk-live-text {
@@ -675,8 +687,8 @@
 }
 /* "Gerade aktiv" above the roster, as on Home: one pill per running game.
    It stays one line so it never pushes roster rows onto another page; with
-   many games their names shorten to a readable minimum and the smallest
-   groups collapse into one "+N weitere" pill (fitKioskLiveActive). Passive
+   many games the smallest groups collapse into one "+N weitere" pill
+   (fitKioskLiveActive) instead of every name shrinking. Passive
    TV labels in the chip look at the TV meta size, not the interactive .chip
    control. */
 .kiosk-live-active {

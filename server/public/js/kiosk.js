@@ -261,10 +261,10 @@ function renderKioskLogin() {
 }
 
 // A LAN's live roster can run past what even a compact row fits on screen.
-// Rather than clip it (the previous behaviour), this first tries to avoid
-// the problem entirely by widening to more columns — only once even the
-// widest layout can't show everyone at once do pages of the rest start to
-// rotate. Both the column count and the page size are re-decided from
+// Rather than clip or rotate it, this widens to more columns (up to four,
+// long names are shortened with an ellipsis), then tightens the rows. Only a
+// roster that does not fit even four tight columns falls back to rotating
+// pages, as a safety net for unusually large events or tiny screens. Both the column count and the page size are re-decided from
 // scratch whenever the roster size or the card size changes
 // (settleLiveLayout), not just shrunk once and left there: a roster that
 // shrinks later (people going offline, the event ending) should loosen back
@@ -273,14 +273,16 @@ function renderKioskLogin() {
 // the current page, because every agent report triggers live:changed and
 // re-settling on each of them made the card flicker and jump to page one.
 const LIVE_MAX_COLUMNS = 4;
-// Avatar, name (with the running game below it) and status dot at the TV
-// text size; the dot instead of a text badge is what lets a fourth column fit.
-const LIVE_MIN_COLUMN_WIDTH = 200;
+// Avatar, name (with the running game below it) and the status dot at the
+// TV text size, both lines shortened. Narrow on purpose: four columns with
+// cut names beat a rotating second page.
+const LIVE_MIN_COLUMN_WIDTH = 140;
 const LIVE_MIN_PAGE_SIZE = 6;
 const LIVE_ROTATE_INTERVAL_MS = 6_000;
 let liveAllPlayers = [];
 let liveColumns = 1;
 let livePageSize = null; // null = everyone fits at liveColumns, no paging
+let liveCompact = false; // tighter rows before any paging
 let livePageIndex = 0;
 let liveRotationTimer = null;
 // Roster size and card size the current liveColumns/livePageSize were
@@ -323,8 +325,12 @@ function liveDotsHtml(totalPages, pageIndex) {
 // the last row against the card's own overflow instead of paging it away.
 // The "Gerade aktiv" strip leads every page for the same reason: it takes
 // height from the roster, so the fit check has to see it too.
-function livePageHtml(activeHtml, rowsHtml, totalPages = 1, pageIndex = 0) {
-  return `${activeHtml}<div class="kiosk-live-grid">${rowsHtml}</div>${liveDotsHtml(totalPages, pageIndex)}`;
+function liveGridHtml(rowsHtml, compact = liveCompact) {
+  return `<div class="kiosk-live-grid${compact ? ' is-compact' : ''}">${rowsHtml}</div>`;
+}
+
+function livePageHtml(activeHtml, rowsHtml, totalPages = 1, pageIndex = 0, compact = liveCompact) {
+  return `${activeHtml}${liveGridHtml(rowsHtml, compact)}${liveDotsHtml(totalPages, pageIndex)}`;
 }
 
 // Decides liveColumns and livePageSize for the current liveAllPlayers; does
@@ -355,6 +361,7 @@ async function settleLiveLayout(players, activeHtml) {
     if (!layout) return false;
     liveColumns = layout.columns;
     livePageSize = layout.pageSize;
+    liveCompact = layout.compact;
     return true;
   } finally {
     probe.remove();
@@ -373,16 +380,20 @@ async function measureLiveLayout(container, probe, players, activeHtml, myToken)
 
   for (let columns = 1; columns <= maxColumns; columns += 1) {
     probe.style.setProperty('--live-columns', String(columns));
-    probe.innerHTML = livePageHtml(activeHtml, rowsHtml);
+    probe.innerHTML = livePageHtml(activeHtml, rowsHtml, 1, 0, false);
     await nextFrame();
     if (myToken !== liveSettleToken) return null;
-    if (liveFits(probe)) return { columns, pageSize: null };
+    if (liveFits(probe)) return { columns, pageSize: null, compact: false };
   }
+  probe.innerHTML = livePageHtml(activeHtml, rowsHtml, 1, 0, true);
+  await nextFrame();
+  if (myToken !== liveSettleToken) return null;
+  if (liveFits(probe)) return { columns: maxColumns, pageSize: null, compact: true };
 
   let pageSize = Math.max(LIVE_MIN_PAGE_SIZE, total - 3);
   for (;;) {
     const totalPages = Math.max(1, Math.ceil(total / pageSize));
-    probe.innerHTML = livePageHtml(activeHtml, players.slice(0, pageSize).map(kioskLiveRowHtml).join(''), totalPages, 0);
+    probe.innerHTML = livePageHtml(activeHtml, players.slice(0, pageSize).map(kioskLiveRowHtml).join(''), totalPages, 0, true);
     await nextFrame();
     if (myToken !== liveSettleToken) return null;
     if (liveFits(probe) || pageSize <= 1) break;
@@ -393,7 +404,7 @@ async function measureLiveLayout(container, probe, players, activeHtml, myToken)
     // card keeps shrinking past it rather than clipping the last row.
     pageSize = pageSize > LIVE_MIN_PAGE_SIZE ? Math.max(LIVE_MIN_PAGE_SIZE, pageSize - 3) : pageSize - 1;
   }
-  return { columns: maxColumns, pageSize };
+  return { columns: maxColumns, pageSize, compact: true };
 }
 
 // Compares against the last painted string rather than innerHTML: the
