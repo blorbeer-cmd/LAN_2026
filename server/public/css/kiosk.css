@@ -5,6 +5,17 @@
 
 .kiosk-body {
   overflow: hidden;
+  /* A TV is read from across the room, so the dashboard keeps to two text
+     sizes: the content size (the newsticker lead set the benchmark) for
+     everything people read, and one step smaller for secondary details such
+     as ages, counts and status chips. */
+  --kiosk-font: var(--font-size-xl);
+  --kiosk-font-meta: var(--font-size-lg);
+  font-size: var(--kiosk-font);
+}
+.kiosk-body .badge,
+.kiosk-body .section-title {
+  font-size: var(--kiosk-font-meta);
 }
 
 .kiosk-results {
@@ -24,19 +35,28 @@
   flex-direction: column;
   gap: var(--space-2);
 }
+/* The page caption (game, market or ranking name) sits on the card heading
+   line, right-aligned, so the table below gets the full card height. */
 .kiosk-result-caption {
-  font-size: var(--font-size-lg);
-  font-weight: var(--font-weight-medium);
+  min-width: 0;
+  margin-left: auto;
   overflow: hidden;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow-wrap: anywhere;
+  font-weight: var(--font-weight-medium);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .kiosk-result-meta,
 .kiosk-result-pages {
-  font-size: var(--font-size-xs);
+  font-size: var(--kiosk-font-meta);
   color: var(--text-muted);
+}
+/* LAN-Punkte: two tables side by side, filled left column first. */
+.kiosk-result-columns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+  gap: var(--space-5);
+  flex-shrink: 0;
 }
 .kiosk-result-meta,
 .kiosk-result-player {
@@ -55,7 +75,7 @@
   table-layout: fixed;
   width: 100%;
   border-collapse: collapse;
-  font-size: var(--font-size-sm);
+  font-size: var(--kiosk-font);
 }
 .kiosk-result-table th,
 .kiosk-result-table td {
@@ -90,14 +110,10 @@
 }
 .kiosk-result-win {
   color: var(--state-playing);
-  font-size: var(--font-size-xs);
-}
-.kiosk-results.is-compact .kiosk-result-caption {
-  font-size: var(--font-size-sm);
-  -webkit-line-clamp: 1;
+  font-size: var(--kiosk-font-meta);
 }
 .kiosk-results.is-compact .kiosk-result-table {
-  font-size: var(--font-size-xs);
+  font-size: var(--kiosk-font-meta);
 }
 .kiosk-results.is-compact .kiosk-result-name {
   -webkit-line-clamp: 1;
@@ -115,7 +131,6 @@
 .kiosk-results.is-compact .kiosk-result-meta:has(> time:only-child) {
   display: none;
 }
-.kiosk-result-caption,
 .kiosk-result-meta,
 .kiosk-result-table,
 .kiosk-result-pages {
@@ -125,11 +140,8 @@
   flex-wrap: wrap;
 }
 @container (max-width: 24rem) {
-  .kiosk-result-caption {
-    font-size: var(--font-size-sm);
-  }
   .kiosk-result-table {
-    font-size: var(--font-size-xs);
+    font-size: var(--kiosk-font-meta);
   }
   .kiosk-result-table th,
   .kiosk-result-table td {
@@ -221,7 +233,7 @@
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  font-size: var(--font-size-lg);
+  font-size: var(--kiosk-font);
 }
 .kiosk-header-end {
   display: flex;
@@ -230,7 +242,7 @@
 }
 .kiosk-clock {
   color: var(--text-muted);
-  font-size: var(--font-size-lg);
+  font-size: var(--kiosk-font);
   font-weight: var(--font-weight-medium);
   font-variant-numeric: tabular-nums;
 }
@@ -277,7 +289,8 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
   align-items: start;
   gap: 0;
-  margin: 0 var(--space-5) var(--space-5);
+  /* Directly below the announcement banner, above the dashboard cards. */
+  margin: var(--space-3) var(--space-5) 0;
   /* Same horizontal inset as a card, so the music content starts on the
      same line as the card contents above it. */
   padding: var(--space-3) var(--space-5);
@@ -339,6 +352,9 @@
   flex-direction: column;
   gap: var(--space-1);
 }
+.kiosk-music-copy > .muted {
+  font-size: var(--kiosk-font-meta);
+}
 .kiosk-music-copy > strong,
 .kiosk-music-copy > span {
   overflow: hidden;
@@ -380,6 +396,7 @@
 }
 .kiosk-music-duration {
   flex: 0 0 auto;
+  font-size: var(--kiosk-font-meta);
   font-variant-numeric: tabular-nums;
 }
 
@@ -394,8 +411,12 @@
   overflow: hidden;
 }
 .kiosk-card h2 {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--space-2);
   margin: 0 0 var(--space-3);
-  font-size: var(--font-size-lg);
+  font-size: var(--kiosk-font);
   flex-shrink: 0;
 }
 .kiosk-card > div {
@@ -414,7 +435,7 @@
   height: 100%;
   place-items: center;
   padding: 0;
-  font-size: var(--font-size-lg);
+  font-size: var(--kiosk-font);
 }
 
 /* Newsticker timeline: every line hangs on one vertical rail with its icon.
@@ -491,29 +512,25 @@
 }
 .kiosk-news-line {
   overflow: hidden;
-  font-size: var(--font-size-lg);
+  font-size: var(--kiosk-font);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* One step above the other lines at a medium weight: the lead reads first
-   without the heavy headline look. */
+/* Same size as every other line, at a medium weight and with the gradient
+   icon and kicker: the lead reads first without a size of its own. */
 .kiosk-news-item.is-first .kiosk-news-line {
-  font-size: var(--font-size-xl);
   font-weight: var(--font-weight-medium);
   line-height: 1.35;
   white-space: normal;
 }
 /* The lead headline is never cut short. When it does not fit a short tile
    on its own, kiosk.js steps it down: compact drops one size and the meta
-   line, tight drops another size and the kicker. */
+   line, tight also drops the kicker. */
 .kiosk-news.is-compact .kiosk-news-item.is-first .kiosk-news-line {
-  font-size: var(--font-size-lg);
+  font-size: var(--kiosk-font-meta);
 }
 .kiosk-news.is-compact .kiosk-news-meta {
   display: none;
-}
-.kiosk-news.is-tight .kiosk-news-item.is-first .kiosk-news-line {
-  font-size: var(--font-size-md);
 }
 .kiosk-news.is-tight .kiosk-news-kicker {
   display: none;
@@ -523,7 +540,7 @@
   align-items: center;
   gap: var(--space-2);
   color: var(--accent);
-  font-size: var(--font-size-sm);
+  font-size: var(--kiosk-font-meta);
   font-weight: var(--font-weight-bold);
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -540,7 +557,7 @@
 .kiosk-news-meta,
 .kiosk-news-age {
   color: var(--text-muted);
-  font-size: var(--font-size-sm);
+  font-size: var(--kiosk-font-meta);
 }
 .kiosk-news-age {
   font-variant-numeric: tabular-nums;
@@ -574,7 +591,7 @@
     padding: var(--space-2) var(--space-2) 0;
   }
   .kiosk-music {
-    margin: 0 var(--space-2) var(--space-2);
+    margin: var(--space-2) var(--space-2) 0;
     padding: var(--space-3);
   }
   .kiosk-grid {
@@ -641,8 +658,34 @@
 .kiosk-live-row .player-name {
   flex: 1;
 }
-.kiosk-live-row .badge {
+/* The state is a dot instead of a text badge, which leaves room for a
+   fourth column at the larger TV text size. Each state also differs in
+   shape (glow, ring, hollow), and the German label stays in aria-label and
+   title, so the meaning never rests on the color alone. */
+.kiosk-live-status {
   flex-shrink: 0;
+  width: var(--space-4);
+  height: var(--space-4);
+  border: 2px solid transparent;
+  border-radius: var(--radius-full);
+}
+.kiosk-live-status.is-playing {
+  background: var(--state-playing);
+  box-shadow: 0 0 var(--space-2) var(--state-playing);
+}
+.kiosk-live-status.is-online {
+  background: var(--accent);
+}
+.kiosk-live-status.is-paused {
+  border-color: var(--state-paused);
+  background: var(--state-paused-bg);
+}
+.kiosk-live-status.is-offline {
+  border-color: var(--state-offline);
+  background: transparent;
+}
+.kiosk-live-row.is-offline .player-name {
+  color: var(--text-muted);
 }
 .kiosk-standing-row strong,
 .kiosk-match-team strong,
@@ -890,7 +933,7 @@
 .kiosk-match-label {
   padding: var(--space-1) var(--space-3);
   border-bottom: 1px solid var(--border);
-  font-size: var(--font-size-xs);
+  font-size: var(--kiosk-font-meta);
   font-weight: var(--font-weight-bold);
   color: var(--text-muted);
 }
@@ -924,11 +967,10 @@
   border-radius: var(--radius);
   background: var(--accent-gradient);
   color: var(--accent-text);
-  /* Matches the card heading/content size used everywhere else on this
-     dashboard (--font-size-lg) instead of its own larger step: the kiosk
-     otherwise reads as a small, deliberate set of sizes, and a banner this
-     wide at a bigger size read as oversized next to everything below it. */
-  font-size: var(--font-size-lg);
+  /* Matches the content size used everywhere else on this dashboard
+     instead of its own larger step: the kiosk reads as two deliberate
+     sizes, and a banner this wide at a bigger size read as oversized. */
+  font-size: var(--kiosk-font);
   font-weight: var(--font-weight-medium);
   /* The glow falls below the banner only: the negative spread keeps it from
      spilling past the left and right edges, where it made the banner look
@@ -977,7 +1019,7 @@
   opacity: 0.85;
   /* Same size as the banner text: at --font-size-xs the date read as a
      footnote from across the room. */
-  font-size: var(--font-size-lg);
+  font-size: var(--kiosk-font);
 }
 
 .kiosk-game {

@@ -11,19 +11,26 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu TV-Kiosk, Jam
   clock line up with the outer edges of the cards. The keyboard-accessible toggle reflects whether
   browser fullscreen is active, idles out of sight in fullscreen until the mouse moves, and is
   omitted where the Fullscreen API is missing.
+- **Type sizes**: The Broadcast is read from across the room and uses two text sizes only: the
+  content size (`--font-size-xl`, the newsticker lead set the benchmark) for everything people
+  read, card headings included, and one step smaller (`--font-size-lg`) for secondary details such
+  as ages, counts, kickers and status chips.
 - **Banner**: Only the newest active system notification appears below the header as one
   full-width brand-gradient banner; without one, the cards move up directly below the header.
   Title and body share one line separated by a dash and may wrap to a second line; the right side
   shows the notification's age („gerade eben“, „vor 12 Min.“, „vor 3 Std.“, „seit Samstag“)
-  instead of a second clock time. A notification disappears when its topic is resolved or expires
-  or when a newer one replaces it. Separate food-order summary cards are omitted because order
+  instead of a second clock time. A notification disappears when its topic is resolved or expires,
+  when a newer one replaces it, and at the latest ten minutes after it was sent. Separate food-order summary cards are omitted because order
   pushes already use this banner.
 - **Cards**: Four cards remain a 2×2 grid: Live-Status and Newsticker above Abstimmung and
-  Turnier/Ergebnisse, with the Jam bar below. Banner, header and Jam bar share the card edges and the card
+  Turnier/Ergebnisse. The Jam bar sits between the banner and the cards. Banner, header and Jam bar share the card edges and the card
   content inset. A card without data centers one short line at content size in the whole card.
-- **Live-Status**: shows every participant including offline ones, playing first. It uses the
-  fewest columns (up to three, each at least 240 px wide) that show everyone; only if even that does
-  not fit do pages rotate, marked by dots.
+- **Live-Status**: shows every participant including offline ones, playing first. Each row shows
+  avatar, name and a status dot instead of a text badge: filled green with a glow for „Spielt“,
+  filled blue for „Online“, an amber ring for „Pause“ and a hollow grey ring for „Offline“; the German
+  state stays available as the dot's accessible name and tooltip. It uses the fewest columns (up to
+  four, each at least 200 px wide) that show everyone; only if even that does not fit do pages
+  rotate, marked by dots.
 - **Newsticker**: a timeline of playful, clearly invented headlines. The server writes one new
   line every three to ten minutes for the whole event, so every Broadcast screen of that event shows the same
   feed; a new feed starts with a full set of ten lines. A screen that runs on a signed-in account
@@ -128,7 +135,7 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu TV-Kiosk, Jam
   and „Entfernen“; every member may reorder or remove every request. On pointer devices two or more
   queued requests can also be reordered through native drag-and-drop. Respawn persists that order and replaces the active Spotify URI context at the
   current playback position so the visible order also becomes the actual playback order.
-  The kiosk reuses a single compact full-width music bar below the fixed dashboard and shows current
+  The kiosk reuses a single compact full-width music bar between the banner and the dashboard cards and shows current
   track, progress and the actual next track without exposing controls or Spotify credentials. If
   Spotify has not exposed a next track yet, it shows the playlist's shuffle state, remaining count
   and waiting song requests instead of an empty request message. The fixed

@@ -271,8 +271,10 @@ function renderKioskLogin() {
 // there any more. A plain state or name change keeps the settled layout and
 // the current page, because every agent report triggers live:changed and
 // re-settling on each of them made the card flicker and jump to page one.
-const LIVE_MAX_COLUMNS = 3;
-const LIVE_MIN_COLUMN_WIDTH = 240;
+const LIVE_MAX_COLUMNS = 4;
+// Avatar, name and status dot at the TV text size; the dot instead of a
+// text badge is what lets a fourth column fit.
+const LIVE_MIN_COLUMN_WIDTH = 200;
 const LIVE_MIN_PAGE_SIZE = 6;
 const LIVE_ROTATE_INTERVAL_MS = 6_000;
 let liveAllPlayers = [];
@@ -292,7 +294,8 @@ function stopLiveRotation() {
 }
 
 function liveRowHtml(p) {
-  return `<div class="kiosk-live-row">${avatarHtml(p, 24)}<span class="player-name">${escapeHtml(p.name)}</span><span class="badge badge-${p.state}">${stateLabel(p.state)}</span></div>`;
+  const label = escapeHtml(stateLabel(p.state));
+  return `<div class="kiosk-live-row is-${escapeHtml(p.state)}">${avatarHtml(p, 32)}<span class="player-name">${escapeHtml(p.name)}</span><span class="kiosk-live-status is-${escapeHtml(p.state)}" role="img" aria-label="${label}" title="${label}"></span></div>`;
 }
 
 // A fresh innerHTML's scrollHeight/clientHeight can still reflect a layout
@@ -880,6 +883,17 @@ function renderTournament(t) {
 // pushFeed.js; this Kiosk version is not clickable.
 let pushBannerExpiryTimer = null;
 let pushRefreshVersion = 0;
+// An announcement leaves the top of the shared screen after ten minutes at
+// the latest, even when its topic is still open; a newer push brings the
+// banner back.
+const PUSH_BANNER_MAX_AGE_MS = 10 * 60_000;
+
+function pushBannerHideAt(entry) {
+  const createdAt = Number(entry?.createdAt);
+  const limit = Number.isFinite(createdAt) ? createdAt + PUSH_BANNER_MAX_AGE_MS : Infinity;
+  const expiresAt = Number(entry?.expiresAt);
+  return Math.min(limit, Number.isFinite(expiresAt) && expiresAt > 0 ? expiresAt : Infinity);
+}
 
 async function refreshPushBanner() {
   const requestVersion = ++pushRefreshVersion;
@@ -897,13 +911,14 @@ function renderBroadcastBanner(entry) {
   const el = document.getElementById('kiosk-broadcast');
   if (pushBannerExpiryTimer) clearTimeout(pushBannerExpiryTimer);
   pushBannerExpiryTimer = null;
-  if (!entry) {
+  const hideAt = entry ? pushBannerHideAt(entry) : 0;
+  if (!entry || hideAt <= Date.now()) {
     el.hidden = true;
     updateAlertLayout();
     return;
   }
-  if (entry.expiresAt) {
-    const delay = Math.max(0, Math.min(entry.expiresAt - Date.now() + 50, 2_147_483_647));
+  if (Number.isFinite(hideAt)) {
+    const delay = Math.max(0, Math.min(hideAt - Date.now() + 50, 2_147_483_647));
     pushBannerExpiryTimer = setTimeout(refreshPushBanner, delay);
   }
   const createdAt = Number(entry.createdAt);
