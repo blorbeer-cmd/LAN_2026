@@ -666,7 +666,7 @@ function renderLatestVoteCard({ showRunoff }) {
           <span class="event-poll-card-title">
             <strong id="vote-current-result-title">Letzter Vote</strong>
             <span class="event-poll-card-meta-line">
-              <span class="muted">${escapeHtml(roundMetaText(h))}</span>
+              <span class="muted" title="${escapeHtml(roundMetaText(h))}">${escapeHtml(roundMetaText(h))}</span>
               ${winners.length ? `<span class="event-poll-best-result">${WIN_CHIP}<span>${escapeHtml(winners.join(', '))}</span></span>` : ''}
             </span>
           </span>

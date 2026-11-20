@@ -765,6 +765,24 @@ textarea {
   font-size: var(--font-size-lg);
   font-weight: var(--font-weight-bold);
 }
+/* The closed "Letzter Vote" header keeps the height of its closed neighbors:
+   beside the title its meta line (title, starter, date, count, winner)
+   shrinks with an ellipsis instead of wrapping. Phones stack it below. */
+@media (min-width: 640px) { /* --bp-md */
+  .event-poll-card[data-latest-vote] .event-poll-card-title {
+    flex-wrap: nowrap;
+  }
+  .event-poll-card[data-latest-vote] .event-poll-card-meta-line {
+    flex: 1 1 0;
+    flex-wrap: nowrap;
+  }
+  .event-poll-card[data-latest-vote] .event-poll-card-meta-line > .muted {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
 .event-poll-card-title {
   display: flex;
   flex-direction: column;
