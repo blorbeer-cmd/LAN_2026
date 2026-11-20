@@ -135,12 +135,16 @@ interface RoundMeta {
   anonymous: boolean; // nobody ever sees who voted how
   hideLiveResults: boolean; // no per-game result while the round runs
   createdBy: string | null; // who started it; NULL for rounds older than migration 117
+  // Display name of the starter; NULL for legacy rounds and once the account
+  // is deleted (vote_rounds.created_by has no FK, a stale id matches nobody).
+  createdByName: string | null;
 }
 
 const DEFAULT_ROUND_META: RoundMeta = {
   eventId: null,
   sourceRound: null,
   createdBy: null,
+  createdByName: null,
   title: null,
   info: null,
   selectedGameIds: null,
@@ -154,9 +158,11 @@ function getRoundMeta(groupId: string, round: number): RoundMeta {
   if (round < 1) return { ...DEFAULT_ROUND_META };
   const row = db
     .prepare(
-      `SELECT event_id AS eventId, source_round AS sourceRound, title, info, selected_game_ids AS selectedGameIdsJson,
-              anonymous, hide_live_results AS hideLiveResults, created_by AS createdBy
-       FROM vote_rounds WHERE group_id = ? AND round = ?`,
+      `SELECT vr.event_id AS eventId, vr.source_round AS sourceRound, vr.title, vr.info,
+              vr.selected_game_ids AS selectedGameIdsJson, vr.anonymous, vr.hide_live_results AS hideLiveResults,
+              vr.created_by AS createdBy, p.name AS createdByName
+       FROM vote_rounds vr LEFT JOIN players p ON p.id = vr.created_by
+       WHERE vr.group_id = ? AND vr.round = ?`,
     )
     .get(groupId, round) as
     | {
@@ -168,6 +174,7 @@ function getRoundMeta(groupId: string, round: number): RoundMeta {
         anonymous: number;
         hideLiveResults: number;
         createdBy: string | null;
+        createdByName: string | null;
       }
     | undefined;
   if (!row) return { ...DEFAULT_ROUND_META };
@@ -180,6 +187,7 @@ function getRoundMeta(groupId: string, round: number): RoundMeta {
     anonymous: row.anonymous === 1,
     hideLiveResults: row.hideLiveResults === 1,
     createdBy: row.createdBy,
+    createdByName: row.createdBy ? row.createdByName : null,
   };
 }
 
@@ -968,6 +976,7 @@ interface VoteRoundRow {
   selectedGameIdsJson: string | null;
   anonymous: number;
   hideLiveResults: number;
+  createdByName: string | null;
 }
 
 function roundOptions(row: VoteRoundRow): Pick<RoundMeta, 'anonymous' | 'hideLiveResults'> {
@@ -994,9 +1003,10 @@ votesRouter.get('/history', (req, res) => {
               vr.started_at AS startedAt, vr.closed_at AS closedAt, vr.mode AS mode,
               vr.winner_game_ids AS winnerGameIdsJson, vr.title AS title, vr.info AS info,
               vr.selected_game_ids AS selectedGameIdsJson, vr.anonymous AS anonymous,
-              vr.hide_live_results AS hideLiveResults
+              vr.hide_live_results AS hideLiveResults, p.name AS createdByName
        FROM vote_rounds vr
        JOIN events e ON e.group_id = vr.group_id AND e.id = vr.event_id
+       LEFT JOIN players p ON p.id = vr.created_by
        WHERE vr.group_id = ? AND vr.closed_at IS NOT NULL AND vr.event_id = ?
          AND EXISTS (
            SELECT 1 FROM votes v JOIN games g ON g.id = v.game_id
@@ -1028,6 +1038,7 @@ votesRouter.get('/history', (req, res) => {
       mode: r.mode,
       title: r.title,
       info: r.info,
+      createdByName: r.createdByName,
       ...roundOptions(r),
       totalVotes,
       totalVoters,
@@ -1063,9 +1074,10 @@ votesRouter.get('/history/:round', (req, res) => {
               vr.started_at AS startedAt, vr.closed_at AS closedAt, vr.mode AS mode,
               vr.winner_game_ids AS winnerGameIdsJson, vr.title AS title, vr.info AS info,
               vr.selected_game_ids AS selectedGameIdsJson, vr.anonymous AS anonymous,
-              vr.hide_live_results AS hideLiveResults
+              vr.hide_live_results AS hideLiveResults, p.name AS createdByName
        FROM vote_rounds vr
        JOIN events e ON e.group_id = vr.group_id AND e.id = vr.event_id
+       LEFT JOIN players p ON p.id = vr.created_by
        WHERE vr.group_id = ? AND vr.round = ? AND vr.event_id = ?`,
     )
     .get(req.group!.id, round, scope.eventId) as VoteRoundRow | undefined;
@@ -1091,6 +1103,7 @@ votesRouter.get('/history/:round', (req, res) => {
     mode: row.mode,
     title: row.title,
     info: row.info,
+    createdByName: row.createdByName,
     ...roundOptions(row),
     results,
     totalVotes,

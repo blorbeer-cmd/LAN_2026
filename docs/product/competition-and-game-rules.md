@@ -407,7 +407,7 @@ Die Spielberechnung übernimmt die Platzregel des Zielkonzepts
   An open round and every closed result use the same presentation and answer controls as a 0–5
   Umfrage, a runoff those of an „Einzelauswahl“ (see „Umfragen“ in [Organisation](organisation-and-event-rules.md)),
   minus the poll-only parts: no „Neue Runde“ and no „Wieder öffnen“. Each open round is
-  one `.event-poll-card` whose header names the round, the participation („X/Y abgegeben“, updated
+  one `.event-poll-card` whose header names the round, its starter, the participation („X/Y abgegeben“, updated
   through the existing realtime refresh) and the viewer's own state („Abgegeben“ or „Deine Stimme
   fehlt“); admins get a compact „Beenden“ and, directly beside it, a red „Abbrechen“; the member
   who started the round also gets „Beenden“ (not „Abbrechen“) for that round — no
@@ -449,7 +449,7 @@ Die Spielberechnung übernimmt die Platzregel des Zielkonzepts
   The passive „Win“ label follows the text height in headers and result rows; it does not increase
   the title's gap to metadata.
   Its header names the
-  round, date, participation and winner and offers „Stimmen ansehen“ for named ballots and, on a tie, a
+  round, starter, date, participation and winner and offers „Stimmen ansehen“ for named ballots and, on a tie, a
   compact „Stichwahl starten“ as long as no runoff for that round is already open. A runoff stores
   the exact round it resolves, so simultaneous Votes cannot change its decline counts or player
   selection. „Match generieren“ opens Match in „Auslosung“
@@ -477,7 +477,12 @@ Die Spielberechnung übernimmt die Platzregel des Zielkonzepts
   stack — opens the Umfrage vote table: numbered legend with each game's summary, one row per
   voter with their points (a 0 shown as „Spielt nicht“) or their runoff pick.
   An anonymous round offers no „Stimmen ansehen“ and no avatars; its counts stay visible. Results
-  read „N Pkt. · X/Y spielen mit“, in a runoff „N Stimmen“. „Letzter Vote“ always shows the
+  read „N Pkt. · X/Y spielen mit“, in a runoff „N Stimmen“. The starter is the signed-in account
+  that started the round, taken from the session on the server, never from the request. It is
+  shown as the plain display name in the compact meta line of the open round, „Letzter Vote“
+  and every history card. Rounds from before starters were stored, and rounds whose starter
+  deleted the account, show no name; an anonymous round still names its starter, since that
+  reveals nobody's ballot. „Letzter Vote“ always shows the
   most recently ended round, even if another Vote is open or a lower numbered round ends later.
   History lists only the rounds before the
   latest one as separate collapsible cards. Each retains its compact history row as a header
