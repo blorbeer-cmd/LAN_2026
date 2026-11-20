@@ -577,6 +577,35 @@ flowTest('Kiosk: centers tournament content and shows only the latest feature pu
     ['kiosk-live', 'kiosk-newsticker', 'kiosk-votes', 'kiosk-tournament', 'kiosk-results'],
   );
   assert.equal(await page.locator('#kiosk-dashboard > .kiosk-card').count(), 4, 'results share the tournament tile');
+  // Every agent report and offline sweep re-sends live:changed. A board that
+  // did not change must leave Live-Status untouched: re-settling its layout
+  // on each signal made the shared screen flicker and jump back to page one.
+  const kioskLiveRefresh = () => page.waitForResponse((response) =>
+    response.request().method() === 'GET' && new URL(response.url()).pathname === '/api/live');
+  const setOwnNote = async (note: string | null) => {
+    const refreshed = kioskLiveRefresh();
+    assert.equal((await page.request.post(`${BASE_URL}/api/live/${playerId}/note`, { data: { note } })).status(), 200);
+    await refreshed;
+  };
+  await page.waitForSelector('#kiosk-live .kiosk-live-row');
+  await setOwnNote('Kiosk-Pause');
+  await page.waitForSelector('#kiosk-live .badge-paused');
+  await page.locator('#kiosk-live').evaluate((live) => {
+    const records: MutationRecord[] = [];
+    new MutationObserver((batch) => records.push(...batch))
+      .observe(live, { childList: true, subtree: true, attributes: true, characterData: true });
+    (window as unknown as { kioskLiveMutations: MutationRecord[] }).kioskLiveMutations = records;
+  });
+  await setOwnNote('Kiosk-Pause');
+  // The kiosk paints synchronously after its fetch resolves, and observer
+  // records are delivered as microtasks; two animation frames therefore
+  // order this read after any repaint the unchanged board could cause.
+  const liveMutations = await page.evaluate(() => new Promise<number>((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(() =>
+      resolve((window as unknown as { kioskLiveMutations: MutationRecord[] }).kioskLiveMutations.length)));
+  }));
+  assert.equal(liveMutations, 0, 'an unchanged live board must not repaint the Live-Status card');
+  await setOwnNote(null);
   // The newsticker opens with a few generated lines: one lead headline with
   // its kicker, all of them fitted inside the tile.
   await page.waitForSelector('#kiosk-newsticker .kiosk-news-item.is-first .kiosk-news-kicker >> text=Eilmeldung');

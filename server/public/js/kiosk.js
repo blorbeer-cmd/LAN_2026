@@ -264,10 +264,13 @@ function renderKioskLogin() {
 // the problem entirely by widening to more columns — only once even the
 // widest layout can't show everyone at once do pages of the rest start to
 // rotate. Both the column count and the page size are re-decided from
-// scratch on every fresh roster (settleLiveLayout), not just shrunk once and
-// left there: a roster that shrinks later (people going offline, the event
-// ending) should loosen back up instead of keeping empty space reserved for
-// a bigger crowd that isn't there any more.
+// scratch whenever the roster size or the card size changes
+// (settleLiveLayout), not just shrunk once and left there: a roster that
+// shrinks later (people going offline, the event ending) should loosen back
+// up instead of keeping empty space reserved for a bigger crowd that isn't
+// there any more. A plain state or name change keeps the settled layout and
+// the current page, because every agent report triggers live:changed and
+// re-settling on each of them made the card flicker and jump to page one.
 const LIVE_MAX_COLUMNS = 3;
 const LIVE_MIN_COLUMN_WIDTH = 240;
 const LIVE_MIN_PAGE_SIZE = 6;
@@ -277,6 +280,11 @@ let liveColumns = 1;
 let livePageSize = null; // null = everyone fits at liveColumns, no paging
 let livePageIndex = 0;
 let liveRotationTimer = null;
+// Roster size and card size the current liveColumns/livePageSize were
+// settled for, the rows they show, and the HTML last painted into the card.
+let liveLayoutKey = '';
+let liveRowsHtml = '';
+let livePaintedHtml = '';
 
 function stopLiveRotation() {
   if (liveRotationTimer !== null) clearInterval(liveRotationTimer);
@@ -330,10 +338,30 @@ function livePageHtml(items, totalPages, pageIndex) {
 // off after its next await instead of racing it to the finish.
 let liveSettleToken = 0;
 
-async function settleLiveLayout() {
+// All candidates are measured in an invisible probe that covers the card
+// body exactly (see .kiosk-live-probe), so the visible roster stays in place
+// while the layout is decided instead of flashing through every candidate.
+async function settleLiveLayout(players) {
   const myToken = ++liveSettleToken;
   const container = document.getElementById('kiosk-live');
-  const total = liveAllPlayers.length;
+  const probe = document.createElement('div');
+  probe.className = 'kiosk-live-probe';
+  probe.setAttribute('aria-hidden', 'true');
+  container.append(probe);
+  try {
+    const layout = await measureLiveLayout(container, probe, players, myToken);
+    if (!layout) return false;
+    liveColumns = layout.columns;
+    livePageSize = layout.pageSize;
+    return true;
+  } finally {
+    probe.remove();
+  }
+}
+
+async function measureLiveLayout(container, probe, players, myToken) {
+  const total = players.length;
+  const rowsHtml = players.map(liveRowHtml).join('');
   // More columns only helps if each one still has room for an avatar, a
   // name and a status badge without the name getting squeezed to nothing
   // (seen in practice on the narrow end of the supported widths). Cap the
@@ -342,25 +370,20 @@ async function settleLiveLayout() {
   const maxColumns = Math.max(1, Math.min(LIVE_MAX_COLUMNS, Math.floor(container.clientWidth / LIVE_MIN_COLUMN_WIDTH)));
 
   for (let columns = 1; columns <= maxColumns; columns += 1) {
-    container.style.setProperty('--live-columns', String(columns));
-    container.innerHTML = `<div class="kiosk-live-grid">${liveAllPlayers.map(liveRowHtml).join('')}</div>`;
+    probe.style.setProperty('--live-columns', String(columns));
+    probe.innerHTML = `<div class="kiosk-live-grid">${rowsHtml}</div>`;
     await nextFrame();
-    if (myToken !== liveSettleToken) return false;
-    if (liveFits(container)) {
-      liveColumns = columns;
-      livePageSize = null;
-      return true;
-    }
+    if (myToken !== liveSettleToken) return null;
+    if (liveFits(probe)) return { columns, pageSize: null };
   }
 
-  liveColumns = maxColumns;
   let pageSize = Math.max(LIVE_MIN_PAGE_SIZE, total - 3);
   for (;;) {
     const totalPages = Math.max(1, Math.ceil(total / pageSize));
-    container.innerHTML = livePageHtml(liveAllPlayers.slice(0, pageSize), totalPages, 0);
+    probe.innerHTML = livePageHtml(players.slice(0, pageSize), totalPages, 0);
     await nextFrame();
-    if (myToken !== liveSettleToken) return false;
-    if (liveFits(container) || pageSize <= 1) break;
+    if (myToken !== liveSettleToken) return null;
+    if (liveFits(probe) || pageSize <= 1) break;
     // LIVE_MIN_PAGE_SIZE is a soft floor: below it, pages get short enough
     // that rotation feels twitchy, so shrinking slows down to one row at a
     // time. But it must never win against actually fitting — a kiosk screen
@@ -368,22 +391,29 @@ async function settleLiveLayout() {
     // card keeps shrinking past it rather than clipping the last row.
     pageSize = pageSize > LIVE_MIN_PAGE_SIZE ? Math.max(LIVE_MIN_PAGE_SIZE, pageSize - 3) : pageSize - 1;
   }
-  livePageSize = pageSize;
-  return true;
+  return { columns: maxColumns, pageSize };
+}
+
+// Compares against the last painted string rather than innerHTML: the
+// browser's own serialization need not match the template byte for byte.
+function paintLive(container, html) {
+  if (html === livePaintedHtml) return;
+  container.innerHTML = html;
+  livePaintedHtml = html;
 }
 
 function renderLivePageContent() {
   const container = document.getElementById('kiosk-live');
   container.style.setProperty('--live-columns', String(liveColumns));
   if (livePageSize === null) {
-    container.innerHTML = `<div class="kiosk-live-grid">${liveAllPlayers.map(liveRowHtml).join('')}</div>`;
+    paintLive(container, `<div class="kiosk-live-grid">${liveRowsHtml}</div>`);
     stopLiveRotation();
     return;
   }
   const totalPages = Math.max(1, Math.ceil(liveAllPlayers.length / livePageSize));
   if (livePageIndex >= totalPages) livePageIndex = 0;
   const items = liveAllPlayers.slice(livePageIndex * livePageSize, livePageIndex * livePageSize + livePageSize);
-  container.innerHTML = livePageHtml(items, totalPages, livePageIndex);
+  paintLive(container, livePageHtml(items, totalPages, livePageIndex));
   if (totalPages > 1) {
     if (liveRotationTimer === null) {
       liveRotationTimer = setInterval(() => {
@@ -396,20 +426,61 @@ function renderLivePageContent() {
   }
 }
 
+// Playing first, then by name; the id breaks name ties so two players with
+// the same name never swap places between refreshes.
+function sortLivePlayers(players) {
+  return [...players].sort((a, b) => {
+    const rankDiff = STATE_RANK[a.state] - STATE_RANK[b.state];
+    if (rankDiff !== 0) return rankDiff;
+    const nameDiff = a.name.localeCompare(b.name, 'de');
+    if (nameDiff !== 0) return nameDiff;
+    return String(a.id).localeCompare(String(b.id));
+  });
+}
+
 async function renderLive(players) {
+  const container = document.getElementById('kiosk-live');
   if (players.length === 0) {
+    liveSettleToken += 1; // an in-flight settle must not paint over the empty state
     stopLiveRotation();
+    liveAllPlayers = [];
+    liveLayoutKey = '';
+    liveRowsHtml = '';
+    livePaintedHtml = '';
     updateHtml('kiosk-live', emptyStateHtml('Noch keine Spieler.', { className: 'kiosk-empty-state' }));
     return;
   }
-  liveAllPlayers = [...players].sort((a, b) => {
-    const rankDiff = STATE_RANK[a.state] - STATE_RANK[b.state];
-    return rankDiff !== 0 ? rankDiff : a.name.localeCompare(b.name, 'de');
-  });
-  livePageIndex = 0;
-  const settled = await settleLiveLayout();
-  if (!settled) return; // superseded by a fresher call; that one will paint
+  const sorted = sortLivePlayers(players);
+  const rowsHtml = sorted.map(liveRowHtml).join('');
+  const layoutKey = `${sorted.length}|${container.clientWidth}x${container.clientHeight}`;
+  // Agent reports and the offline sweep re-send an unchanged board many
+  // times a minute; those must not touch the card at all.
+  if (layoutKey === liveLayoutKey && rowsHtml === liveRowsHtml) return;
+  if (layoutKey !== liveLayoutKey) {
+    const settled = await settleLiveLayout(sorted);
+    if (!settled) return; // superseded by a fresher call; that one will paint
+    liveLayoutKey = layoutKey;
+  } else {
+    // Same roster size and card size: the settled layout still fits. Cancel
+    // any older settle still measuring a different roster.
+    liveSettleToken += 1;
+  }
+  liveAllPlayers = sorted;
+  liveRowsHtml = rowsHtml;
   renderLivePageContent();
+}
+
+// Fullscreen, a window resize or a neighbouring card growing changes this
+// card's size without a new roster; re-settle once the size has calmed down.
+let liveResizeTimer = null;
+const kioskLiveElement = document.getElementById('kiosk-live');
+if (kioskLiveElement) {
+  new ResizeObserver(() => {
+    clearTimeout(liveResizeTimer);
+    liveResizeTimer = setTimeout(() => {
+      if (liveAllPlayers.length > 0) void renderLive(liveAllPlayers);
+    }, 150);
+  }).observe(kioskLiveElement);
 }
 
 // Newsticker: a timeline of playful headlines. The server writes every line

@@ -547,10 +547,24 @@
   line-height: var(--row-icon-size);
   white-space: nowrap;
 }
-#kiosk-live {
+#kiosk-live,
+.kiosk-live-probe {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
+}
+#kiosk-live {
+  position: relative;
+}
+/* Invisible twin of the card body: settleLiveLayout (kiosk.js) measures its
+   column and page candidates here, so the visible roster never flashes
+   through them. Same box as #kiosk-live, same clipping for the fit check. */
+.kiosk-live-probe {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  visibility: hidden;
+  pointer-events: none;
 }
 
 /* 900px is intentionally its own value, not --bp-lg (860px): even a compact
