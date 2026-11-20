@@ -31,7 +31,7 @@ test('"Gerade aktiv" counts the players per running game, largest group first', 
     player('p4', 'Dana', 'paused', [game('g1', 'Factorio')]),
   ]);
 
-  assert.match(html, /Gerade aktiv/);
+  assert.match(html, /role="group" aria-label="Gerade aktiv"/);
   assert.ok(html.indexOf('Rocket League') < html.indexOf('Factorio'), html);
   assert.match(html, /<strong>Rocket League<\/strong><span [^>]*aria-label="2 Spieler"[^>]*><svg[^>]*>.*?<\/svg>2<\/span>/);
   assert.match(html, /<strong>Factorio<\/strong><span [^>]*aria-label="1 Spieler"[^>]*><svg[^>]*>.*?<\/svg>1<\/span>/);

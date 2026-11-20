@@ -709,7 +709,7 @@ flowTest('Kiosk: centers tournament content and shows only the latest feature pu
       { polling: 50 },
     );
     await holdKioskFrames();
-    liveBoardEdit = (board) => board.map((player, index) => (index === 0 ? playing(player, player.player_id, player.name, 'Kiosk-Zwischenspiel') : player));
+    liveBoardEdit = (board) => [...board, playing(board[0], 'kiosk-new-player', 'Neuer Spieler', 'Kiosk-Zwischenspiel')];
     await setOwnNote(null);
     await kioskReadLiveBodies(1);
     await page.waitForSelector('#kiosk-live .kiosk-live-probe', { state: 'attached' });
@@ -722,7 +722,7 @@ flowTest('Kiosk: centers tournament content and shows only the latest feature pu
     // would follow in the same task, before the next poll reads the card.
     await page.waitForFunction(() => !document.querySelector('#kiosk-live .kiosk-live-probe'));
     assert.equal(await page.locator('#kiosk-live >> text=Kiosk-Zwischenspiel').count(), 0, 'a game that already ended again must not be painted');
-    assert.equal(await page.locator('#kiosk-live > .kiosk-live-active').count(), 0);
+    assert.equal(await page.locator('#kiosk-live-games > .kiosk-live-active').count(), 0);
     openLiveRequests();
 
     // A resize while a newer board is still being measured re-settles that
@@ -731,7 +731,7 @@ flowTest('Kiosk: centers tournament content and shows only the latest feature pu
     // after both resize re-settles.
     const kioskViewport = page.viewportSize()!;
     await holdKioskFrames();
-    liveBoardEdit = (board) => board.map((player, index) => (index === 0 ? playing(player, player.player_id, player.name, 'Kiosk-Neues-Spiel') : player));
+    liveBoardEdit = (board) => [...board, playing(board[0], 'kiosk-new-player', 'Neuer Spieler', 'Kiosk-Neues-Spiel')];
     await setOwnNote(null);
     await kioskReadLiveBodies(3);
     closeLiveRequests();
@@ -755,8 +755,13 @@ flowTest('Kiosk: centers tournament content and shows only the latest feature pu
       playing(board[0], `kiosk-game-player-${index}`, `Spieler ${index + 1}`, `Kiosk-Spiel mit langem Namen ${index + 1}`));
     await setOwnNote(null);
     await page.waitForSelector('#kiosk-live > .kiosk-live-grid .kiosk-live-detail >> text=Kiosk-Spiel mit langem Namen 1');
-    await page.waitForSelector('#kiosk-live > .kiosk-live-active .kiosk-live-more:not([hidden])');
-    const strip = await page.locator('#kiosk-live > .kiosk-live-active').evaluate((element) => ({
+    await page.waitForSelector('#kiosk-live-games > .kiosk-live-active .kiosk-live-more:not([hidden])');
+    const strip = await page.locator('#kiosk-live-games > .kiosk-live-active').evaluate((element) => ({
+      besideTitle: (() => {
+        const title = element.closest('header')!.querySelector('h2')!.getBoundingClientRect();
+        const games = element.getBoundingClientRect();
+        return games.left >= title.right && games.top < title.bottom && games.bottom > title.top;
+      })(),
       overflow: element.scrollWidth - element.clientWidth,
       more: element.querySelector('.kiosk-live-more')!.textContent,
       names: Array.from(element.querySelectorAll('.kiosk-live-game:not([hidden]) strong'), (name) => name.getBoundingClientRect().width),
@@ -771,10 +776,11 @@ flowTest('Kiosk: centers tournament content and shows only the latest feature pu
           && (!next || box.right <= next.left + 0.5);
       }),
     }));
+    assert.ok(strip.besideTitle, 'the game counts sit beside the Live-Status heading');
     assert.ok(strip.overflow <= 1, `the strip stays on one line inside the card: ${JSON.stringify(strip)}`);
     assert.match(strip.more ?? '', /^\+\d+$/);
     assert.match(
-      (await page.locator('#kiosk-live > .kiosk-live-active .kiosk-live-more').getAttribute('aria-label')) ?? '',
+      (await page.locator('#kiosk-live-games > .kiosk-live-active .kiosk-live-more').getAttribute('aria-label')) ?? '',
       /^(1 weiteres Spiel|\d+ weitere Spiele)$/,
     );
     assert.ok(strip.names.length >= 1 && strip.names.every((width) => width >= 30), `every shown game keeps a readable name: ${JSON.stringify(strip)}`);
@@ -790,11 +796,11 @@ flowTest('Kiosk: centers tournament content and shows only the latest feature pu
     });
     liveBoardEdit = (board) => [withGames(board[0], ['Portal', 'Portal 2'])];
     await setOwnNote(null);
-    await page.waitForFunction(() => document.querySelectorAll('#kiosk-live > .kiosk-live-active .kiosk-live-game:not(.kiosk-live-more)').length === 2);
+    await page.waitForFunction(() => document.querySelectorAll('#kiosk-live-games > .kiosk-live-active .kiosk-live-game:not(.kiosk-live-more)').length === 2);
     liveBoardEdit = (board) => [withGames(board[0], ['Portal, Portal 2'])];
     await setOwnNote(null);
     await page.waitForFunction(() => {
-      const names = Array.from(document.querySelectorAll('#kiosk-live > .kiosk-live-active .kiosk-live-game:not(.kiosk-live-more) strong'), (name) => name.textContent);
+      const names = Array.from(document.querySelectorAll('#kiosk-live-games > .kiosk-live-active .kiosk-live-game:not(.kiosk-live-more) strong'), (name) => name.textContent);
       return names.length === 1 && names[0] === 'Portal, Portal 2';
     });
 
@@ -808,7 +814,7 @@ flowTest('Kiosk: centers tournament content and shows only the latest feature pu
     ];
     await setOwnNote(null);
     await page.waitForSelector('#kiosk-live > .kiosk-live-grid >> text=Spieler Factorio');
-    const longName = await page.locator('#kiosk-live > .kiosk-live-active').evaluate((element) => {
+    const longName = await page.locator('#kiosk-live-games > .kiosk-live-active').evaluate((element) => {
       const name = element.querySelector('.kiosk-live-game strong')!;
       return { overflow: element.scrollWidth - element.clientWidth, cut: name.scrollWidth - name.clientWidth, text: name.textContent };
     });
@@ -828,8 +834,8 @@ flowTest('Kiosk: centers tournament content and shows only the latest feature pu
     await setOwnNote(null);
     // The previous strip was squeezed as well; wait for the new board first.
     await page.waitForSelector('#kiosk-live > .kiosk-live-grid >> text=Spieler Lang');
-    await page.waitForSelector('#kiosk-live > .kiosk-live-active .kiosk-live-game.is-squeezed');
-    const squeezed = await page.locator('#kiosk-live > .kiosk-live-active').evaluate((element) => {
+    await page.waitForSelector('#kiosk-live-games > .kiosk-live-active .kiosk-live-game.is-squeezed');
+    const squeezed = await page.locator('#kiosk-live-games > .kiosk-live-active').evaluate((element) => {
       const right = element.getBoundingClientRect().right;
       const name = element.querySelector('.kiosk-live-game strong')!;
       return {
@@ -844,6 +850,16 @@ flowTest('Kiosk: centers tournament content and shows only the latest feature pu
       { fits: true, readableName: true, countInside: true },
       JSON.stringify(squeezed),
     );
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.waitForFunction(() => {
+      const strip = document.querySelector<HTMLElement>('#kiosk-live-games > .kiosk-live-active')!;
+      const title = strip.closest('header')!.querySelector('h2')!.getBoundingClientRect();
+      const count = strip.querySelector('.kiosk-live-active-count')!.getBoundingClientRect();
+      const bounds = strip.getBoundingClientRect();
+      return bounds.top >= title.bottom && count.right <= bounds.right + 0.5
+        && strip.scrollWidth <= strip.clientWidth + 1;
+    });
   } finally {
     openLiveRequests();
     await page.unroute('**/api/live', liveBoardRoute);
@@ -851,7 +867,7 @@ flowTest('Kiosk: centers tournament content and shows only the latest feature pu
     await page.setViewportSize({ width: 1280, height: 720 });
   }
   await setOwnNote(null);
-  await page.waitForFunction(() => !document.querySelector('#kiosk-live > .kiosk-live-active'));
+  await page.waitForFunction(() => !document.querySelector('#kiosk-live-games > .kiosk-live-active'));
   // The newsticker opens with a few generated lines: one lead headline with
   // its kicker, all of them fitted inside the tile.
   await page.waitForSelector('#kiosk-newsticker .kiosk-news-item.is-first .kiosk-news-kicker >> text=Eilmeldung');

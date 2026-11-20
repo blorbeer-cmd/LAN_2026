@@ -327,14 +327,12 @@ function liveDotsHtml(totalPages, pageIndex) {
 // so a fit-check that measured only the grid (without dots) could settle on a
 // page size that then overflows once the dots are appended for real, clipping
 // the last row against the card's own overflow instead of paging it away.
-// The "Gerade aktiv" strip leads every page for the same reason: it takes
-// height from the roster, so the fit check has to see it too.
 function liveGridHtml(rowsHtml, compact = liveCompact) {
   return `<div class="kiosk-live-grid${compact ? ' is-compact' : ''}">${rowsHtml}</div>`;
 }
 
-function livePageHtml(activeHtml, rowsHtml, totalPages = 1, pageIndex = 0, compact = liveCompact) {
-  return `${activeHtml}${liveGridHtml(rowsHtml, compact)}${liveDotsHtml(totalPages, pageIndex)}`;
+function livePageHtml(rowsHtml, totalPages = 1, pageIndex = 0, compact = liveCompact) {
+  return `${liveGridHtml(rowsHtml, compact)}${liveDotsHtml(totalPages, pageIndex)}`;
 }
 
 // Decides liveColumns and livePageSize for the current liveAllPlayers; does
@@ -353,7 +351,7 @@ let liveSettleToken = 0;
 // All candidates are measured in an invisible probe that covers the card
 // body exactly (see .kiosk-live-probe), so the visible roster stays in place
 // while the layout is decided instead of flashing through every candidate.
-async function settleLiveLayout(players, activeHtml) {
+async function settleLiveLayout(players) {
   const myToken = ++liveSettleToken;
   const container = document.getElementById('kiosk-live');
   const probe = document.createElement('div');
@@ -361,7 +359,7 @@ async function settleLiveLayout(players, activeHtml) {
   probe.setAttribute('aria-hidden', 'true');
   container.append(probe);
   try {
-    const layout = await measureLiveLayout(container, probe, players, activeHtml, myToken);
+    const layout = await measureLiveLayout(container, probe, players, myToken);
     if (!layout) return false;
     liveColumns = layout.columns;
     livePageSize = layout.pageSize;
@@ -372,7 +370,7 @@ async function settleLiveLayout(players, activeHtml) {
   }
 }
 
-async function measureLiveLayout(container, probe, players, activeHtml, myToken) {
+async function measureLiveLayout(container, probe, players, myToken) {
   const total = players.length;
   const rowsHtml = players.map(kioskLiveRowHtml).join('');
   // More columns only helps if each one still has room for an avatar, a
@@ -384,12 +382,12 @@ async function measureLiveLayout(container, probe, players, activeHtml, myToken)
 
   for (let columns = 1; columns <= maxColumns; columns += 1) {
     probe.style.setProperty('--live-columns', String(columns));
-    probe.innerHTML = livePageHtml(activeHtml, rowsHtml, 1, 0, false);
+    probe.innerHTML = livePageHtml(rowsHtml, 1, 0, false);
     await nextFrame();
     if (myToken !== liveSettleToken) return null;
     if (liveFits(probe)) return { columns, pageSize: null, compact: false };
   }
-  probe.innerHTML = livePageHtml(activeHtml, rowsHtml, 1, 0, true);
+  probe.innerHTML = livePageHtml(rowsHtml, 1, 0, true);
   await nextFrame();
   if (myToken !== liveSettleToken) return null;
   if (liveFits(probe)) return { columns: maxColumns, pageSize: null, compact: true };
@@ -397,7 +395,7 @@ async function measureLiveLayout(container, probe, players, activeHtml, myToken)
   let pageSize = Math.max(LIVE_MIN_PAGE_SIZE, total - 3);
   for (;;) {
     const totalPages = Math.max(1, Math.ceil(total / pageSize));
-    probe.innerHTML = livePageHtml(activeHtml, players.slice(0, pageSize).map(kioskLiveRowHtml).join(''), totalPages, 0, true);
+    probe.innerHTML = livePageHtml(players.slice(0, pageSize).map(kioskLiveRowHtml).join(''), totalPages, 0, true);
     await nextFrame();
     if (myToken !== liveSettleToken) return null;
     if (liveFits(probe) || pageSize <= 1) break;
@@ -423,16 +421,14 @@ function renderLivePageContent() {
   const container = document.getElementById('kiosk-live');
   container.style.setProperty('--live-columns', String(liveColumns));
   if (livePageSize === null) {
-    paintLive(container, livePageHtml(liveActiveHtml, liveRowsHtml));
-    fitKioskLiveActive(container);
+    paintLive(container, livePageHtml(liveRowsHtml));
     stopLiveRotation();
     return;
   }
   const totalPages = Math.max(1, Math.ceil(liveAllPlayers.length / livePageSize));
   if (livePageIndex >= totalPages) livePageIndex = 0;
   const items = liveAllPlayers.slice(livePageIndex * livePageSize, livePageIndex * livePageSize + livePageSize);
-  paintLive(container, livePageHtml(liveActiveHtml, items.map(kioskLiveRowHtml).join(''), totalPages, livePageIndex));
-  fitKioskLiveActive(container);
+  paintLive(container, livePageHtml(items.map(kioskLiveRowHtml).join(''), totalPages, livePageIndex));
   if (totalPages > 1) {
     if (liveRotationTimer === null) {
       liveRotationTimer = setInterval(() => {
@@ -460,37 +456,39 @@ function sortLivePlayers(players) {
 async function renderLive(players) {
   liveLatestPlayers = players;
   const container = document.getElementById('kiosk-live');
+  const games = document.getElementById('kiosk-live-games');
+  const activeHtml = kioskLiveActiveHtml(players);
+  if (activeHtml !== liveActiveHtml) {
+    games.innerHTML = activeHtml;
+    games.hidden = !activeHtml;
+    liveActiveHtml = activeHtml;
+  }
+  fitKioskLiveActive(games);
   if (players.length === 0) {
     liveSettleToken += 1; // an in-flight settle must not paint over the empty state
     stopLiveRotation();
     liveAllPlayers = [];
     liveLayoutKey = '';
     liveRowsHtml = '';
-    liveActiveHtml = '';
     livePaintedHtml = '';
     updateHtml('kiosk-live', emptyStateHtml('Noch keine Spieler.', { className: 'kiosk-empty-state' }));
     return;
   }
   const sorted = sortLivePlayers(players);
   const rowsHtml = sorted.map(kioskLiveRowHtml).join('');
-  const activeHtml = kioskLiveActiveHtml(sorted);
-  // Whether the one-line "Gerade aktiv" strip shows belongs to the key: it
-  // takes a line of height and with it rows that fit below. Its content
-  // never changes that height, so a new player count needs no re-settle.
-  const layoutKey = `${sorted.length}|${container.clientWidth}x${container.clientHeight}|${activeHtml ? 'active' : ''}`;
+  // Measure below the updated heading, which can wrap on narrow cards.
+  const layoutKey = `${sorted.length}|${container.clientWidth}x${container.clientHeight}`;
   // Agent reports and the offline sweep re-send an unchanged board many
   // times a minute; those must not touch the card at all. The board this
   // card already shows is still the newest one, though: a settle started
   // for an in-between board (a game that has already ended again) must not
-  // paint over it once its measuring finishes. The strip is compared on its
-  // own: two games "Portal" and "Portal 2" and one game "Portal, Portal 2"
-  // read the same in a row but are different groups.
-  if (layoutKey === liveLayoutKey && rowsHtml === liveRowsHtml && activeHtml === liveActiveHtml) {
+  // paint over it once its measuring finishes.
+  if (layoutKey === liveLayoutKey && rowsHtml === liveRowsHtml) {
     liveSettleToken += 1;
     return;
   }
   if (layoutKey !== liveLayoutKey) {
-    const settled = await settleLiveLayout(sorted, activeHtml);
+    const settled = await settleLiveLayout(sorted);
     if (!settled) return; // superseded by a fresher call; that one will paint
     liveLayoutKey = layoutKey;
   } else {
@@ -500,7 +498,6 @@ async function renderLive(players) {
   }
   liveAllPlayers = sorted;
   liveRowsHtml = rowsHtml;
-  liveActiveHtml = activeHtml;
   renderLivePageContent();
 }
 

@@ -16,7 +16,7 @@ export function kioskLiveRowHtml(p) {
   return `<div class="kiosk-live-row is-${escapeHtml(p.state)}">${avatarHtml(p, 32)}<span class="kiosk-live-text"><span class="player-name">${escapeHtml(p.name)}</span><span class="kiosk-live-detail">${detail}</span></span><span class="kiosk-live-status is-${escapeHtml(p.state)}" role="img" aria-label="${label}" title="${label}"></span></div>`;
 }
 
-// "Gerade aktiv" above the roster, as on Home: one pill per running game with
+// "Gerade aktiv" beside the Live-Status heading: one pill per running game with
 // its player count. They are passive TV labels, not the interactive .chip
 // control, so kiosk.css styles them at the TV text size on its own. The count is a people icon plus the number (the German
 // wording stays its accessible name) so several games fit on one line.
@@ -30,7 +30,7 @@ export function kioskLiveActiveHtml(players) {
       return `<span class="kiosk-live-game"><strong>${escapeHtml(g.name)}</strong><span class="kiosk-live-active-count muted" role="img" aria-label="${count}" title="${count}">${icon('users')}${g.players.length}</span></span>`;
     })
     .join('');
-  return `<div class="kiosk-live-active"><span class="kiosk-live-active-label">Gerade aktiv</span>${chips}</div>`;
+  return `<div class="kiosk-live-active" role="group" aria-label="Gerade aktiv">${chips}</div>`;
 }
 
 // Keeps the one-line strip readable once it is on screen. In this order:
