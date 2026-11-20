@@ -7,6 +7,8 @@ import { getMyId } from './whoami.js';
 import { icon } from './icons.js';
 import { escapeHtml, formatDateTime } from './format.js';
 import {
+  feedEntryActor,
+  feedEntryHeading,
   feedEntryIcon,
   feedEntryTitle,
   feedLinkTarget,
@@ -100,13 +102,13 @@ export function entryHtml(entry) {
   // The whole entry is the link: opening it marks it read. Entries without a
   // target view are only marked read.
   const openAttrs = view
-    ? `data-notification-navigate="${view}" data-notification-target="${escapeHtml(target?.id ?? '')}" data-notification-target-type="${escapeHtml(target?.type ?? '')}" data-notification-event-id="${escapeHtml(entry.eventId ?? '')}" aria-label="${escapeHtml(`${feedEntryTitle(entry)}: ${FEED_LINK_LABELS[view]}`)}"`
+    ? `data-notification-navigate="${view}" data-notification-target="${escapeHtml(target?.id ?? '')}" data-notification-target-type="${escapeHtml(target?.type ?? '')}" data-notification-event-id="${escapeHtml(entry.eventId ?? '')}" aria-label="${escapeHtml(`${feedEntryHeading(entry)}: ${FEED_LINK_LABELS[view]}`)}"`
     : 'data-notification-mark-seen';
   return `<article class="notification-center-entry${unread ? ' is-unread' : ''}${obsolete ? ' is-obsolete' : ''}" data-notification-entry="${entry.id}">
     <button type="button" class="notification-center-open" ${openAttrs} data-notification-id="${entry.id}">
       <span class="notification-center-entry-title">
         <span class="notification-center-entry-icon">${icon(feedEntryIcon(entry))}</span>
-        <span class="notification-center-entry-name">${escapeHtml(feedEntryTitle(entry))}</span>${unread ? '<span class="visually-hidden">, ungelesen</span>' : ''}
+        <span class="notification-center-entry-name">${escapeHtml(feedEntryHeading(entry))}</span>${unread ? '<span class="visually-hidden">, ungelesen</span>' : ''}
       </span>
       <span class="notification-center-body">${escapeHtml(entry.body)}</span>
       <span class="notification-center-meta">${meta}</span>
@@ -252,10 +254,19 @@ function renderHighlight() {
     return;
   }
   container.hidden = false;
+  const title = highlightEntry.eventName
+    ? `${highlightEntry.eventName} · ${feedEntryTitle(highlightEntry)}`
+    : feedEntryTitle(highlightEntry);
+  // The creator sits in its own non-shrinking slot: a long event or poll
+  // title is truncated, the name of whoever sent it never is.
+  const actor = feedEntryActor(highlightEntry);
   container.innerHTML = `
     <button type="button" class="notification-highlight-link" ${view ? `data-notification-highlight-navigate="${view}"` : 'data-notification-highlight-open'} data-notification-id="${highlightEntry.id}">
       ${icon(feedEntryIcon(highlightEntry))}
-      <span class="notification-highlight-text"><strong>${escapeHtml(highlightEntry.eventName ? `${highlightEntry.eventName} · ${feedEntryTitle(highlightEntry)}` : feedEntryTitle(highlightEntry))}</strong><span>${escapeHtml(highlightEntry.body)}</span></span>
+      <span class="notification-highlight-text">
+        <span class="notification-highlight-heading"><strong>${escapeHtml(title)}</strong>${actor ? `<span class="notification-highlight-actor">${escapeHtml(actor)}</span>` : ''}</span>
+        <span class="notification-highlight-body">${escapeHtml(highlightEntry.body)}</span>
+      </span>
       ${view ? icon('chevronRight') : ''}
     </button>
     <button type="button" class="icon-btn notification-highlight-dismiss" data-notification-highlight-dismiss="${highlightEntry.id}" aria-label="Aktuelle Mitteilung schließen" title="Schließen">${icon('x')}</button>`;

@@ -265,6 +265,11 @@ flowTest('Durchsage: notification center can navigate, mark read and remove with
   await page.click('.nav-btn[data-view="home"]');
   const highlight = page.locator('#notification-highlight:has-text("Essen ist da!")');
   await highlight.waitFor();
+  // The creator has its own slot after the title and is never the part that
+  // gets truncated.
+  const actor = highlight.locator('.notification-highlight-actor');
+  assert.match(await actor.innerText(), /^von \S/);
+  assert.ok(await actor.evaluate((el) => el.scrollWidth <= el.clientWidth), 'creator name must not be clipped');
   await highlight.locator('[data-notification-highlight-navigate]').click();
   await page.waitForSelector('#broadcast-message');
   await page.waitForSelector('#notification-highlight', { state: 'hidden' });

@@ -80,6 +80,15 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Routen, Rolle
   unread. The sticky footer holds neutral bulk actions in equal
   columns across the full width: „Alle gelesen“ and „Alle löschen“ (whose confirmation stays red),
   preceded by „Aufräumen“ only while at least one obsolete entry is present.
+- **Creator** — An entry announcing something a person created (Durchsage, Abstimmung,
+  Sammelbestellung, Captain-Draft, Turnier, Event-Einladung, Eventplanung, Event-Umfrage) names
+  that account as „von <Name>“ right after its title: in the highlight below the topbar, in the
+  notification center, on the Kiosk banner and in the device notification's title. In the
+  highlight the name has its own slot, so a long event or entry title is truncated before the
+  name. The name is resolved from the account when read, so a rename shows up and an erased
+  account's entries keep their text without a creator. System notifications (reminders, bets,
+  match readiness) and entries whose text already names the person (Arcade-Lobby, Mitbring-
+  Anfrage, Aufgabe, Übernommen) carry no separate creator.
 
 ## Eventauswahl
 

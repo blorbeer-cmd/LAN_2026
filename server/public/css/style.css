@@ -401,13 +401,25 @@ textarea {
   flex: 1;
   font-size: var(--font-size-sm);
 }
-.notification-highlight-text strong,
-.notification-highlight-text span {
+.notification-highlight-heading {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-1);
+  min-width: 0;
+}
+.notification-highlight-heading strong,
+.notification-highlight-body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.notification-highlight-text span {
+/* The creator never shrinks: a long title truncates instead of the name. */
+.notification-highlight-actor {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+.notification-highlight-body {
+  min-width: 0;
   color: inherit;
   opacity: .88;
 }
