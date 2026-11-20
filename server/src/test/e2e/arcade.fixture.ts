@@ -756,7 +756,9 @@ arcadeTest('multiplayer', 'Tetris fits a short laptop screen and fullscreen grow
 
   // Wide-but-short desktop viewport: exactly the shape where the board used
   // to overflow below the fold, the layout overflowed sideways (decorative
-  // glow) and the overlays were misaligned.
+  // glow) and the overlays were misaligned. The desktop rail would scroll at
+  // this height, so Automatic shows the laptop shell: the board must fit
+  // between topbar and bottom navigation, the tightest vertical budget.
   const host = await openArcadeAs(hostPlayer.id, { viewport: { width: 1280, height: 640 } });
   const guest = await openArcadeAs(guestPlayer.id);
   try {
@@ -840,7 +842,7 @@ arcadeTest('multiplayer', 'Tetris fits a short laptop screen and fullscreen grow
 
     // Leaving the Arcade area must not strand an active match. "Läuft gerade"
     // offers the own match as "Weiterspielen" so the host can still finish it.
-    await host.page.locator('.desktop-nav-btn[data-view="home"]:visible').click();
+    await host.page.locator('.desktop-nav-btn[data-view="home"]:visible, .nav-btn[data-view="home"]:visible').click();
     await host.page.waitForFunction(() => (document.getElementById('view-container') as HTMLElement | null)?.dataset.view === 'home');
     await navigateToArcade(host.page);
     await host.page.waitForSelector('[data-arcade-resume="tetris"]');
