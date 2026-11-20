@@ -252,6 +252,18 @@ musicControllerRouter.post('/commands/:id/result', controllerAuth, (req, res) =>
   res.status(204).end();
 });
 
+// One pause at a time per group: heartbeats keep reporting the foreign song
+// until Spotify has actually paused, and each must not queue another command.
+const foreignPausesPending = new Set<string>();
+
+function pauseForeignPlayback(groupId: string, deviceId: string): void {
+  if (foreignPausesPending.has(groupId)) return;
+  foreignPausesPending.add(groupId);
+  issueMusicControllerCommand(groupId, 'pause', { deviceId })
+    .catch(() => { /* best effort: the next heartbeat retries */ })
+    .finally(() => foreignPausesPending.delete(groupId));
+}
+
 function syncSessionPlayback(groupId: string, playback: unknown, now: number): void {
   const session = db.prepare(
     "SELECT id, device_id, current_track_uri, playback_context_json FROM music_sessions WHERE group_id = ? AND status = 'active'",
@@ -297,6 +309,16 @@ function syncSessionPlayback(groupId: string, playback: unknown, now: number): v
       playbackContextJson = null;
     }
   }
+  // A Jam plays only requests and a playlist started from Respawn. Anything
+  // else on the Jam device while nothing is waiting (typically Spotify's own
+  // autoplay after the last request, or after a controller restart lost the
+  // planned pause) is stopped and not shown as the Jam's current song.
+  const waitingRequests = (db.prepare(
+    "SELECT COUNT(*) AS count FROM music_requests WHERE session_id = ? AND status IN ('sending', 'queued')",
+  ).get(session.id) as { count: number }).count;
+  const foreignTrack = Boolean(uri) && !matchingRequest && !playbackContextJson &&
+    context?.type !== 'playlist' && waitingRequests === 0;
+  if (foreignTrack && value?.isPlaying) pauseForeignPlayback(groupId, session.device_id);
   db.transaction(() => {
     if (session.current_track_uri && session.current_track_uri !== uri) {
       db.prepare("UPDATE music_requests SET status = 'played', played_at = ? WHERE session_id = ? AND status = 'playing'")
@@ -309,9 +331,9 @@ function syncSessionPlayback(groupId: string, playback: unknown, now: number): v
       `UPDATE music_sessions SET current_track_uri = ?, current_track_json = ?, playback_is_playing = ?,
        playback_progress_ms = ?, playback_updated_at = ?, playback_context_json = ? WHERE id = ?`,
     ).run(
-      uri,
-      track ? JSON.stringify(track) : null,
-      value?.isPlaying ? 1 : 0,
+      foreignTrack ? null : uri,
+      track && !foreignTrack ? JSON.stringify(track) : null,
+      value?.isPlaying && !foreignTrack ? 1 : 0,
       Number.isSafeInteger(value?.progressMs) ? value?.progressMs : 0,
       now,
       playbackContextJson,
