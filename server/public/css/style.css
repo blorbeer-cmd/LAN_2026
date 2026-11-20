@@ -779,10 +779,12 @@ textarea {
   font-size: var(--font-size-lg);
   font-weight: var(--font-weight-bold);
 }
-/* The closed "Letzter Vote" header keeps the height of its closed neighbors:
-   beside the title its meta line (title, starter, date, count, winner)
-   shrinks with an ellipsis instead of wrapping. Phones stack it below. */
-@media (min-width: 640px) { /* --bp-md */
+/* With room to spare, the closed "Letzter Vote" header keeps the height of
+   its closed neighbors: beside the title its meta line stays on one row. The
+   muted facts (title, starter, date, count) give way first with an ellipsis;
+   the winner keeps up to half the line. Narrower layouts wrap instead, so
+   neither the facts nor the winner are cut down to a few letters. */
+@media (min-width: 1280px) { /* --bp-xl */
   .event-poll-card[data-latest-vote] .event-poll-card-title {
     flex-wrap: nowrap;
   }
@@ -795,6 +797,10 @@ textarea {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+  .event-poll-card[data-latest-vote] .event-poll-best-result {
+    flex: 0 0 auto;
+    max-width: 50%;
   }
 }
 .event-poll-card-title {

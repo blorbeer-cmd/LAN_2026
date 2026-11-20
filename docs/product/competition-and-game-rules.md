@@ -464,8 +464,10 @@ Die Spielberechnung übernimmt die Platzregel des Zielkonzepts
   anonymous tied round shows no „Vorrunde“ count. While a
   Captain Draft runs in the event, Match shows only that live draft, so „Match generieren“ does
   not open Match: it reads the current draft state and shows an error toast naming the draft's game
-  („Gerade läuft ein Captain Draft für <Spiel>. …“); the draft is never cancelled from Vote. Its closed header has the same compact height as the neighboring
-  closed cards and no hover fill. Opened, it lists every game of the round sorted by score, each with
+  („Gerade läuft ein Captain Draft für <Spiel>. …“); the draft is never cancelled from Vote. Its closed header has no hover fill. From `--bp-xl` it has the same
+  compact height as the neighboring closed cards: the meta facts shorten with an ellipsis (full
+  text as tooltip) while the winner keeps up to half the line. Narrower layouts wrap the meta
+  line below the title instead of cutting it down. Opened, it lists every game of the round sorted by score, each with
   its result bar, „N Pkt. · X/Y spielen mit“ (voters who gave at least one point, out of everyone
   who voted) and the avatars of those voters; winners carry the green „Win“ chip, tied winners
   each carry it. The complete name/metadata block, bar/count block, voter avatars and answer
