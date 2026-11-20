@@ -323,6 +323,7 @@ function nowPlayingHtml(session, canManageController = false) {
 
 function queueRowHtml({ position, imageUrl, name, artist, who, durationMs, requestId = null, draggable = false }) {
   return `<div class="music-queue-row" role="row"${requestId ? ` data-music-request="${escapeHtml(requestId)}"` : ''}${draggable ? ' draggable="true"' : ''}>
+    ${draggable ? `<span class="music-queue-grip" aria-hidden="true" title="Ziehen zum Sortieren">${icon('gripVertical')}</span>` : ''}
     <span class="music-queue-position" role="cell">${position}</span>
     <span role="cell">${coverHtml(imageUrl, 'music-queue-cover')}</span>
     <span class="music-track-main" role="cell">
