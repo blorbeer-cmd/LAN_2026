@@ -425,7 +425,7 @@ ihre Registrierung ist keine Erlaubnis für neue Innengeometrie.
 | `search-field` | Natives Feld reserviert die Breite der integrierten Dropdownaktion. |
 | `profile-preview` | Nichtinteraktive Vorschau folgt der benachbarten Controlzeile. |
 | `arrival-sort-mobile`, `interactive-chip` | Bestehende Formular-/Sortierkontexte behalten Platzierung und kurze eigene Labels bei 32 px. |
-| `team-move-picker` | Der transparente Team-Picker füllt seinen Iconplatz; die Aktion „Aus dem Match entfernen“ daneben ist ein `result-actions`-Quadrat und auf allen Geräten sichtbar. |
+| `team-move-picker` | Der transparente Team-Picker füllt seinen Iconplatz. |
 | `food-position-slots`, `food-payment-marker`, `food-header` | Gleich breite Aktionsplätze der Personenzeile, 32-px-Zahlungsaktion und permanenter 44-px-Kartenkopf. |
 | `food-open-section-action`, `food-amount-copy`, `food-inline-remove` | Die Kopfaktion der offenen Bestellungen bricht nicht um; Kopieren steht als 32-px-Quadrat vor dem Betrag; Löschen einer eigenen Position ist ein zeilenhohes Symbol hinter dem Gericht. |
 | `arcade-toolbar-buttons`, `challenge-test-disclosure` | Standardhöhe mit echtem Textumbruch; Segment-/Erstellungsgeometrie bleibt beim Pilotvertrag. |
@@ -479,6 +479,7 @@ Die bisherige Ausnahme `legacy-secondary-modifier` ist in Paket 5 aufgelöst: De
 - `registry:row-icons`: Copy, dismiss and detail actions retain their 44px icon slot.
 
 - `registry:checklist-item-remove`: Packliste remove action keeps the 44px icon slot, muted, and only renders while the list is in editing mode.
+- `registry:team-player-remove`: Match player remove action: the same muted x icon button as the Packliste remove, at the end of a draw team row on desktop and touch.
 
 - `registry:checklist-task-title`: To-Do title opens the detail dialog: plain one-line text whose hit area covers the whole row, blue on row hover and struck through once done.
 - `registry:broadcast-table-open`: Durchsage message opens the detail dialog: plain one-line text whose hit area covers the whole row, blue on row hover and muted once past.
@@ -516,7 +517,7 @@ Die bisherige Ausnahme `legacy-secondary-modifier` ist in Paket 5 aufgelöst: De
 
 - `registry:food-disclosure`: Card/roster heading and person plus metadata form a composite, optionally multiline disclosure.
 
-- `registry:result-actions`: Result action in the fixed trailing slot of fixtures, draw cards and bracket boxes: plus for an open result, pencil for a recorded one. The same 32px square also carries the per-player remove action at the end of a draw team row.
+- `registry:result-actions`: Result action in the fixed trailing slot of fixtures, draw cards and bracket boxes: plus for an open result, pencil for a recorded one.
 
 - `registry:visually-hidden-control`: Native radio inputs in labeled result choices remain keyboard and screenreader accessible while their visible label owns the target.
 

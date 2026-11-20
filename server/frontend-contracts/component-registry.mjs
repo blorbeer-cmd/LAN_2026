@@ -336,6 +336,14 @@ export const components = [
     "purpose": "Packliste remove action keeps the 44px icon slot, muted, and only renders while the list is in editing mode."
   },
   {
+    "id": "team-player-remove",
+    "role": "standard-control",
+    "selector": ".team-player-remove",
+    "owner": "public/css/domains.css",
+    "contract": "components/controls.md#tokens-und-einzeilige-controls",
+    "purpose": "Match player remove action: the same muted x icon button as the Packliste remove, at the end of a draw team row on desktop and touch."
+  },
+  {
     "id": "checklist-task-title",
     "role": "composite-part",
     "selector": ".checklist-task-title",
@@ -756,7 +764,7 @@ export const components = [
     "selector": ".tournament-fixture-action, .bracket-side",
     "owner": "public/css/domains.css",
     "contract": "components/controls.md#zusatzklassen-und-zusammengesetzte-controls",
-    "purpose": "Result action in the fixed trailing slot of fixtures, draw cards and bracket boxes: plus for an open result, pencil for a recorded one. The same 32px square also carries the per-player remove action at the end of a draw team row.",
+    "purpose": "Result action in the fixed trailing slot of fixtures, draw cards and bracket boxes: plus for an open result, pencil for a recorded one.",
     "dynamicUses": [
       {
         "file": "public/js/tournamentPresentation.js",

@@ -303,7 +303,7 @@ function canRemoveDrawPlayer(draw, team) {
 }
 
 function removeDrawPlayerButtonHtml(draw, player) {
-  return `<button type="button" class="tournament-fixture-action" data-remove-draw-player="${draw.id}" data-player="${escapeHtml(player.id)}" aria-label="${escapeHtml(player.name)} entfernen" title="Aus dem Match entfernen">${icon('userMinus')}</button>`;
+  return `<button type="button" class="icon-btn team-player-remove" data-remove-draw-player="${draw.id}" data-player="${escapeHtml(player.id)}" aria-label="${escapeHtml(player.name)} entfernen" title="Aus dem Match entfernen">${icon('x')}</button>`;
 }
 
 function drawIncludesMe(draw) {
