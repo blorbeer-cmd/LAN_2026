@@ -12,7 +12,7 @@
   <link rel="stylesheet" href="/css/domains.css?v=8" />
   <link rel="stylesheet" href="/css/overlays.css?v=3" />
   <link rel="stylesheet" href="/css/arcade.css?v=7" />
-  <link rel="stylesheet" href="/css/kiosk.css?v=38" />
+  <link rel="stylesheet" href="/css/kiosk.css?v=41" />
 </head>
 <body class="kiosk-body">
   <div id="kiosk-root">
@@ -34,7 +34,10 @@
 
     <main id="kiosk-dashboard" class="kiosk-grid">
       <section class="kiosk-card">
-        <h2><span data-domain-icon="live"></span> Live-Status</h2>
+        <header class="kiosk-live-heading">
+          <h2><span data-domain-icon="live"></span> Live-Status</h2>
+          <div id="kiosk-live-games" hidden></div>
+        </header>
         <div id="kiosk-live"><div class="empty-state">Lädt…</div></div>
       </section>
 
@@ -61,6 +64,6 @@
   </div>
 
   <script src="/socket.io/socket.io.js"></script>
-  <script type="module" src="/js/kiosk.js?v=38"></script>
+  <script type="module" src="/js/kiosk.js?v=40"></script>
 </body>
 </html>

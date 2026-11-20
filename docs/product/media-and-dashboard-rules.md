@@ -26,22 +26,22 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu TV-Kiosk, Jam
   Turnier/Ergebnisse. The Jam bar sits between the banner and the cards. Banner, header and Jam bar share the card edges and the card
   content inset. A card without data centers one short line at content size in the whole card.
 - **Live-Status**: shows every participant including offline ones, playing first. Like Home, but
-  without the own pause toggle („Dein Status“), a single-line „Gerade aktiv“ strip above the roster
+  without the own pause toggle („Dein Status“), a single-line strip beside the Live-Status heading
   names each running game with its player count (people icon plus number, „N Spieler“ as accessible
   name), largest group first; it is omitted while nobody plays and never wraps: game names stay
   whole, games that do not fit, the smallest groups first, are summed up in one compact „+N“ label
   („N weitere Spiele“ as accessible name). The largest game's whole name comes before that label;
   only a largest game too long on its own shortens its name, never below about six characters next
-  to its count. Each row shows avatar, name with a
-  second line below it, and a status dot instead of a text badge: filled green with a glow for
-  „Spielt“, filled blue for „Online“, an amber ring for „Pause“ and a hollow grey ring for
-  „Offline“; the German state stays available as the dot's accessible name and tooltip. The second
-  line names the running game (foreground game first) for a playing participant and the state
-  otherwise, so every row has the same height. It uses the fewest columns (up to four, each at least
-  140 px wide) that show everyone; long names and games are shortened with an ellipsis instead of
-  widening a column. If four columns still do not fit, the rows tighten first. Only a roster too
-  large for four tight columns rotates pages, marked by dots, as a last resort; the strip stays on
-  every page.
+  to its count. Each player row shows an avatar, name, and status marker: a glowing green diamond for
+  „Spielt“, a filled blue circle for „Online“, an amber ring for „Pause“ and a hollow grey ring for
+  „Offline“. In forced colors, the diamond and circle remain filled, the pause ring is dashed and
+  the offline ring is solid. The German state stays available as the marker's accessible name and tooltip. The roster
+  uses four columns on wide cards and fewer on narrow cards, budgeting 140 px per column including spacing. Short
+  rosters keep the compact row height and start at the top. Long player names are shortened
+  with an ellipsis instead of
+  widening a column. If the roster exceeds the available height, the rows tighten first. Larger
+  rosters rotate pages, marked by dots. The game counts
+  stay in the heading while pages rotate. On narrow cards the strip sits below the heading text.
 - **Newsticker**: a timeline of playful, clearly invented headlines. The server writes one new
   line every three to ten minutes for the whole event, so every Broadcast screen of that event shows the same
   feed; a new feed starts with a full set of ten lines. A screen that runs on a signed-in account
