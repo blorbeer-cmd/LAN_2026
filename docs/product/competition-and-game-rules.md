@@ -233,7 +233,8 @@ Die Spielberechnung übernimmt die Platzregel des Zielkonzepts
   default. Every group member manages the catalog from the game's detail dialog: editing,
   process-name mappings (they control automatic game detection on participant computers),
   „In Katalog übernehmen“/„Zurück zu Vorschlägen“ and „Spiel löschen“ after the usual password
-  confirmation. Members may also add a catalog game directly instead of suggesting it. Deleting
+  confirmation. The view creates every new game as a suggestion; anyone takes it into the
+  catalog with „In Katalog übernehmen“ (the API also accepts a direct catalog entry). Deleting
   a game that already has play time, votes, drafts, draws, matches or tournaments would erase
   that history too, and a game on the ballot of a running vote would vanish from it, so such a
   game can only be deleted by community admins.
