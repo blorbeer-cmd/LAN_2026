@@ -271,6 +271,42 @@ test('migration 137 keeps rounds and tips, rolls back on failure and limits uniq
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
 });
 
+test('migration 139 lets a Jam track wait twice, keeps requests, rolls back on failure and replays safely', () => {
+  const dbFile = makeTempDbPath('duplicate-jam-requests');
+  runMigrations(dbFile);
+  const fixture = new Database(dbFile);
+  // Pre-139 shape: one active request per track and session.
+  fixture.exec(`DROP INDEX IF EXISTS idx_music_requests_session_track;
+    CREATE UNIQUE INDEX idx_music_requests_active_track ON music_requests(session_id, track_uri)
+      WHERE status IN ('sending', 'queued', 'playing');
+    DELETE FROM schema_migrations WHERE version=139;
+    INSERT INTO events(id,name,starts_at,group_id,status,event_type_key) VALUES('dup-event','Jam LAN',1,'default-group','published','lan');
+    INSERT INTO players(id,name,api_key,created_at) VALUES('dup-player','Ann','dup-key',1);
+    INSERT INTO music_sessions(id,group_id,host_player_id,device_id,device_name,status,started_at,event_id)
+      VALUES('dup-session','default-group',NULL,'speaker','Boxen','active',1,'dup-event');
+    INSERT INTO music_requests(id,session_id,track_uri,track_id,track_name,artist_name,duration_ms,requested_by,requested_by_name_snapshot,status,created_at)
+      VALUES('dup-a','dup-session','spotify:track:AAAAAAAAAAAAAAAAAAAAAA','AAAAAAAAAAAAAAAAAAAAAA','Song','Band',1000,'dup-player','Ann','queued',1);
+    CREATE TABLE idx_music_requests_session_track (blocker INTEGER);`);
+  const requests = fixture.prepare('SELECT * FROM music_requests ORDER BY id').all();
+  fixture.close();
+  assert.throws(() => runMigrations(dbFile), /already a table named/);
+  const failed = new Database(dbFile);
+  assert.ok(failed.prepare("SELECT 1 FROM sqlite_master WHERE name='idx_music_requests_active_track'").get(),
+    'a failed migration keeps the old unique index');
+  assert.equal(failed.prepare('SELECT 1 FROM schema_migrations WHERE version=139').get(), undefined);
+  failed.exec('DROP TABLE idx_music_requests_session_track');
+  failed.close();
+  runMigrations(dbFile);
+  runMigrations(dbFile);
+  const migrated = new Database(dbFile);
+  assert.deepEqual(migrated.prepare('SELECT * FROM music_requests ORDER BY id').all(), requests);
+  migrated.exec(`INSERT INTO music_requests(id,session_id,track_uri,track_id,track_name,artist_name,duration_ms,requested_by,requested_by_name_snapshot,status,created_at)
+    VALUES('dup-b','dup-session','spotify:track:AAAAAAAAAAAAAAAAAAAAAA','AAAAAAAAAAAAAAAAAAAAAA','Song','Band',1000,'dup-player','Ann','queued',2)`);
+  assert.equal(migrated.prepare("SELECT COUNT(*) FROM music_requests WHERE session_id='dup-session'").pluck().get(), 2);
+  migrated.close();
+  fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
+});
+
 test('migration 138 names the creator of running Durchsagen, rolls back on failure and replays without changes', () => {
   const dbFile = makeTempDbPath('push-actor');
   runMigrations(dbFile);
@@ -1896,10 +1932,10 @@ test('records the complete migration history and does not duplicate it on restar
     name: string;
   }>;
 
-  assert.equal(migrations.length, 138);
+  assert.equal(migrations.length, 139);
   assert.deepEqual(
     migrations.map((migration) => migration.version),
-    Array.from({ length: 138 }, (_, index) => index + 1),
+    Array.from({ length: 139 }, (_, index) => index + 1),
   );
   assert.ok(migrations.every((migration) => migration.name.length > 0));
   for (const table of ['scribble_drawings', 'scribble_drawing_reactions', 'scribble_drawing_favorites']) {
@@ -2501,8 +2537,8 @@ test('runs migrations in ascending version order regardless of declaration order
   );
   assert.deepEqual(
     order,
-    Array.from({ length: 138 }, (_, index) => index + 1),
-    'every version 1..138 runs exactly once',
+    Array.from({ length: 139 }, (_, index) => index + 1),
+    'every version 1..139 runs exactly once',
   );
 });
 
