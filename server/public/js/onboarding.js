@@ -65,13 +65,13 @@ export function buildOnboardingSteps() {
     },
     {
       title: 'Match',
-      text: 'Hier lost ihr ausgeglichene Teams aus und legt Turniere an. Admins können einen Captain Draft starten, bei dem Captains ihre Mitspieler wählen.',
+      text: 'Hier lost ihr ausgeglichene Teams aus und legt Turniere an. Jeder kann einen Captain Draft starten, bei dem Captains ihre Mitspieler wählen.',
       view: 'matchmaking',
       target: navigationTarget('matchmaking'),
     },
     {
       title: 'Vote',
-      text: 'Hier startet ihr Abstimmungen, welche Spiele als Nächstes gespielt werden, und seht die Top 10 nach Bock-Level. Bei Gleichstand können Admins direkt aus dem letzten Ergebnis eine Stichwahl starten.',
+      text: 'Hier startet ihr Abstimmungen, welche Spiele als Nächstes gespielt werden, und seht die Top 10 nach Bock-Level. Bei Gleichstand kann jeder direkt aus dem letzten Ergebnis eine Stichwahl starten.',
       view: 'votes',
       target: navigationTarget('votes'),
     },

@@ -52,8 +52,16 @@ test('organisation communication is roles-gated and event-scoped inside the one 
       assert.equal((await scoped(app, 'put', '/api/events/' + eventA.body.id + '/participants', alice)
         .send({ playerIds: [alice.account.id] })).status, 200);
 
-      // Info-board moderation is vertical: a plain member cannot write there.
-      assert.equal((await scoped(app, 'post', '/api/info', bob).send({ title: 'No', content: 'member' })).status, 403);
+      // Every member maintains the info board; deleting still asks for the
+      // shared password confirmation.
+      const memberInfo = await scoped(app, 'post', '/api/info', bob).send({ title: 'Member entry', content: 'member' });
+      assert.equal(memberInfo.status, 201, JSON.stringify(memberInfo.body));
+      const memberInfoEdit = await scoped(app, 'patch', '/api/info/' + memberInfo.body.id, bob).send({ content: 'member edited' });
+      assert.equal(memberInfoEdit.status, 200, JSON.stringify(memberInfoEdit.body));
+      assert.equal(memberInfoEdit.body.content, 'member edited');
+      assert.equal((await scoped(app, 'delete', '/api/info/' + memberInfo.body.id, bob)).body.code, 'reauth_required');
+      assert.equal((await request(app).post('/api/auth/reauth').set('Cookie', bob.cookie).send({ password: bob.password })).status, 204);
+      assert.equal((await scoped(app, 'delete', '/api/info/' + memberInfo.body.id, bob)).status, 204);
       const infoRoom = await scoped(app, 'post', '/api/info', alice)
         .send({ title: 'Room entry', content: 'group room' });
       const infoEventA = await scoped(app, 'post', '/api/info', alice)

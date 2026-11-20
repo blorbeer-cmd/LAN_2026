@@ -1029,10 +1029,11 @@ export function renderVotes(container, ctx) {
   }).join('');
 
   // A tie in the most recent round offers the runoff right in that card's
-  // header, like every other primary action on this page.
+  // header, like every other primary action on this page. Every member may
+  // start it (see routes/votes.ts's /start).
   const latestRound = historyCache?.[0];
   const hasOpenRunoff = openRounds.some((round) => round.sourceRound === latestRound?.round);
-  const showRunoff = isGroupAdmin() && !hasOpenRunoff && Boolean(latestRound?.totalVoters) && latestRound.winnerGameIds?.length > 1;
+  const showRunoff = !hasOpenRunoff && Boolean(latestRound?.totalVoters) && latestRound.winnerGameIds?.length > 1;
 
   container.innerHTML = `
     <h1 class="view-title">Vote</h1>
