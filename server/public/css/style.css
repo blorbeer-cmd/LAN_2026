@@ -779,6 +779,30 @@ textarea {
   font-size: var(--font-size-lg);
   font-weight: var(--font-weight-bold);
 }
+/* With room to spare, the closed "Letzter Vote" header keeps the height of
+   its closed neighbors: beside the title its meta line stays on one row. The
+   muted facts (title, starter, date, count) give way first with an ellipsis;
+   the winner keeps up to half the line. Narrower layouts wrap instead, so
+   neither the facts nor the winner are cut down to a few letters. */
+@media (min-width: 1280px) { /* --bp-xl */
+  .event-poll-card[data-latest-vote] .event-poll-card-title {
+    flex-wrap: nowrap;
+  }
+  .event-poll-card[data-latest-vote] .event-poll-card-meta-line {
+    flex: 1 1 0;
+    flex-wrap: nowrap;
+  }
+  .event-poll-card[data-latest-vote] .event-poll-card-meta-line > .muted {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .event-poll-card[data-latest-vote] .event-poll-best-result {
+    flex: 0 0 auto;
+    max-width: 50%;
+  }
+}
 .event-poll-card-title {
   display: flex;
   flex-direction: column;

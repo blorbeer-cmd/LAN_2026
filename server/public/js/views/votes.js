@@ -481,7 +481,7 @@ function renderOpenRound(votes, { mineReady, hasSubmitted, totalPlayers }) {
           <span class="event-poll-card-title vote-round-heading">
           <strong id="vote-current-title-${votes.round}">${votes.title ? escapeHtml(votes.title) : `Abstimmung läuft · Runde ${votes.round}`}</strong>
           <span class="event-poll-card-meta-line">
-            <span class="muted" data-vote-participation>${votes.totalVoters}/${totalPlayers} abgegeben</span>
+            <span class="muted">${votes.createdByName ? `${escapeHtml(votes.createdByName)} · ` : ''}<span data-vote-participation>${votes.totalVoters}/${totalPlayers} abgegeben</span></span>
             <span class="event-poll-answer-inline">${answer}</span>
           </span>
           </span>
@@ -520,7 +520,7 @@ function submissionCountLabel(count) {
 }
 
 function roundMetaText(h) {
-  return [h.title, formatDateTime(h.closedAt), isUntitledRunoff(h) ? 'Stichwahl' : null, submissionCountLabel(h.totalVoters)]
+  return [h.title, h.createdByName, formatDateTime(h.closedAt), isUntitledRunoff(h) ? 'Stichwahl' : null, submissionCountLabel(h.totalVoters)]
     .filter(Boolean)
     .join(' · ');
 }
@@ -666,7 +666,7 @@ function renderLatestVoteCard({ showRunoff }) {
           <span class="event-poll-card-title">
             <strong id="vote-current-result-title">Letzter Vote</strong>
             <span class="event-poll-card-meta-line">
-              <span class="muted">${escapeHtml(roundMetaText(h))}</span>
+              <span class="muted" title="${escapeHtml(roundMetaText(h))}">${escapeHtml(roundMetaText(h))}</span>
               ${winners.length ? `<span class="event-poll-best-result">${WIN_CHIP}<span>${escapeHtml(winners.join(', '))}</span></span>` : ''}
             </span>
           </span>
@@ -701,7 +701,9 @@ function renderHistory() {
   return `<div class="stack">${olderRounds
     .map((h) => {
       const winners = winnerNames(h);
-      const meta = [roundTitle(h), formatDateTime(h.closedAt), submissionCountLabel(h.totalVoters)].join(' · ');
+      const meta = [roundTitle(h), h.createdByName, formatDateTime(h.closedAt), submissionCountLabel(h.totalVoters)]
+        .filter(Boolean)
+        .join(' · ');
       const round = escapeHtml(String(h.round));
       const expanded = expandedHistoryRounds.has(String(h.round));
       return `
