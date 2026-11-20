@@ -625,10 +625,8 @@
   justify-self: center;
 }
 .kiosk-live-grid {
-  /* Column count is a JS decision (settleLiveLayout in kiosk.js), not a CSS
-     width breakpoint: it picks the fewest columns that show the whole
-     roster without clipping, so it reacts to how many players there
-     actually are, not just how wide this card happens to be. */
+  /* The roster and its paging probe share the column count chosen for
+     the card width in measureLiveLayout (kiosk.js). */
   grid-template-columns: repeat(var(--live-columns, 1), minmax(0, 1fr));
   flex: 1;
   min-height: 0;
@@ -637,13 +635,6 @@
      which is exactly what kiosk.js measures to decide whether to page. The
      parent #kiosk-live already clips visually; this only controls what the
      fit check can see. */
-  /* stretch, not start: a short roster used to pack at the top and leave the
-     rest of the tile empty. Stretching lets the (few) rows themselves grow
-     to fill the available height instead of the text/avatars growing, which
-     would fight readability across very different roster sizes. Only free
-     space is redistributed, so a full-to-overflowing roster behaves exactly
-     as before and the fit check above is unaffected. */
-  align-content: stretch;
 }
 .kiosk-live-row {
   display: flex;
@@ -666,44 +657,36 @@
   gap: var(--space-1);
   padding: var(--space-1) var(--space-2);
 }
-/* Name above the running game (or, without one, the state), so every row
-   keeps the same two-line height whatever its participant is doing. */
-.kiosk-live-text {
-  display: flex;
+.kiosk-live-row .player-name {
   flex: 1;
-  flex-direction: column;
-  min-width: 0;
 }
-.kiosk-live-detail {
+.kiosk-live-heading {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-3);
+  margin-bottom: var(--space-3);
+}
+.kiosk-live-heading h2 {
+  max-width: 100%;
+  margin: 0;
+}
+#kiosk-live-games {
+  /* Give one readable game and its count room beside the title. On narrow
+     cards the strip moves below the title and uses the full card width. */
+  flex: 1 1 8em;
   min-width: 0;
-  overflow: hidden;
-  color: var(--text-muted);
   font-size: var(--kiosk-font-meta);
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
-.kiosk-live-row.is-playing .kiosk-live-detail {
-  color: var(--state-playing);
-}
-/* "Gerade aktiv" above the roster, as on Home: one pill per running game.
-   It stays one line so it never pushes roster rows onto another page; with
-   many games the smallest groups collapse into one compact "+N" pill
-   (fitKioskLiveActive) instead of every name shrinking. Passive
-   TV labels in the chip look at the TV meta size, not the interactive .chip
-   control. */
+/* Keep one line of game counts, folding the smallest groups into "+N"
+   (fitKioskLiveActive) when the available width runs out. */
 .kiosk-live-active {
   display: flex;
-  flex-shrink: 0;
   align-items: center;
   gap: var(--space-2);
-  min-width: 0;
   overflow: hidden;
-  font-size: var(--kiosk-font-meta);
-}
-.kiosk-live-active-label {
-  flex-shrink: 0;
-  color: var(--text-muted);
-  white-space: nowrap;
+  line-height: var(--line-height-tight);
 }
 .kiosk-live-game {
   /* No min-width: 0 here: a pill never shrinks below its readable name and
@@ -745,10 +728,8 @@
   align-items: center;
   gap: var(--space-1);
 }
-/* The state is a dot instead of a text badge, which leaves room for a
-   fourth column at the larger TV text size. Each state also differs in
-   shape (glow, ring, hollow), and the German label stays in aria-label and
-   title, so the meaning never rests on the color alone. */
+/* The compact marker leaves room for a fourth column at TV text size.
+   Shape and fill distinguish states, including in forced colors. */
 .kiosk-live-status {
   flex-shrink: 0;
   width: var(--space-4);
@@ -758,6 +739,8 @@
 }
 .kiosk-live-status.is-playing {
   background: var(--state-playing);
+  border-radius: 0;
+  transform: rotate(45deg) scale(0.75);
   box-shadow: 0 0 var(--space-2) var(--state-playing);
 }
 .kiosk-live-status.is-online {
@@ -770,6 +753,19 @@
 .kiosk-live-status.is-offline {
   border-color: var(--state-offline);
   background: transparent;
+}
+@media (forced-colors: active) {
+  .kiosk-live-status {
+    forced-color-adjust: none;
+    border-color: CanvasText;
+  }
+  .kiosk-live-status:is(.is-playing, .is-online) {
+    background: CanvasText;
+  }
+  .kiosk-live-status.is-paused {
+    background: transparent;
+    border-style: dashed;
+  }
 }
 .kiosk-live-row.is-offline .player-name {
   color: var(--text-muted);
