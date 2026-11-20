@@ -13,8 +13,7 @@
   --kiosk-font-meta: var(--font-size-lg);
   font-size: var(--kiosk-font);
 }
-.kiosk-body .badge,
-.kiosk-body .section-title {
+.kiosk-body .badge {
   font-size: var(--kiosk-font-meta);
 }
 
@@ -813,6 +812,9 @@
 }
 .kiosk-vote-final-title {
   margin: 0;
+  /* Secondary step of the Broadcast scale; .section-title itself belongs to
+     the shared component and keeps its size elsewhere. */
+  font-size: var(--kiosk-font-meta);
 }
 .kiosk-vote-winner-section {
   display: grid;
