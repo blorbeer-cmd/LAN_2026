@@ -294,6 +294,18 @@ function playerNamesHtml(players) {
     ? `<strong>${escapeHtml(player.name)}</strong>` : escapeHtml(player.name)).join(', ');
 }
 
+// Removing a player is offered wherever the server can accept it: an open
+// draw keeps at least two teams, a recorded result keeps every team (its
+// place decides everyone else's points). Tournament lineups stay frozen.
+function canRemoveDrawPlayer(draw, team) {
+  if (draw.tournamentId) return false;
+  return team.players.length > 1 || (!draw.matchId && draw.teams.length > 2);
+}
+
+function removeDrawPlayerButtonHtml(draw, player) {
+  return `<button type="button" class="tournament-fixture-action" data-remove-draw-player="${draw.id}" data-player="${escapeHtml(player.id)}" aria-label="${escapeHtml(player.name)} entfernen" title="Aus dem Match entfernen">${icon('userMinus')}</button>`;
+}
+
 function drawIncludesMe(draw) {
   return draw.teams.some((team) => includesMe(team.players));
 }
@@ -353,7 +365,7 @@ function renderDrawCard(draw, { editable: editableInput, showGame = false, prima
                   currentIndex: i,
                   playerName: p.name,
                   attributes: `data-move-draw-select="${draw.id}" data-move-player="${p.id}"`,
-                })}</div>`
+                })}${canRemoveDrawPlayer(draw, t) ? removeDrawPlayerButtonHtml(draw, p) : ''}</div>`
               : '</div>'
           }`
           )
@@ -621,22 +633,47 @@ function wireDrawCards(container, ctx) {
       }));
     });
   });
+  function applyUpdatedDraw(updated) {
+    if (state.lastMatchmaking?.id === updated.id) state.lastMatchmaking = updated;
+    if (historyCache) {
+      const idx = historyCache.findIndex((draw) => draw.id === updated.id);
+      if (idx !== -1) historyCache[idx] = updated;
+    }
+    const openIndex = openDrawsCache.findIndex((draw) => draw.id === updated.id);
+    if (openIndex !== -1) openDrawsCache[openIndex] = updated;
+  }
+
   async function moveDrawPlayer(drawId, playerId, toTeamIndex) {
     try {
-      const updated = await api.matchmaking.moveDrawPlayer(drawId, playerId, toTeamIndex);
-      if (state.lastMatchmaking?.id === drawId) state.lastMatchmaking = updated;
-      if (historyCache) {
-        const idx = historyCache.findIndex((draw) => draw.id === drawId);
-        if (idx !== -1) historyCache[idx] = updated;
-      }
-      const openIndex = openDrawsCache.findIndex((draw) => draw.id === drawId);
-      if (openIndex !== -1) openDrawsCache[openIndex] = updated;
+      applyUpdatedDraw(await api.matchmaking.moveDrawPlayer(drawId, playerId, toTeamIndex));
       ctx.rerender();
     } catch (err) {
       showToast(err.message, { error: true });
       ctx.rerender();
     }
   }
+
+  container.querySelectorAll('[data-remove-draw-player]').forEach((btn) => btn.addEventListener('click', async () => {
+    const draw = findDrawById(btn.dataset.removeDrawPlayer);
+    const team = draw?.teams.find((entry) => entry.players.some((player) => player.id === btn.dataset.player));
+    const player = team?.players.find((entry) => entry.id === btn.dataset.player);
+    if (!player) return;
+    const consequence = draw.matchId
+      ? `Das Ergebnis bleibt bestehen, aber ${player.name} erhält dafür keine Punkte mehr.`
+      : team.players.length === 1 ? 'Das Team fällt dann weg.' : '';
+    const confirmed = await confirmDialog(`${player.name} aus diesem Match entfernen? ${consequence}`.trim(), {
+      title: 'Spieler entfernen', confirmText: 'Entfernen', danger: true,
+    });
+    if (!confirmed) return;
+    try {
+      applyUpdatedDraw(await api.matchmaking.removeDrawPlayer(draw.id, player.id));
+      ctx.rerender();
+      showToast(`${player.name} entfernt.`);
+    } catch (err) {
+      showToast(err.message, { error: true });
+      ctx.rerender();
+    }
+  }));
 
   container.querySelectorAll('[data-move-draw-select]').forEach((select) => {
     select.addEventListener('change', () => {
@@ -820,7 +857,12 @@ function historyMatchHtml(draw) {
           : { balanced: false, current: true })}
         ${team.score != null ? `<span class="matchmaking-history-team-score${won ? ' is-win' : ''}">${team.score}</span>` : ''}
       </div>
-      <div class="muted matchmaking-history-players">${playerNamesHtml(team.players)}</div>
+      ${canRemoveDrawPlayer(draw, team)
+        ? `<div class="matchmaking-history-players matchmaking-history-player-rows">${team.players.map((player) => `<div class="team-player-move-row">
+            <span class="team-player-name muted">${player.id === getMyId() ? `<strong>${escapeHtml(player.name)}</strong>` : escapeHtml(player.name)}</span>
+            ${removeDrawPlayerButtonHtml(draw, player)}
+          </div>`).join('')}</div>`
+        : `<div class="muted matchmaking-history-players">${playerNamesHtml(team.players)}</div>`}
     </div>`;
   }).join('');
   const seating = draw.seatConflicts > 0

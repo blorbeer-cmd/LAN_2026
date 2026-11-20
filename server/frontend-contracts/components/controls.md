@@ -425,7 +425,7 @@ ihre Registrierung ist keine Erlaubnis für neue Innengeometrie.
 | `search-field` | Natives Feld reserviert die Breite der integrierten Dropdownaktion. |
 | `profile-preview` | Nichtinteraktive Vorschau folgt der benachbarten Controlzeile. |
 | `arrival-sort-mobile`, `interactive-chip` | Bestehende Formular-/Sortierkontexte behalten Platzierung und kurze eigene Labels bei 32 px. |
-| `team-move-picker` | Der transparente Team-Picker füllt seinen Iconplatz. |
+| `team-move-picker` | Der transparente Team-Picker füllt seinen Iconplatz; die Aktion „Aus dem Match entfernen“ daneben ist ein `result-actions`-Quadrat und auf allen Geräten sichtbar. |
 | `food-position-slots`, `food-payment-marker`, `food-header` | Gleich breite Aktionsplätze der Personenzeile, 32-px-Zahlungsaktion und permanenter 44-px-Kartenkopf. |
 | `food-open-section-action`, `food-amount-copy`, `food-inline-remove` | Die Kopfaktion der offenen Bestellungen bricht nicht um; Kopieren steht als 32-px-Quadrat vor dem Betrag; Löschen einer eigenen Position ist ein zeilenhohes Symbol hinter dem Gericht. |
 | `arcade-toolbar-buttons`, `challenge-test-disclosure` | Standardhöhe mit echtem Textumbruch; Segment-/Erstellungsgeometrie bleibt beim Pilotvertrag. |
@@ -516,7 +516,7 @@ Die bisherige Ausnahme `legacy-secondary-modifier` ist in Paket 5 aufgelöst: De
 
 - `registry:food-disclosure`: Card/roster heading and person plus metadata form a composite, optionally multiline disclosure.
 
-- `registry:result-actions`: Result action in the fixed trailing slot of fixtures, draw cards and bracket boxes: plus for an open result, pencil for a recorded one.
+- `registry:result-actions`: Result action in the fixed trailing slot of fixtures, draw cards and bracket boxes: plus for an open result, pencil for a recorded one. The same 32px square also carries the per-player remove action at the end of a draw team row.
 
 - `registry:visually-hidden-control`: Native radio inputs in labeled result choices remain keyboard and screenreader accessible while their visible label owns the target.
 

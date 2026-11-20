@@ -756,7 +756,7 @@ export const components = [
     "selector": ".tournament-fixture-action, .bracket-side",
     "owner": "public/css/domains.css",
     "contract": "components/controls.md#zusatzklassen-und-zusammengesetzte-controls",
-    "purpose": "Result action in the fixed trailing slot of fixtures, draw cards and bracket boxes: plus for an open result, pencil for a recorded one.",
+    "purpose": "Result action in the fixed trailing slot of fixtures, draw cards and bracket boxes: plus for an open result, pencil for a recorded one. The same 32px square also carries the per-player remove action at the end of a draw team row.",
     "dynamicUses": [
       {
         "file": "public/js/tournamentPresentation.js",

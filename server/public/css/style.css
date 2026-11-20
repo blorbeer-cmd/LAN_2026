@@ -3043,6 +3043,15 @@ button.profile-row-main {
   margin-top: var(--space-1);
   font-size: var(--font-size-xs);
 }
+/* A recorded result whose players can still be removed lists them as rows,
+   so every name gets its own trailing remove action. */
+.matchmaking-history-player-rows {
+  display: grid;
+  gap: var(--space-1);
+}
+.matchmaking-history-player-rows .team-player-name {
+  flex: 1;
+}
 .matchmaking-history-team-context {
   margin-top: var(--space-1);
   font-size: var(--font-size-xs);
