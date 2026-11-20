@@ -850,3 +850,32 @@ test('a points ballot can adopt its points as the own Bock, atomically and only 
   assert.deepEqual(await bock(), Object.fromEntries(mine.body.entries.map((e: { gameId: string; points: number }) => [e.gameId, e.points])));
   await request(app).post('/api/votes/cancel');
 });
+
+test('rounds name their starter from the session; legacy and deleted starters stay unnamed', async () => {
+  type Round = { round: number; createdByName: string | null };
+  const named = (rounds: Round[], round: number) => rounds.find((entry) => entry.round === round)?.createdByName;
+  // The starter comes from the session; a client-sent creator is ignored.
+  const started = await request(app).post('/api/votes/start').send({ mode: 'single', createdBy: playerB, createdByName: 'Fake' });
+  assert.equal(started.status, 201);
+  const round = started.body.round as number;
+  const starter = db.prepare('SELECT p.name FROM vote_rounds vr JOIN players p ON p.id = vr.created_by WHERE vr.group_id = ? AND vr.round = ?')
+    .get(DEFAULT_GROUP_ID, round) as { name: string };
+  assert.notEqual(starter.name, 'Voter B');
+  assert.equal(named((await request(app).get('/api/votes')).body.openRounds, round), starter.name);
+  assert.equal(named((await request(app).get('/api/votes/kiosk')).body.openRounds, round), starter.name);
+
+  assert.equal((await request(app).post('/api/votes').send({ round, playerId: playerB, gameId: gameCs2 })).status, 200);
+  assert.equal((await request(app).post('/api/votes/close').send({ round })).status, 200);
+  assert.equal((await request(app).get('/api/votes/kiosk')).body.recentResult.createdByName, starter.name);
+  assert.equal(named((await request(app).get('/api/votes/history')).body.history, round), starter.name);
+  assert.equal((await request(app).get(`/api/votes/history/${round}`)).body.createdByName, starter.name);
+
+  // vote_rounds.created_by has no foreign key: a deleted account leaves a
+  // stale id that matches nobody, a pre-migration round leaves NULL.
+  for (const createdBy of ['deleted-account-id', null]) {
+    db.prepare('UPDATE vote_rounds SET created_by = ? WHERE group_id = ? AND round = ?').run(createdBy, DEFAULT_GROUP_ID, round);
+    assert.equal(named((await request(app).get('/api/votes/history')).body.history, round), null);
+    assert.equal((await request(app).get(`/api/votes/history/${round}`)).body.createdByName, null);
+    assert.equal((await request(app).get('/api/votes/kiosk')).body.recentResult.createdByName, null);
+  }
+});

@@ -69,7 +69,10 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu TV-Kiosk, Jam
   The displayed round vertically centers its participant
   count in the status header and show the current ranking in one column, with every game name
   replaced by a stable, differently sized random-character mask plus blur so the room display
-  cannot influence voting. Single-choice runoffs are explicitly labeled „Stichwahl“. Rows keep
+  cannot influence voting. Single-choice runoffs are explicitly labeled „Stichwahl“. The muted
+  line below the heading — of the running round and of the revealed result — names the title and
+  the starter („von <Name>“); like in the Vote view, legacy rounds and deleted starters show no
+  name. Rows keep
   their normal size; the card shows as many as fit and re-fits whenever its height changes, for
   example when entering fullscreen. After a round closes, a five-second countdown hides every
   result and reuses Arcade's large layered gradient/glow number with its per-second pop effect.

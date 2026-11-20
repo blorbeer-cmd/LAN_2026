@@ -657,6 +657,12 @@ function renderKioskVoteRows(vote, { concealed = false, highlightLeading = true 
   return `<div class="kiosk-vote-results">${rows.join('')}</div>`;
 }
 
+// Title and starter share the muted line under the vote heading. Rounds older
+// than the creator column, or whose starter deleted the account, name nobody.
+function kioskVoteSubtitle(vote) {
+  return [vote.title, vote.createdByName ? `von ${vote.createdByName}` : null].filter(Boolean).join(' · ');
+}
+
 function renderKioskVoteWinners(vote) {
   const scored = vote.results.filter((result) => result.score > 0);
   const maxScore = Math.max(...scored.map((result) => result.score));
@@ -798,7 +804,7 @@ function renderVotes(votes) {
         ${renderKioskVoteWinners(result)}
         <div class="kiosk-vote-final-header">
           <div class="section-title kiosk-vote-final-title">Ergebnis im Detail</div>
-          <span class="muted">${result.title ? `${escapeHtml(result.title)} · ` : ''}${result.totalVoters} Teilnehmer</span>
+          <span class="muted">${escapeHtml([kioskVoteSubtitle(result), `${result.totalVoters} Teilnehmer`].filter(Boolean).join(' · '))}</span>
         </div>
         ${renderKioskVoteRows(result, { highlightLeading: false })}
       </div>`;
@@ -813,7 +819,7 @@ function renderVotes(votes) {
       <div class="kiosk-vote-header">
         <span>
           <strong>${heading}</strong>
-          ${vote.title ? `<span class="muted">${escapeHtml(vote.title)}</span>` : ''}
+          ${kioskVoteSubtitle(vote) ? `<span class="muted">${escapeHtml(kioskVoteSubtitle(vote))}</span>` : ''}
         </span>
         <span class="badge badge-playing">${vote.totalVoters} / ${eligibleVoters} abgestimmt</span>
       </div>
