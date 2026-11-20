@@ -518,9 +518,61 @@ musicRouter.patch('/sessions/device', asyncRoute(async (req, res) => {
   }
 }));
 
+const SPOTIFY_LINK_MAX_LENGTH = 300;
+
+// Share links (`https://open.spotify.com/intl-de/track/<id>?si=…`) and
+// Spotify URIs (`spotify:track:<id>`) name one track or playlist directly.
+// Returns null for plain search text, 'invalid' for a Spotify link this Jam
+// cannot use (album, artist, malformed id, short link).
+export function parseSpotifyLink(query: string): { kind: 'track' | 'playlist'; id: string } | 'invalid' | null {
+  const uri = /^spotify:(track|playlist):([A-Za-z0-9]{22})$/.exec(query);
+  if (uri) return { kind: uri[1] as 'track' | 'playlist', id: uri[2] };
+  if (/^spotify:/i.test(query)) return 'invalid';
+  let url: URL;
+  try {
+    url = new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(query) ? query : `https://${query}`);
+  } catch {
+    return null;
+  }
+  const host = url.hostname.toLowerCase();
+  if (host === 'spotify.link' || host.endsWith('.spotify.link')) return 'invalid';
+  if (host !== 'open.spotify.com' && host !== 'play.spotify.com') return null;
+  const parts = url.pathname.split('/').filter(Boolean);
+  if (/^intl-[a-z]{2}(-[a-z]{2})?$/i.test(parts[0] ?? '')) parts.shift();
+  if ((parts[0] === 'track' || parts[0] === 'playlist') && /^[A-Za-z0-9]{22}$/.test(parts[1] ?? '') && parts.length === 2) {
+    return { kind: parts[0] as 'track' | 'playlist', id: parts[1] };
+  }
+  return 'invalid';
+}
+
+async function searchSpotifyLink(groupId: string, link: { kind: 'track' | 'playlist'; id: string }) {
+  if (link.kind === 'track') {
+    const track = validTrack(await issueMusicControllerCommand(groupId, 'track', { trackId: link.id }));
+    return { tracks: track ? [track] : [], playlists: [] as PublicPlaylist[] };
+  }
+  let data: unknown;
+  try {
+    data = await issueMusicControllerCommand(groupId, 'playlist', { playlistId: link.id });
+  } catch (error) {
+    // Controllers downloaded before playlist links existed reject the command.
+    if (error instanceof MusicControllerError && /Unbekannter Controller-Befehl/.test(error.message)) {
+      throw new MusicControllerError('Playlist-Links brauchen den aktuellen Jam-Controller. Bitte auf dem Musik-PC neu herunterladen.', 409);
+    }
+    throw error;
+  }
+  const playlist = validPlaylist(data);
+  if (playlist) rememberPlaylists(groupId, [playlist]);
+  return { tracks: [] as PublicTrack[], playlists: playlist ? [playlist] : [] };
+}
+
 musicRouter.get('/search', asyncRoute(async (req, res) => {
   if (!requestActiveSession(req, res)) return res.status(409).json({ error: 'Kein Jam aktiv.' });
   const query = typeof req.query.q === 'string' ? req.query.q.trim() : '';
+  const link = query.length <= SPOTIFY_LINK_MAX_LENGTH ? parseSpotifyLink(query) : null;
+  if (link === 'invalid') {
+    return res.status(400).json({ error: 'Nur Spotify-Links zu einem Titel oder einer Playlist werden unterstützt.' });
+  }
+  if (link) return res.json(await searchSpotifyLink(req.group!.id, link));
   if (query.length < 2 || query.length > 80) return res.status(400).json({ error: 'Suche muss zwischen 2 und 80 Zeichen lang sein.' });
   const data = await issueMusicControllerCommand<{ tracks?: unknown[]; playlists?: unknown[] }>(req.group!.id, 'search', { query });
   const tracks = (Array.isArray(data?.tracks) ? data.tracks : []).map(validTrack).filter((track): track is PublicTrack => Boolean(track));

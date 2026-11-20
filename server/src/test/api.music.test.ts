@@ -45,6 +45,7 @@ function controllerData(type: string, payload: Record<string, unknown>) {
   ] };
   if (type === 'search') return { tracks: Object.values(tracks), playlists: [playlist] };
   if (type === 'track') return tracks[payload.trackId as keyof typeof tracks] ?? null;
+  if (type === 'playlist') return payload.playlistId === playlist.id ? playlist : null;
   return { ok: true };
 }
 
@@ -186,6 +187,41 @@ test('local controller pairs without sending Spotify credentials to Respawn', as
   assert.equal(search.body.tracks.length, 3);
   assert.deepEqual(search.body.playlists, [playlist]);
 
+  // Pasted Spotify links resolve to exactly the linked track or playlist.
+  for (const link of [
+    `https://open.spotify.com/intl-de/track/${tracks.BBBBBBBBBBBBBBBBBBBBBB.id}?si=0123456789abcdef`,
+    `open.spotify.com/track/${tracks.BBBBBBBBBBBBBBBBBBBBBB.id}`,
+    tracks.BBBBBBBBBBBBBBBBBBBBBB.uri,
+  ]) {
+    const linked = await request(app).get(`/api/music/search?q=${encodeURIComponent(link)}`);
+    assert.equal(linked.status, 200, link);
+    assert.deepEqual(linked.body, { tracks: [tracks.BBBBBBBBBBBBBBBBBBBBBB], playlists: [] }, link);
+  }
+  const linkedPlaylist = await request(app)
+    .get(`/api/music/search?q=${encodeURIComponent(`https://open.spotify.com/playlist/${playlist.id}?si=abc`)}`);
+  assert.deepEqual(linkedPlaylist.body, { tracks: [], playlists: [playlist] });
+  for (const link of ['https://open.spotify.com/album/DDDDDDDDDDDDDDDDDDDDDD', 'https://spotify.link/abc123', 'spotify:track:short']) {
+    const rejected = await request(app).get(`/api/music/search?q=${encodeURIComponent(link)}`);
+    assert.equal(rejected.status, 400, link);
+  }
+
+  // A song nobody requested (Spotify autoplay) is paused while the queue is
+  // empty and never shown as the Jam's current song.
+  const pausesBeforeAutoplay = controllerCommands.filter((command) => command.type === 'pause').length;
+  await request(app).post('/api/music/controller/heartbeat').set('x-music-controller-token', controllerToken).send({
+    playback: { track: tracks.CCCCCCCCCCCCCCCCCCCCCC, deviceId: 'speaker-1', context: null, isPlaying: true, progressMs: 500 },
+  });
+  const autoplayStatus = await request(app).get('/api/music/status');
+  assert.equal(autoplayStatus.body.session.currentTrack, null);
+  // Wait for the state "the controller received the pause", bounded so a
+  // missing pause fails the assertion below instead of hanging.
+  const pauseDeadline = Date.now() + 5_000;
+  while (controllerCommands.filter((command) => command.type === 'pause').length === pausesBeforeAutoplay && Date.now() < pauseDeadline) {
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+  const autoplayPause = controllerCommands.filter((command) => command.type === 'pause').at(-1);
+  assert.deepEqual(autoplayPause?.payload, { deviceId: 'speaker-1' }, 'autoplay on the Jam device is paused');
+
   const invalidPlaylist = await request(app).post('/api/music/playlists/not-an-id/play').send({ playerId: bob.id });
   assert.equal(invalidPlaylist.status, 400);
   const unknownPlaylist = await request(app)
@@ -230,6 +266,7 @@ test('local controller pairs without sending Spotify credentials to Respawn', as
   assert.equal(playedPlaylist.status, 200);
   assert.deepEqual(playedPlaylist.body.playlist, playlist);
   assert.ok(controllerCommands.some((command) => command.type === 'playContext' && command.payload.uri === playlist.uri));
+  const pausesBeforePlaylist = controllerCommands.filter((command) => command.type === 'pause').length;
 
   await request(app)
     .post('/api/music/controller/heartbeat')
@@ -302,6 +339,10 @@ test('local controller pairs without sending Spotify credentials to Respawn', as
   const skippedPlaylistTrack = await request(app).post('/api/music/skip').send({ playerId: bob.id });
   assert.equal(skippedPlaylistTrack.status, 200);
   assert.ok(controllerCommands.some((command) => command.type === 'next'));
+  // The controller handles commands in order, so the answered `next` proves
+  // that no pause was queued for the playlist songs reported before it.
+  assert.equal(controllerCommands.filter((command) => command.type === 'pause').length, pausesBeforePlaylist,
+    'songs of a playlist started from Respawn are never paused as foreign');
 
   live = await request(app).get('/api/music/kiosk');
   assert.equal(live.status, 200);

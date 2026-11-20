@@ -531,8 +531,14 @@ function clearSchedule() {
   scheduledPlayback = null;
 }
 
+// Only commands that change what plays replace the planned switch at the
+// end of the current song. Lookups (search, track, playlist, devices) must
+// keep it: otherwise a search during the last request cancels the pause
+// and Spotify's own autoplay fills the silence with unrequested songs.
+const PLAYBACK_COMMANDS = new Set(['playUris', 'playContext', 'transfer', 'pause', 'resume', 'next']);
+
 async function executeCommand(type, payload = {}) {
-  if (type !== 'scheduleQueue') clearSchedule();
+  if (PLAYBACK_COMMANDS.has(type)) clearSchedule();
   if (type === 'devices') {
     const data = await spotify('/me/player/devices');
     return { devices: (data.devices || []).filter((device) => device.id && !device.is_restricted).map((device) => ({
@@ -547,6 +553,10 @@ async function executeCommand(type, payload = {}) {
     };
   }
   if (type === 'track') return publicTrack(await spotify(`/tracks/${encodeURIComponent(payload.trackId)}`));
+  if (type === 'playlist') {
+    if (!/^[A-Za-z0-9]{22}$/.test(payload.playlistId || '')) throw new Error('Ungültige Spotify-Playlist.');
+    return publicPlaylist(await spotify(`/playlists/${encodeURIComponent(payload.playlistId)}?fields=id,uri,name,owner(display_name,id),images,tracks(total)`));
+  }
   if (type === 'playUris') {
     await spotify(`/me/player/play?device_id=${encodeURIComponent(payload.deviceId)}`, {
       method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ uris: payload.uris, position_ms: 0 }),
