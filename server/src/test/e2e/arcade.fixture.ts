@@ -771,8 +771,14 @@ arcadeTest('multiplayer', 'Tetris fits a short laptop screen and fullscreen grow
     await host.page.click('#tetris-start');
 
     await host.page.waitForSelector('.arcade-game-shell #tetris-boards .tetris-canvas');
-    await host.page.waitForFunction(() =>
-      Boolean((document.querySelector('.arcade-game-shell') as HTMLElement | null)?.style.getPropertyValue('--arcade-h-budget').trim()));
+    // The fit may settle over more than one animation frame (the first pass
+    // can leave a few pixels of overflow that the next measurement removes),
+    // so wait for a fitted budget that no longer overflows the view.
+    await host.page.waitForFunction(() => {
+      const view = document.getElementById('view-container') as HTMLElement;
+      return Boolean((document.querySelector('.arcade-game-shell') as HTMLElement | null)?.style.getPropertyValue('--arcade-h-budget').trim())
+        && view.scrollHeight - view.clientHeight <= 0;
+    });
     const fitted = await readGameRoomFit(host.page);
     // Without any toggle the board fits the remaining height: header and
     // match controls stay on screen and nothing scrolls in either direction.
