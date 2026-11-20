@@ -548,7 +548,8 @@ test('real LAN account, automatic orga credits, own-game betting notification, h
       const ranking = section.getByRole('list', { name: `${label}-Rangliste`, exact: true });
       await ranking.waitFor();
       assert.deepEqual(await ranking.locator('.ranked-list-title').allTextContents(), expected.map((row: any) => row.name));
-      assert.deepEqual(await ranking.locator('.ranked-list-value').allTextContents(), expected.map((row: any) => `${row.categories[account].placePoints} P.`));
+      assert.deepEqual(await ranking.locator('.ranked-list-value').allTextContents(), expected.map((row: any) => `${row.categories[account].raw} P.`));
+      assert.deepEqual(await ranking.locator('.ranked-list-meta').allTextContents(), expected.map((row: any) => `Wertung für Gesamtranking: ${row.categories[account].placePoints} P.`));
     } else await section.getByText('Noch keine Platzierung.', { exact: true }).waitFor();
   }
   for (const width of [320, 390, 1440]) {
