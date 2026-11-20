@@ -578,10 +578,6 @@ button.player-card {
 .team-player-move-row > .team-player {
   flex: 1;
 }
-/* Same quiet x as the Packliste remove action. */
-.team-player-remove {
-  color: var(--text-muted);
-}
 /* Phones cannot use native drag and drop, so only touch/phone layouts get the
    native team picker; desktop keeps pure drag and drop. */
 .team-move-control {

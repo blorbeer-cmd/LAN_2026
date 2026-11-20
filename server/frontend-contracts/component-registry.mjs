@@ -336,14 +336,6 @@ export const components = [
     "purpose": "Packliste remove action keeps the 44px icon slot, muted, and only renders while the list is in editing mode."
   },
   {
-    "id": "team-player-remove",
-    "role": "standard-control",
-    "selector": ".team-player-remove",
-    "owner": "public/css/domains.css",
-    "contract": "components/controls.md#tokens-und-einzeilige-controls",
-    "purpose": "Match player remove action: the same muted x icon button as the Packliste remove, at the end of a draw team row on desktop and touch."
-  },
-  {
     "id": "checklist-task-title",
     "role": "composite-part",
     "selector": ".checklist-task-title",

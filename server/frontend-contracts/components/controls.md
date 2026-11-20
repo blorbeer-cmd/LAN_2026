@@ -479,7 +479,6 @@ Die bisherige Ausnahme `legacy-secondary-modifier` ist in Paket 5 aufgelöst: De
 - `registry:row-icons`: Copy, dismiss and detail actions retain their 44px icon slot.
 
 - `registry:checklist-item-remove`: Packliste remove action keeps the 44px icon slot, muted, and only renders while the list is in editing mode.
-- `registry:team-player-remove`: Match player remove action: the same muted x icon button as the Packliste remove, at the end of a draw team row on desktop and touch.
 
 - `registry:checklist-task-title`: To-Do title opens the detail dialog: plain one-line text whose hit area covers the whole row, blue on row hover and struck through once done.
 - `registry:broadcast-table-open`: Durchsage message opens the detail dialog: plain one-line text whose hit area covers the whole row, blue on row hover and muted once past.

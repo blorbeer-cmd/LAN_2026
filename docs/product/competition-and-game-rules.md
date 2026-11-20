@@ -171,8 +171,12 @@ Die Spielberechnung übernimmt die Platzregel des Zielkonzepts
   free result form with game choice and „Frei-für-alle“ stays in Auswertung.
   A drawn lineup moves players by drag and drop on desktop; touch and phone layouts additionally
   show a native team picker per player row. There is no tap-to-select highlight of other teams.
-  Every player row also carries a small muted x, „Aus dem Match entfernen“ (desktop and touch)
-  for anyone who may move players; a confirmation names the player and the consequence.
+  Anyone who may move players can also remove one without an extra symbol: on desktop by
+  dragging the player out of the lineup and dropping them anywhere else on the page, on touch
+  via „Aus dem Match entfernen“ in the same team picker, by keyboard with Entf/Rücktaste on the
+  focused row. A dialog names the player and the consequence before anything changes; the row's
+  tooltip names both drag gestures. In a recorded result the rows can only be dragged out (no
+  moves) and the picker offers only the removal.
   Removal takes the player out of the lineup entirely
   (`DELETE /api/matchmaking/draws/:id/players/:playerId`):
   - In an open draw, a team that loses its last player disappears as long as two teams remain;
