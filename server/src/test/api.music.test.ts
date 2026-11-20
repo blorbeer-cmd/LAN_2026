@@ -313,14 +313,17 @@ test('local controller pairs without sending Spotify credentials to Respawn', as
   assert.equal(playlistRequest.status, 201);
   assert.ok(controllerCommands.some((command) => command.type === 'queueTrack' && command.payload.uri === tracks.CCCCCCCCCCCCCCCCCCCCCC.uri));
   const playlistRequestId = playlistRequest.body.requestId;
-  const forbiddenPlaylistRemoval = await request(app)
-    .delete(`/api/music/requests/${playlistRequestId}`)
-    .send({ playerId: bob.id });
-  assert.equal(forbiddenPlaylistRemoval.status, 409);
   const forbiddenPlaylistReorder = await request(app)
     .put('/api/music/requests/order')
     .send({ playerId: bob.id, requestIds: [playlistRequestId] });
-  assert.equal(forbiddenPlaylistReorder.status, 409);
+  assert.equal(forbiddenPlaylistReorder.status, 409, 'Spotify keeps its own order during a playlist');
+  const playlistRequestRemoval = await request(app)
+    .delete(`/api/music/requests/${playlistRequestId}`)
+    .send({ playerId: bob.id });
+  assert.equal(playlistRequestRemoval.status, 204, 'a request can be removed while a playlist runs');
+  live = await request(app).get('/api/music/status').set('x-test-player-id', alice.id);
+  assert.equal(live.body.session.requests.length, 0);
+  const nextsBeforeRemovedRequest = controllerCommands.filter((command) => command.type === 'next').length;
   await request(app)
     .post('/api/music/controller/heartbeat')
     .set('x-music-controller-token', controllerToken)
@@ -335,14 +338,49 @@ test('local controller pairs without sending Spotify credentials to Respawn', as
     });
   live = await request(app).get('/api/music/status').set('x-test-player-id', alice.id);
   assert.equal(live.body.session.playbackContext.remainingTrackCount, 40,
-    'a queued request does not reduce the remaining playlist tracks');
+    'a removed request does not reduce the remaining playlist tracks');
+  assert.equal(live.body.session.currentTrack, null, 'the removed request is not shown as playing');
   const skippedPlaylistTrack = await request(app).post('/api/music/skip').send({ playerId: bob.id });
   assert.equal(skippedPlaylistTrack.status, 200);
-  assert.ok(controllerCommands.some((command) => command.type === 'next'));
-  // The controller handles commands in order, so the answered `next` proves
-  // that no pause was queued for the playlist songs reported before it.
+  // The controller handles commands in order, so the answered `next` of the
+  // skip proves the heartbeat's `next` for the removed request ran before it,
+  // and that no pause was queued for the playlist songs reported before it.
+  assert.equal(controllerCommands.filter((command) => command.type === 'next').length, nextsBeforeRemovedRequest + 2,
+    'a request removed during a playlist is skipped as soon as Spotify starts it');
   assert.equal(controllerCommands.filter((command) => command.type === 'pause').length, pausesBeforePlaylist,
     'songs of a playlist started from Respawn are never paused as foreign');
+
+  const playlistRemovals = await Promise.all([
+    request(app).delete('/api/music/playlist').send({ playerId: bob.id }),
+    request(app).delete('/api/music/playlist').send({ playerId: alice.id }),
+  ]);
+  assert.deepEqual(playlistRemovals.map((response) => response.status).sort(), [204, 409],
+    'exactly one of two parallel removals takes the playlist out of the queue');
+  live = await request(app).get('/api/music/status').set('x-test-player-id', alice.id);
+  assert.equal(live.body.session.playbackContext, null, 'the removed playlist no longer appears as next');
+  assert.equal(controllerCommands.filter((command) => command.type === 'pause').length, pausesBeforePlaylist + 1,
+    'without waiting requests the Jam pauses instead of continuing the playlist');
+  await request(app)
+    .post('/api/music/controller/heartbeat')
+    .set('x-music-controller-token', controllerToken)
+    .send({
+      playback: {
+        track: tracks.AAAAAAAAAAAAAAAAAAAAAA,
+        deviceId: 'speaker-1',
+        context: { type: 'playlist', uri: playlist.uri },
+        isPlaying: true,
+        progressMs: 500,
+      },
+    });
+  live = await request(app).get('/api/music/status').set('x-test-player-id', alice.id);
+  assert.equal(live.body.session.currentTrack, null, 'Spotify continuing a removed playlist is foreign playback');
+  const pausedAfterRemoval = await request(app).post('/api/music/playback').send({ playerId: bob.id, playing: false });
+  assert.equal(pausedAfterRemoval.status, 200);
+  // Ordered like the skip above: the awaited pause proves the heartbeat's own
+  // pause for the continued playlist was issued first.
+  assert.equal(controllerCommands.filter((command) => command.type === 'pause').length, pausesBeforePlaylist + 3);
+  const noPlaylistLeft = await request(app).delete('/api/music/playlist').send({ playerId: bob.id });
+  assert.equal(noPlaylistLeft.status, 409);
 
   live = await request(app).get('/api/music/kiosk');
   assert.equal(live.status, 200);

@@ -231,6 +231,15 @@ function cachedPlaylist(groupId: string, playlistId: string): PublicPlaylist | n
   return cached?.groupId === groupId ? cached.playlist : null;
 }
 
+function parseStoredContext(json: string | null): Record<string, unknown> | null {
+  try {
+    const value = json ? JSON.parse(json) as unknown : null;
+    return value && typeof value === 'object' ? value as Record<string, unknown> : null;
+  } catch {
+    return null;
+  }
+}
+
 function playbackContext(session: MusicSessionRow): PublicPlaybackContext | null {
   try {
     const stored = session.playback_context_json ? JSON.parse(session.playback_context_json) as Record<string, unknown> : null;
@@ -665,14 +674,72 @@ musicRouter.delete('/requests/:requestId', ...withBodyPlayerIdentity, asyncRoute
   const player = activePlayer(req);
   const session = requestActiveSession(req, res);
   if (!player || !session) return res.status(404).json({ error: 'Jam nicht gefunden.' });
-  if (playbackContext(session)) {
-    return res.status(409).json({ error: 'Songwünsche können während einer Playlist nicht entfernt werden.' });
-  }
-  const row = db.prepare("SELECT id FROM music_requests WHERE id = ? AND session_id = ? AND status = 'queued'")
-    .get(req.params.requestId, session.id);
-  if (!row) return res.status(404).json({ error: 'Songwunsch nicht gefunden.' });
-  db.prepare('DELETE FROM music_requests WHERE id = ? AND session_id = ?').run(req.params.requestId, session.id);
+  // During a playlist every request was handed to Spotify's own queue, which
+  // Spotify does not let us edit. The removed song is remembered on the
+  // playlist context and skipped by the heartbeat as soon as it starts.
+  const removed = db.transaction(() => {
+    const row = db.prepare("SELECT track_uri FROM music_requests WHERE id = ? AND session_id = ? AND status = 'queued'")
+      .get(req.params.requestId, session.id) as { track_uri: string } | undefined;
+    if (!row) return false;
+    db.prepare('DELETE FROM music_requests WHERE id = ? AND session_id = ?').run(req.params.requestId, session.id);
+    const current = db.prepare('SELECT playback_context_json FROM music_sessions WHERE id = ?')
+      .get(session.id) as { playback_context_json: string | null };
+    const stored = parseStoredContext(current.playback_context_json);
+    if (stored && validPlaylist(stored)) {
+      const skipUris = Array.isArray(stored.skipUris) ? stored.skipUris.filter((uri) => typeof uri === 'string') : [];
+      stored.skipUris = [...new Set([...skipUris, row.track_uri])].slice(-50);
+      if ((stored.nextTrack as { uri?: unknown } | null)?.uri === row.track_uri) stored.nextTrack = null;
+      db.prepare('UPDATE music_sessions SET playback_context_json = ? WHERE id = ?').run(JSON.stringify(stored), session.id);
+    }
+    return true;
+  }).immediate();
+  if (!removed) return res.status(404).json({ error: 'Songwunsch nicht gefunden.' });
   await rescheduleQueue(req.group!.id, requestActiveSession(req, res)!);
+  musicChanged(req.group!.id, requestEventId(res));
+  res.status(204).end();
+}));
+
+// DELETE /api/music/playlist - takes the running playlist out of the queue.
+// The song playing right now may finish; afterwards the requests play, or the
+// Jam pauses. The removal is remembered (`removedPlaylist`), so a playlist
+// Spotify keeps playing anyway — for example after the controller lost its
+// planned switch — counts as foreign playback in the heartbeat.
+musicRouter.delete('/playlist', ...withBodyPlayerIdentity, asyncRoute(async (req, res) => {
+  const player = activePlayer(req);
+  const session = requestActiveSession(req, res);
+  if (!player || !session) return res.status(404).json({ error: 'Jam nicht gefunden.' });
+  const context = playbackContext(session);
+  if (!context) return res.status(409).json({ error: 'Es läuft keine Playlist.' });
+  const marker = JSON.stringify({ removedPlaylist: { uri: context.uri, keepTrackUri: session.current_track_uri } });
+  // Compare-and-set on the stored context: of two parallel removals only one
+  // changes the session; a playlist started in between is not touched.
+  const claimed = db.prepare('UPDATE music_sessions SET playback_context_json = ? WHERE id = ? AND playback_context_json = ?')
+    .run(marker, session.id, session.playback_context_json).changes === 1;
+  if (!claimed) return res.status(409).json({ error: 'Die Playlist wurde bereits geändert. Bitte neu laden.' });
+
+  const fresh = requestActiveSession(req, res)!;
+  try {
+    if (fresh.current_track_uri) {
+      await rescheduleQueue(req.group!.id, fresh);
+    } else {
+      const queued = requestRows(fresh.id).filter((entry) => entry.status === 'queued');
+      if (queued.length) {
+        await issueMusicControllerCommand(req.group!.id, 'playUris', { deviceId: fresh.device_id, uris: queued.map((entry) => entry.trackUri) });
+        const next = queued[0];
+        db.prepare("UPDATE music_requests SET status = 'playing' WHERE id = ?").run(next.id);
+        db.prepare(
+          `UPDATE music_sessions SET current_track_uri = ?, current_track_json = ?, playback_is_playing = 1,
+           playback_progress_ms = 0, playback_updated_at = ? WHERE id = ?`,
+        ).run(next.trackUri, JSON.stringify(trackFromRequest(next)), Date.now(), fresh.id);
+      } else {
+        await issueMusicControllerCommand(req.group!.id, 'pause', { deviceId: fresh.device_id });
+      }
+    }
+  } catch (error) {
+    // The removal itself is stored; the heartbeat stops the playlist if the
+    // device did not take the command.
+    if (!(error instanceof MusicControllerError)) throw error;
+  }
   musicChanged(req.group!.id, requestEventId(res));
   res.status(204).end();
 }));

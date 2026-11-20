@@ -252,16 +252,18 @@ musicControllerRouter.post('/commands/:id/result', controllerAuth, (req, res) =>
   res.status(204).end();
 });
 
-// One pause at a time per group: heartbeats keep reporting the foreign song
-// until Spotify has actually paused, and each must not queue another command.
-const foreignPausesPending = new Set<string>();
+// One correction at a time per group: heartbeats keep reporting the foreign
+// song until Spotify has actually paused or moved on, and each must not queue
+// another command. A correction pauses, skips a removed request, or switches
+// from a removed playlist to the waiting requests.
+const foreignCorrectionsPending = new Set<string>();
 
-function pauseForeignPlayback(groupId: string, deviceId: string): void {
-  if (foreignPausesPending.has(groupId)) return;
-  foreignPausesPending.add(groupId);
-  issueMusicControllerCommand(groupId, 'pause', { deviceId })
+function replaceForeignPlayback(groupId: string, type: 'pause' | 'next' | 'playUris', payload: Record<string, unknown>): void {
+  if (foreignCorrectionsPending.has(groupId)) return;
+  foreignCorrectionsPending.add(groupId);
+  issueMusicControllerCommand(groupId, type, payload)
     .catch(() => { /* best effort: the next heartbeat retries */ })
-    .finally(() => foreignPausesPending.delete(groupId));
+    .finally(() => foreignCorrectionsPending.delete(groupId));
 }
 
 function syncSessionPlayback(groupId: string, playback: unknown, now: number): void {
@@ -282,11 +284,26 @@ function syncSessionPlayback(groupId: string, playback: unknown, now: number): v
       ).get(session.id, uri) as { id: string } | undefined
     : undefined;
   let playbackContextJson = session.playback_context_json;
+  // A playlist removed from the queue keeps a marker until Spotify has left
+  // it: only the song that was playing at the removal may still finish.
+  let removedPlaylistTrack = false;
+  // A request removed during the playlist may already sit in Spotify's queue.
+  let skipRemovedRequest = false;
   if (playbackContextJson) {
     try {
       const stored = JSON.parse(playbackContextJson) as Record<string, unknown>;
-      if (context?.type !== 'playlist' || context.uri !== stored.uri) {
+      const removed = stored.removedPlaylist && typeof stored.removedPlaylist === 'object'
+        ? stored.removedPlaylist as { uri?: unknown; keepTrackUri?: unknown }
+        : null;
+      if (removed) {
+        if (context?.type !== 'playlist' || context.uri !== removed.uri) playbackContextJson = null;
+        else removedPlaylistTrack = Boolean(uri) && !matchingRequest && uri !== removed.keepTrackUri;
+      } else if (context?.type !== 'playlist' || context.uri !== stored.uri) {
         playbackContextJson = null;
+      } else if (uri && !matchingRequest && Array.isArray(stored.skipUris) && stored.skipUris.includes(uri)) {
+        skipRemovedRequest = true;
+        stored.skipUris = stored.skipUris.filter((entry) => entry !== uri);
+        playbackContextJson = JSON.stringify(stored);
       } else {
         const trackCount = Number.isSafeInteger(stored.trackCount) && Number(stored.trackCount) >= 0
           ? Number(stored.trackCount)
@@ -316,9 +333,20 @@ function syncSessionPlayback(groupId: string, playback: unknown, now: number): v
   const waitingRequests = (db.prepare(
     "SELECT COUNT(*) AS count FROM music_requests WHERE session_id = ? AND status IN ('sending', 'queued')",
   ).get(session.id) as { count: number }).count;
-  const foreignTrack = Boolean(uri) && !matchingRequest && !playbackContextJson &&
-    context?.type !== 'playlist' && waitingRequests === 0;
-  if (foreignTrack && value?.isPlaying) pauseForeignPlayback(groupId, session.device_id);
+  const foreignTrack = removedPlaylistTrack || skipRemovedRequest || (Boolean(uri) && !matchingRequest &&
+    !playbackContextJson && context?.type !== 'playlist' && waitingRequests === 0);
+  if (foreignTrack && value?.isPlaying) {
+    if (skipRemovedRequest) {
+      replaceForeignPlayback(groupId, 'next', { deviceId: session.device_id });
+    } else if (removedPlaylistTrack && waitingRequests > 0) {
+      const uris = (db.prepare(
+        "SELECT track_uri FROM music_requests WHERE session_id = ? AND status IN ('sending', 'queued') ORDER BY created_at",
+      ).all(session.id) as Array<{ track_uri: string }>).map((row) => row.track_uri);
+      replaceForeignPlayback(groupId, 'playUris', { deviceId: session.device_id, uris });
+    } else {
+      replaceForeignPlayback(groupId, 'pause', { deviceId: session.device_id });
+    }
+  }
   db.transaction(() => {
     if (session.current_track_uri && session.current_track_uri !== uri) {
       db.prepare("UPDATE music_requests SET status = 'played', played_at = ? WHERE session_id = ? AND status = 'playing'")

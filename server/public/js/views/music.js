@@ -383,7 +383,10 @@ function requestQueueHtml(session) {
   }
   return `
     <section class="card stack grouped-page-section" aria-labelledby="music-queue-title">
-      <div class="grouped-page-section-title"><h2 id="music-queue-title">Als Nächstes</h2></div>
+      <div class="grouped-page-section-title">
+        <h2 id="music-queue-title">Als Nächstes</h2>
+        ${playlistMode && getMyId() ? '<button type="button" class="btn btn-sm" id="music-remove-playlist">Playlist entfernen</button>' : ''}
+      </div>
       ${rows.length
         ? `<div class="music-queue-list${sortable ? ' is-sortable' : ''}" role="table" aria-label="Als Nächstes">${rows.join('')}</div>`
         : emptyStateHtml('Noch keine Wünsche.')}
@@ -523,7 +526,10 @@ function openRequestDetail(requestId, ctx) {
   if (!session || !entry) return;
   const queuedIds = queuedRequests(session).map((request) => request.id);
   const index = queuedIds.indexOf(requestId);
-  const editable = Boolean(getMyId()) && !session.playbackContext && entry.status === 'queued';
+  // A request can always be removed; during a playlist Spotify keeps its own
+  // order, so moving stays off there.
+  const removable = Boolean(getMyId()) && entry.status === 'queued';
+  const editable = removable && !session.playbackContext;
   const facts = [
     ['Interpret', escapeHtml(entry.artist)],
     entry.album ? ['Album', escapeHtml(entry.album)] : null,
@@ -539,9 +545,9 @@ function openRequestDetail(requestId, ctx) {
          <strong class="music-detail-title">${escapeHtml(entry.name)}</strong>
        </div>
        <dl class="music-detail-facts">${facts.map(([label, value]) => `<dt>${label}</dt><dd>${value}</dd>`).join('')}</dl>
-       ${editable ? `<div class="music-detail-footer">
-         <button type="button" class="btn btn-sm" data-detail-move="up" ${index <= 0 ? 'disabled' : ''}>Nach oben</button>
-         <button type="button" class="btn btn-sm" data-detail-move="down" ${index < 0 || index >= queuedIds.length - 1 ? 'disabled' : ''}>Nach unten</button>
+       ${removable ? `<div class="music-detail-footer">
+         ${editable ? `<button type="button" class="btn btn-sm" data-detail-move="up" ${index <= 0 ? 'disabled' : ''}>Nach oben</button>
+         <button type="button" class="btn btn-sm" data-detail-move="down" ${index < 0 || index >= queuedIds.length - 1 ? 'disabled' : ''}>Nach unten</button>` : ''}
          <button type="button" class="btn btn-sm" data-detail-remove>Entfernen</button>
        </div>` : ''}
      </div>`,
@@ -817,6 +823,25 @@ function wireSession(container, ctx) {
     } catch (error) {
       showToast(error.message, { error: true });
     }
+  });
+  container.querySelector('#music-remove-playlist')?.addEventListener('click', async () => {
+    const playlist = cache?.session?.playbackContext;
+    if (!playlist) return;
+    const confirmed = await confirmDialog(
+      cache.session.currentTrack
+        ? 'Der laufende Titel spielt zu Ende. Danach folgen die Wünsche, ohne Wünsche pausiert der Jam.'
+        : 'Danach folgen die Wünsche, ohne Wünsche pausiert der Jam.',
+      { title: `Playlist „${playlist.name}“ entfernen?`, confirmText: 'Entfernen', danger: true },
+    );
+    if (!confirmed) return;
+    try {
+      await api.music.removePlaylist(getMyId());
+      showToast('Playlist entfernt.');
+    } catch (error) {
+      showToast(error.message, { error: true });
+    }
+    invalidateMusic();
+    ctx.rerender();
   });
   container.querySelector('#music-end')?.addEventListener('click', async () => {
     const confirmed = await confirmDialog(
