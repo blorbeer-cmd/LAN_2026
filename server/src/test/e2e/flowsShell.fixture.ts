@@ -2808,6 +2808,10 @@ flowTest('Match: a long solo team name wraps inside its drawn team card', async 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`${BASE_URL}/#matchmaking`);
   await page.waitForSelector('#mm-generate');
+  // Draw only once the roster shows the renamed player: the view may still
+  // hold the player list from before the rename, and a draw from that state
+  // never produces the long team name this test waits for.
+  await page.locator('[data-roster-picker="mm-draw-roster"]').getByText(longName, { exact: true }).waitFor();
   // The field snaps to the selected player count, so every drawn team is solo.
   await page.fill('#mm-teamcount', '99');
   await page.click('#mm-generate');

@@ -29,8 +29,9 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu TV-Kiosk, Jam
   avatar, name and a status dot instead of a text badge: filled green with a glow for „Spielt“,
   filled blue for „Online“, an amber ring for „Pause“ and a hollow grey ring for „Offline“; the German
   state stays available as the dot's accessible name and tooltip. It uses the fewest columns (up to
-  four, each at least 200 px wide) that show everyone; only if even that does not fit do pages
-  rotate, marked by dots.
+  four, each at least 140 px wide) that show everyone; long names are shortened with an ellipsis
+  instead of widening a column. If four columns still do not fit, the rows tighten first. Only a
+  roster too large for four tight columns rotates pages, marked by dots, as a last resort.
 - **Newsticker**: a timeline of playful, clearly invented headlines. The server writes one new
   line every three to ten minutes for the whole event, so every Broadcast screen of that event shows the same
   feed; a new feed starts with a full set of ten lines. A screen that runs on a signed-in account

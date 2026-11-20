@@ -654,6 +654,18 @@
   background: var(--bg-elevated-2);
   border-radius: var(--radius-sm);
 }
+/* Long names give way, never the avatar. */
+.kiosk-live-row > :first-child {
+  flex-shrink: 0;
+}
+/* Tighter rows before Live-Status would ever have to rotate pages. */
+.kiosk-live-grid.is-compact {
+  gap: var(--space-1);
+}
+.kiosk-live-grid.is-compact .kiosk-live-row {
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2);
+}
 .kiosk-live-row .player-name {
   flex: 1;
 }
