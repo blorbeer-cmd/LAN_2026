@@ -6,7 +6,7 @@
 
 import { Router, type Request } from 'express';
 import { nanoid } from 'nanoid';
-import { db } from '../db';
+import { db, OUTSIDE_EVENTS_ID } from '../db';
 import { broadcast, Events } from '../realtime';
 import { isNonEmptyString, isIntInRange, isValidAvatar } from '../validation';
 import { writeAdminAudit } from '../adminAudit';
@@ -491,6 +491,7 @@ gamesRouter.post('/:id/demote', resolveGame, requireGroupRole('member'), (req, r
   const existing = req.groupResource as GameRow;
   if (!memberMayChangeCatalog(req)) return res.status(403).json({ error: CATALOG_FROZEN_ERROR });
   if (existing.status !== 'catalog') return res.status(409).json({ error: 'Spiel ist bereits ein Vorschlag.' });
+  if (!memberMayShrinkCatalog(req)) return res.status(403).json({ error: CATALOG_SKILL_BONUS_ERROR });
 
   const trailerUrl = isYoutubeUrl(existing.trailer_url)
     ? existing.trailer_url
@@ -511,9 +512,8 @@ gamesRouter.post('/:id/demote', resolveGame, requireGroupRole('member'), (req, r
 });
 
 // Tables whose rows ON DELETE CASCADE removes together with a game and that
-// record shared history: tracked play time, ballots, drafts, draws, matches
-// and tournaments of any event. Internal allow-list, see gameHasHistory.
-const GAME_HISTORY_TABLES = ['play_sessions', 'votes', 'drafts', 'matchmaking_draws', 'matches', 'tournaments'] as const;
+// record ratings or shared history across events. Internal allow-list.
+const GAME_HISTORY_TABLES = ['skills', 'preferences', 'play_sessions', 'votes', 'drafts', 'matchmaking_draws', 'matches', 'tournaments'] as const;
 
 function gameHasHistory(gameId: string): boolean {
   return GAME_HISTORY_TABLES.some((table) => db.prepare(`SELECT 1 FROM ${table} WHERE game_id = ? LIMIT 1`).get(gameId) !== undefined);
@@ -535,6 +535,19 @@ function memberMayChangeCatalog(req: Request): boolean {
   return req.groupMembership?.role !== 'member' || !wholeCatalogVoteIsRunning(req.group!.id);
 }
 
+const CATALOG_SKILL_BONUS_ERROR =
+  'Solange eine Punktewertung offen ist, können nur Community-Admins Spiele aus dem Katalog entfernen. Der Katalog bestimmt den Skill-Bonus.';
+
+// Reducing the catalog can make a permanent Skill bonus payable, either
+// immediately or when someone submits another rating or joins the event.
+function memberMayShrinkCatalog(req: Request): boolean {
+  return req.groupMembership?.role !== 'member' ||
+    !db.prepare(
+      `SELECT 1 FROM events e LEFT JOIN points_settings ps ON ps.event_id = e.id
+       WHERE e.group_id = ? AND e.id != ? AND ps.closed_at IS NULL LIMIT 1`,
+    ).get(req.group!.id, OUTSIDE_EVENTS_ID);
+}
+
 // A running vote can carry a game before anyone has voted for it: listed in
 // its explicit selection, or (without a selection) as one of the catalog
 // games every such ballot covers. Deleting it would pull it off ballots that
@@ -554,7 +567,7 @@ function gameIsOnOpenBallot(game: GameRow): boolean {
 // DELETE /api/games/:id - cascades to process names, skills, preferences,
 // votes, matches; sets live_status.game_id to NULL for anyone currently on it.
 // Every member may remove a game without history (a typo, an unused
-// suggestion). Once the cascade would also erase play time, votes or
+// suggestion). Once the cascade would also erase ratings, play time, votes or
 // competition data, or the game sits on a running vote's ballot, deleting
 // stays with group admins/owners, matching the
 // admin-only deletion of draws, matches, tournaments and vote history.
@@ -579,8 +592,11 @@ gamesRouter.delete(
     // history between this check and the cascade.
     if (req.groupMembership?.role === 'member' && (gameHasHistory(existing.id) || gameIsOnOpenBallot(existing))) {
       return res.status(403).json({
-        error: 'Dieses Spiel wird bereits in Spielzeiten, Abstimmungen oder Wettbewerben verwendet. Löschen können es nur Community-Admins.',
+        error: 'Dieses Spiel hat Bewertungen oder wird bereits in Spielzeiten, Abstimmungen oder Wettbewerben verwendet. Löschen können es nur Community-Admins.',
       });
+    }
+    if (existing.status === 'catalog' && !memberMayShrinkCatalog(req)) {
+      return res.status(403).json({ error: CATALOG_SKILL_BONUS_ERROR });
     }
     const affectedEvents = withBettingAccounting(undefined, () => {
       assertGameEditable(req.group!.id, existing.id);

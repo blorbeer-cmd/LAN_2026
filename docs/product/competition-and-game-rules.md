@@ -236,9 +236,11 @@ Die Spielberechnung übernimmt die Platzregel des Zielkonzepts
   „In Katalog übernehmen“/„Zurück zu Vorschlägen“ and „Spiel löschen“ after the usual password
   confirmation. The view creates every new game as a suggestion; anyone takes it into the
   catalog with „In Katalog übernehmen“ (the API also accepts a direct catalog entry). Deleting
-  a game that already has play time, votes, drafts, draws, matches or tournaments would erase
-  that history too, and a game on the ballot of a running vote would vanish from it, so such a
-  game can only be deleted by community admins. While a vote over the whole catalog (a round
+  a game that already has skill or preference ratings, play time, votes, drafts, draws, matches
+  or tournaments would erase those records. A game on the ballot of a running vote would vanish
+  from it. Only community admins can delete those games. While any event's points standings are
+  open, only community admins can demote or delete catalog games because removing a required
+  rating can permanently award the Skill bonus. While a vote over the whole catalog (a round
   without an explicit game selection) runs, only community admins add, promote or demote catalog
   games, because that would change ballots voters may already have filled in; suggestions stay
   open to everyone.

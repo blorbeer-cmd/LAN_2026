@@ -191,7 +191,9 @@ test('votes and drafts stay roles-gated and event-scoped inside the one real gro
         }
         assert.equal((await scoped(app, 'post', '/api/votes/cancel', alice).send({ round: ballotRound.body.round })).status, 200);
       }
-      assert.equal((await scoped(app, 'delete', '/api/games/' + gameC.body.id, bob)).status, 204, 'without a running ballot the unused game may go');
+      const deleteAfterVote = await scoped(app, 'delete', '/api/games/' + gameC.body.id, bob);
+      assert.equal(deleteAfterVote.status, 403);
+      assert.match(deleteAfterVote.body.error, /Skill-Bonus/, 'only the points guard remains after the ballot closes');
 
       // Starting and cancelling a draft is open to every member.
       const cancelDraft = await scoped(app, 'post', '/api/draft/start', bob).send({
