@@ -1162,6 +1162,10 @@ flowTest('matchmaking Historie marks a recorded draw as Unentschieden', async ()
   await serverChips.nth(1).waitFor();
   assert.deepEqual(await serverChips.allInnerTexts(), ['10.0.0.5:27015', 'zocken123']);
   assert.equal(await openDraw.locator('.matchmaking-draw-server [data-copy-draw-server]').count(), 2);
+  // The header "i" shows the same details without expanding the game.
+  await openDraw.locator('[data-draw-server-info]').click();
+  assert.deepEqual(await page.locator('.modal [data-draw-server-info-body] code').allInnerTexts(), ['10.0.0.5:27015', 'zocken123']);
+  await page.click('.modal [data-close]');
   await page.click('#match-history-open [data-record-draw]');
 
   const panelHeight = await page.locator('.modal .result-mode-panels').evaluate((element) => element.getBoundingClientRect().height);

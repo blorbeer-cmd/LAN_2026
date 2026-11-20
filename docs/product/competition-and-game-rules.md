@@ -143,7 +143,7 @@ Die Spielberechnung übernimmt die Platzregel des Zielkonzepts
   from the current lineup with the same rule, so a player move renames affected teams immediately.
   The winning team carries the green „Win“ chip and an accessible group label, the losing teams
   are muted and a drawn result shows „Remis“. Card actions sit in the card header: an open draw
-  offers a neutral server action, a neutral „+“ for a single result and, rightmost, „Turnier erstellen“ (the primary
+  offers a neutral „i“ (only with stored server details) and server action, a neutral „+“ for a single result and, rightmost, „Turnier erstellen“ (the primary
   gradient on the fresh draw, neutral in the open section); a recorded draw offers a pencil before „Rematch“;
   every open or recorded game card offers admins and owners a trash action with confirmation; regular members see no delete controls, including on the tournament detail page. Removing a recorded draw removes its linked result from the ranking. A tournament tile offers „Turnier“ and, for admins and owners, a trash action using the existing tournament delete behavior; already recorded tournament matches remain in the ranking, and the confirmation explains this. Its expanded state shows tournament teams,
   players and available standings or match totals. A participating player's game title is bold in a collapsed Match tile; only their name is bold in expanded teams. Open draws show every player's skill. Completed tournament headers show the winning team with „Win“ and the tournament name; team details use the same compact place numbers as Match teams in the team-name line, including the finalist's second place, with an explicit place label in the title and accessible name. The number replaces the extra Win chip inside the team card; table points stay beside the team name. With a played third-place match, the semifinal losers carry places 3 and 4 the same way. Knockout exits without a distinct place appear in the context line below the players. The result pencil precedes „Rematch“; tournament actions
@@ -178,7 +178,9 @@ Die Spielberechnung übernimmt die Platzregel des Zielkonzepts
   „Speichern“; clearing both removes them. Every event participant may set them while the draw is
   open. Stored values appear above the teams of the open draw as the same code chips with a copy
   action as a tournament's active lobbies, update on every device in real time and are no longer
-  shown or editable once the draw has a result or became a tournament (`409`).
+  shown or editable once the draw has a result or became a tournament (`409`). While details are
+  stored, a neutral „i“ action left of the server action opens them in a compact dialog with the
+  same copy chips, so they are reachable without expanding a collapsed open game.
 - **Player skill display** — `skillDisplay.js` renders the shared activity icon plus the selected
   game's skill value. Teams and Tournaments reuse it in participant selection, drawn-team previews,
   live drafts and tournament detail teams; history shows the team sum (current for tournaments and old drafts without a snapshot). The icon's tooltip and accessible label

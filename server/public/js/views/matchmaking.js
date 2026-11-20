@@ -370,8 +370,10 @@ function renderDrawCard(draw, { editable: editableInput, showGame = false, prima
     : '';
 
   const serverHtml = inTournament || draw.matchId ? '' : drawServerHtml(draw);
+  // The "i" opens the stored details directly from the header, so they are
+  // reachable even while an open game's tile stays collapsed.
   const serverAction = editable
-    ? `<button type="button" class="tournament-fixture-action" data-draw-server="${draw.id}" aria-label="Server und Passwort" title="Server und Passwort">${icon('server')}</button>`
+    ? `${serverHtml ? `<button type="button" class="tournament-fixture-action" data-draw-server-info="${draw.id}" aria-label="Server und Passwort anzeigen" title="Server und Passwort anzeigen">${icon('info')}</button>` : ''}<button type="button" class="tournament-fixture-action" data-draw-server="${draw.id}" aria-label="Server und Passwort bearbeiten" title="Server und Passwort bearbeiten">${icon('server')}</button>`
     : '';
 
   // Same action slot as tournament fixtures: a pencil for a recorded result,
@@ -427,6 +429,31 @@ function drawServerHtml(draw) {
       ${draw.serverAddress ? credential('Server', draw.serverAddress, 'address') : ''}
       ${draw.serverPassword ? credential('Passwort', draw.serverPassword, 'password') : ''}
     </div>`;
+}
+
+function wireDrawServerCopy(root) {
+  root.querySelectorAll('[data-copy-draw-server]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const isPassword = btn.dataset.copyDrawKind === 'password';
+      const draw = findDrawById(btn.dataset.copyDrawServer);
+      const value = isPassword ? draw?.serverPassword : draw?.serverAddress;
+      if (!value) return;
+      try {
+        await copyText(value);
+        showToast(isPassword ? 'Passwort kopiert.' : 'Server kopiert.');
+      } catch {
+        showToast('Kopieren nicht möglich – bitte manuell markieren.', { error: true });
+      }
+    });
+  });
+}
+
+function openDrawServerInfo(draw) {
+  openModal('Server und Passwort', `
+    <div class="stack" data-draw-server-info-body>
+      <div class="muted result-dialog-subtitle">${escapeHtml(draw.gameName)} · ${draw.teams.length} Teams</div>
+      ${drawServerHtml(draw)}
+    </div>`, { onMount: (el) => wireDrawServerCopy(el) });
 }
 
 function replaceCachedDraw(updated) {
@@ -679,20 +706,13 @@ function wireDrawCards(container, ctx) {
       if (draw) openDrawServerDialog(draw, ctx);
     });
   });
-  container.querySelectorAll('[data-copy-draw-server]').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      const isPassword = btn.dataset.copyDrawKind === 'password';
-      const draw = findDrawById(btn.dataset.copyDrawServer);
-      const value = isPassword ? draw?.serverPassword : draw?.serverAddress;
-      if (!value) return;
-      try {
-        await copyText(value);
-        showToast(isPassword ? 'Passwort kopiert.' : 'Server kopiert.');
-      } catch {
-        showToast('Kopieren nicht möglich – bitte manuell markieren.', { error: true });
-      }
+  container.querySelectorAll('[data-draw-server-info]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const draw = findDrawById(btn.dataset.drawServerInfo);
+      if (draw) openDrawServerInfo(draw);
     });
   });
+  wireDrawServerCopy(container);
   container.querySelectorAll('[data-draw-tournament]').forEach((btn) => {
     btn.addEventListener('click', () => {
       const draw = findDrawById(btn.dataset.drawTournament);
