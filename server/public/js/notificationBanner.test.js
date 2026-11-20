@@ -101,3 +101,9 @@ test('a still-open entry with a future expiry is unaffected', () => {
   assert.doesNotMatch(html, /is-obsolete/);
   assert.doesNotMatch(html, /Obsolet|Abgelaufen/);
 });
+
+test('the center names the creator next to the title and in the link label', () => {
+  const html = entryHtml({ ...baseEntry, url: '/#broadcast', title: 'Durchsage', actorName: 'Anna' });
+  assert.match(html, /notification-center-entry-name">Durchsage von Anna</);
+  assert.match(html, /aria-label="Durchsage von Anna: Zu den Durchsagen"/);
+});

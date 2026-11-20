@@ -69,7 +69,7 @@ test('starting a new vote round pushes to subscribed players', async (t) => {
   assert.match(payload.title, /Abstimmung/);
 });
 
-test('GET /api/push/last reflects the most recently sent notification, regardless of feature', async () => {
+test('GET /api/push/last reflects the most recently sent notification, regardless of feature', async (t) => {
   await request(app).post('/api/votes/start');
 
   const afterVotes = await request(app).get('/api/push/last');
@@ -83,14 +83,27 @@ test('GET /api/push/last reflects the most recently sent notification, regardles
 
   // A different feature's notifyPlayers() call (Durchsage) becomes the new
   // "last" entry — the log isn't scoped to one feature.
+  const sendMock = t.mock.method(pushTransport, 'send', async () => {});
   const durchsage = await request(app).post('/api/broadcasts').send({ playerId, message: 'Pizza ist da!' });
   assert.equal(durchsage.status, 201);
 
+  // The creator is a field of its own, so every surface can name it next to
+  // the title; the device notification carries it in its title.
   const afterBroadcast = await request(app).get('/api/push/last');
   assert.equal(afterBroadcast.status, 200);
-  assert.equal(afterBroadcast.body.entry.title, 'Push Tester');
-  assert.match(afterBroadcast.body.entry.body, /Pizza ist da!/);
+  assert.equal(afterBroadcast.body.entry.title, 'Durchsage');
+  assert.equal(afterBroadcast.body.entry.actorName, 'Push Tester');
+  assert.equal(afterBroadcast.body.entry.body, 'Pizza ist da!');
   assert.ok(afterBroadcast.body.entry.createdAt > 0);
+  const devicePayload = JSON.parse(sendMock.mock.calls[0]!.arguments[1] as string);
+  assert.equal(devicePayload.title, 'Durchsage von Push Tester');
+  assert.equal(devicePayload.actorId, undefined, 'the creator id stays server-side');
+
+  // The name is read from the account, so a rename reaches the banner.
+  db.prepare('UPDATE players SET name = ? WHERE id = ?').run('Push Tester Neu', playerId);
+  const afterRename = await request(app).get(`/api/push/current?playerId=${playerId}`);
+  assert.equal(afterRename.body.entry.actorName, 'Push Tester Neu');
+  db.prepare('UPDATE players SET name = ? WHERE id = ?').run('Push Tester', playerId);
 });
 
 test('GET /api/push/current validates identity and skips resolved topics without deleting history', async () => {

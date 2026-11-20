@@ -719,6 +719,7 @@ votesRouter.post('/start', requireGroupRole('member'), (req, res) => {
           ? 'Stichwahl: jetzt für einen der Gewinner abstimmen.'
           : 'Was zocken wir als Nächstes? Spiele mit Punkten bewerten.',
       url: '/#votes',
+      actorId: req.player?.id,
     },
     'all',
     { key: `vote:${nextRound}` },

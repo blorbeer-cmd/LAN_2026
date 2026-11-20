@@ -127,7 +127,7 @@ broadcastsRouter.post('/', ...withBodyPlayerIdentity, (req, res) => {
 
   const pushDelivery = notifyPlayers(
     recipientIds,
-    { title: player.name, body: row.message, url: '/#broadcast' },
+    { title: 'Durchsage', body: row.message, url: '/#broadcast', actorId: player.id },
     'all',
     { key: broadcastTopicKey(row.id), expiresAt: row.ends_at },
     { groupId: row.group_id, eventId: row.event_id },
