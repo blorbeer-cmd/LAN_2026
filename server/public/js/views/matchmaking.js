@@ -1224,9 +1224,12 @@ function wireDraftBoard(container, ctx) {
   const cancelBtn = container.querySelector('#draft-cancel');
   if (cancelBtn) {
     cancelBtn.addEventListener('click', async () => {
+      // Bind the confirmation to the draft it was opened for: if that draft
+      // ends meanwhile, the server refuses instead of cancelling the next one.
+      const draftId = draftCache?.draft?.id;
       if (!(await confirmDialog('Draft wirklich abbrechen?', { confirmText: 'Draft abbrechen', danger: true }))) return;
       try {
-        draftCache = await api.draft.cancel();
+        draftCache = await api.draft.cancel(draftId);
         ctx.rerender();
       } catch (err) {
         showToast(err.message, { error: true });
