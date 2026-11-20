@@ -6,6 +6,16 @@ import { escapeHtml, stateLabel, avatarHtml } from './format.js';
 import { activeGameGroups } from './liveActivity.js';
 import { icon } from './icons.js';
 
+// Keep the shared-screen roster stable while statuses change. Names define
+// the visible order; the participant id only makes equal names deterministic.
+export function sortKioskLivePlayers(players) {
+  return [...players].sort((a, b) => {
+    const nameDiff = a.name.localeCompare(b.name, 'de');
+    if (nameDiff !== 0) return nameDiff;
+    return String(a.player_id).localeCompare(String(b.player_id), 'de');
+  });
+}
+
 // Game activity is presented in the heading. The roster shows the player
 // and their status.
 export function kioskLiveRowHtml(p) {

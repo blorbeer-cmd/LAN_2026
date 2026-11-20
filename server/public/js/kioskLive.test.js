@@ -1,9 +1,24 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { kioskLiveActiveHtml, kioskLiveRowHtml } from './kioskLive.js';
+import { kioskLiveActiveHtml, kioskLiveRowHtml, sortKioskLivePlayers } from './kioskLive.js';
 
 const game = (id, name) => ({ game_id: id, game_name: name, game_icon: null, since: 0 });
 const player = (id, name, state, games = []) => ({ player_id: id, name, state, games, color: null });
+
+test('the roster stays alphabetical regardless of status', () => {
+  const players = [
+    player('p-zed', 'Berta', 'playing'),
+    player('p-anna', 'Anna', 'offline'),
+    player('p-b', 'Berta', 'paused'),
+    player('p-clara', 'Clara', 'online'),
+  ];
+
+  assert.deepEqual(
+    sortKioskLivePlayers(players).map(({ player_id }) => player_id),
+    ['p-anna', 'p-b', 'p-zed', 'p-clara'],
+  );
+  assert.deepEqual(players.map(({ player_id }) => player_id), ['p-zed', 'p-anna', 'p-b', 'p-clara']);
+});
 
 test('a playing row shows the player and status without naming their game', () => {
   const html = kioskLiveRowHtml(player('p1', 'Anna', 'playing', [game('g1', 'Factorio')]));
