@@ -625,10 +625,8 @@
   justify-self: center;
 }
 .kiosk-live-grid {
-  /* Column count is a JS decision (settleLiveLayout in kiosk.js), not a CSS
-     width breakpoint: it picks the fewest columns that show the whole
-     roster without clipping, so it reacts to how many players there
-     actually are, not just how wide this card happens to be. */
+  /* The roster and its paging probe share the column count chosen for
+     the card width in measureLiveLayout (kiosk.js). */
   grid-template-columns: repeat(var(--live-columns, 1), minmax(0, 1fr));
   flex: 1;
   min-height: 0;

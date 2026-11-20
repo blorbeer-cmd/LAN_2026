@@ -757,6 +757,9 @@ flowTest('Kiosk: centers tournament content and shows only the latest feature pu
       playing(board[0], `kiosk-game-player-${index}`, `Spieler ${index + 1}`, `Kiosk-Spiel mit langem Namen ${index + 1}`));
     await setOwnNote(null);
     await page.waitForSelector('#kiosk-live > .kiosk-live-grid >> text=Spieler 1');
+    const columnCount = await page.locator('#kiosk-live > .kiosk-live-grid').evaluate((grid) =>
+      new Set(Array.from(grid.children, (row) => row.getBoundingClientRect().left)).size);
+    assert.equal(columnCount, 4, 'the roster uses four columns when the card is wide enough');
     await page.waitForSelector('#kiosk-live-games > .kiosk-live-active .kiosk-live-more:not([hidden])');
     const strip = await page.locator('#kiosk-live-games > .kiosk-live-active').evaluate((element) => ({
       besideTitle: (() => {
@@ -866,8 +869,10 @@ flowTest('Kiosk: centers tournament content and shows only the latest feature pu
       const title = strip.closest('header')!.querySelector('h2')!.getBoundingClientRect();
       const count = strip.querySelector('.kiosk-live-active-count')!.getBoundingClientRect();
       const bounds = strip.getBoundingClientRect();
+      const rows = document.querySelectorAll('#kiosk-live > .kiosk-live-grid .kiosk-live-row');
       return bounds.top >= title.bottom && count.right <= bounds.right + 0.5
-        && strip.scrollWidth <= strip.clientWidth + 1;
+        && strip.scrollWidth <= strip.clientWidth + 1
+        && new Set(Array.from(rows, (row) => row.getBoundingClientRect().left)).size === 1;
     });
   } finally {
     openLiveRequests();

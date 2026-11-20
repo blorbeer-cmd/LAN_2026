@@ -261,21 +261,13 @@ function renderKioskLogin() {
 }
 
 // A LAN's live roster can run past what even a compact row fits on screen.
-// Rather than clip or rotate it, this widens to more columns (up to four,
-// long names are shortened with an ellipsis), then tightens the rows. Only a
-// roster that does not fit even four tight columns falls back to rotating
-// pages, as a safety net for unusually large events or tiny screens. Both the column count and the page size are re-decided from
-// scratch whenever the roster size or the card size changes
-// (settleLiveLayout), not just shrunk once and left there: a roster that
-// shrinks later (people going offline, the event ending) should loosen back
-// up instead of keeping empty space reserved for a bigger crowd that isn't
-// there any more. A plain state or name change keeps the settled layout and
-// the current page, because every agent report triggers live:changed and
-// re-settling on each of them made the card flicker and jump to page one.
+// Use four columns on wide cards and fewer when the available width is
+// limited. Tighten rows before paging when the roster exceeds the height.
+// Only roster size or card size changes need to remeasure the layout.
 const LIVE_MAX_COLUMNS = 4;
 // Avatar, shortened name and the status dot at the TV text size. Four
 // columns with shortened names beat a rotating second page.
-const LIVE_MIN_COLUMN_WIDTH = 140;
+const LIVE_COLUMN_WIDTH_BUDGET = 140; // includes room for the grid gap
 const LIVE_MIN_PAGE_SIZE = 6;
 const LIVE_ROTATE_INTERVAL_MS = 6_000;
 let liveAllPlayers = [];
@@ -372,24 +364,17 @@ async function settleLiveLayout(players) {
 async function measureLiveLayout(container, probe, players, myToken) {
   const total = players.length;
   const rowsHtml = players.map(kioskLiveRowHtml).join('');
-  // More columns only helps if each one still has room for an avatar, a
-  // name and a status badge without the name getting squeezed to nothing
-  // (seen in practice on the narrow end of the supported widths). Cap the
-  // search at however many of that minimum width actually fit before ever
-  // trying a column count that would collide name against badge.
-  const maxColumns = Math.max(1, Math.min(LIVE_MAX_COLUMNS, Math.floor(container.clientWidth / LIVE_MIN_COLUMN_WIDTH)));
+  const columns = Math.max(1, Math.min(LIVE_MAX_COLUMNS, Math.floor(container.clientWidth / LIVE_COLUMN_WIDTH_BUDGET)));
+  probe.style.setProperty('--live-columns', String(columns));
+  probe.innerHTML = livePageHtml(rowsHtml, 1, 0, false);
+  await nextFrame();
+  if (myToken !== liveSettleToken) return null;
+  if (liveFits(probe)) return { columns, pageSize: null, compact: false };
 
-  for (let columns = 1; columns <= maxColumns; columns += 1) {
-    probe.style.setProperty('--live-columns', String(columns));
-    probe.innerHTML = livePageHtml(rowsHtml, 1, 0, false);
-    await nextFrame();
-    if (myToken !== liveSettleToken) return null;
-    if (liveFits(probe)) return { columns, pageSize: null, compact: false };
-  }
   probe.innerHTML = livePageHtml(rowsHtml, 1, 0, true);
   await nextFrame();
   if (myToken !== liveSettleToken) return null;
-  if (liveFits(probe)) return { columns: maxColumns, pageSize: null, compact: true };
+  if (liveFits(probe)) return { columns, pageSize: null, compact: true };
 
   let pageSize = Math.max(LIVE_MIN_PAGE_SIZE, total - 3);
   for (;;) {
@@ -405,7 +390,7 @@ async function measureLiveLayout(container, probe, players, myToken) {
     // card keeps shrinking past it rather than clipping the last row.
     pageSize = pageSize > LIVE_MIN_PAGE_SIZE ? Math.max(LIVE_MIN_PAGE_SIZE, pageSize - 3) : pageSize - 1;
   }
-  return { columns: maxColumns, pageSize, compact: true };
+  return { columns, pageSize, compact: true };
 }
 
 // Compares against the last painted string rather than innerHTML: the
