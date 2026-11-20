@@ -235,7 +235,8 @@ Die Spielberechnung übernimmt die Platzregel des Zielkonzepts
   „In Katalog übernehmen“/„Zurück zu Vorschlägen“ and „Spiel löschen“ after the usual password
   confirmation. Members may also add a catalog game directly instead of suggesting it. Deleting
   a game that already has play time, votes, drafts, draws, matches or tournaments would erase
-  that history too, so such a game can only be deleted by community admins.
+  that history too, and a game on the ballot of a running vote would vanish from it, so such a
+  game can only be deleted by community admins.
   Below the tabs, the sort buttons and the filter controls share one compact
   `.tournament-section-panel` — the same bordered/accent-rail pattern the Tournament create form
   uses to separate sibling control groups, but one panel instead of two so the

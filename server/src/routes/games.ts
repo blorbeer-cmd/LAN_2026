@@ -514,11 +514,28 @@ function gameHasHistory(gameId: string): boolean {
   return GAME_HISTORY_TABLES.some((table) => db.prepare(`SELECT 1 FROM ${table} WHERE game_id = ? LIMIT 1`).get(gameId) !== undefined);
 }
 
+// A running vote can carry a game before anyone has voted for it: listed in
+// its explicit selection, or (without a selection) as one of the catalog
+// games every such ballot covers. Deleting it would pull it off ballots that
+// voters may already have open.
+function gameIsOnOpenBallot(game: GameRow): boolean {
+  return db
+    .prepare(
+      `SELECT 1 FROM vote_rounds
+       WHERE group_id = ? AND closed_at IS NULL
+         AND ((selected_game_ids IS NULL AND ? = 1)
+           OR EXISTS (SELECT 1 FROM json_each(vote_rounds.selected_game_ids) WHERE value = ?))
+       LIMIT 1`,
+    )
+    .get(game.group_id, game.status === 'suggestion' ? 0 : 1, game.id) !== undefined;
+}
+
 // DELETE /api/games/:id - cascades to process names, skills, preferences,
 // votes, matches; sets live_status.game_id to NULL for anyone currently on it.
 // Every member may remove a game without history (a typo, an unused
 // suggestion). Once the cascade would also erase play time, votes or
-// competition data, deleting stays with group admins/owners, matching the
+// competition data, or the game sits on a running vote's ballot, deleting
+// stays with group admins/owners, matching the
 // admin-only deletion of draws, matches, tournaments and vote history.
 // Checked ahead of the group-ownership resolver: an Arcade title (group_id
 // NULL) would otherwise 404 there before reaching this more specific 400.
@@ -539,9 +556,9 @@ gamesRouter.delete(
     const existing = req.groupResource as GameRow;
     // Synchronous from here to the DELETE, so no competing request can add
     // history between this check and the cascade.
-    if (req.groupMembership?.role === 'member' && gameHasHistory(existing.id)) {
+    if (req.groupMembership?.role === 'member' && (gameHasHistory(existing.id) || gameIsOnOpenBallot(existing))) {
       return res.status(403).json({
-        error: 'Dieses Spiel hat bereits Spielzeiten, Abstimmungen oder Wettbewerbe. Löschen können es nur Community-Admins.',
+        error: 'Dieses Spiel wird bereits in Spielzeiten, Abstimmungen oder Wettbewerben verwendet. Löschen können es nur Community-Admins.',
       });
     }
     const affectedEvents = withBettingAccounting(undefined, () => {

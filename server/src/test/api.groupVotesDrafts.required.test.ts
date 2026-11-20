@@ -162,6 +162,21 @@ test('votes and drafts stay roles-gated and event-scoped inside the one real gro
       assert.equal((await memberRunoff({ sourceRound: tieRound })).status, 409, 'one runoff per tie');
       assert.equal((await scoped(app, 'post', '/api/votes/cancel', alice).send({})).status, 200);
 
+      // A game on a running ballot stays put for members even before its
+      // first vote - explicitly selected or, without a selection, as one of
+      // the catalog games every such ballot covers.
+      const gameC = await scoped(app, 'post', '/api/games', alice).send({ name: 'Vote Game C', status: 'catalog' });
+      assert.equal(gameC.status, 201, JSON.stringify(gameC.body));
+      assert.equal((await request(app).post('/api/auth/reauth').set('Cookie', bob.cookie).send({ password: bob.password })).status, 204);
+      for (const selection of [{ gameIds: [gameC.body.id] }, {}]) {
+        const ballotRound = await scoped(app, 'post', '/api/votes/start', alice).send({ mode: 'points', ...selection });
+        assert.equal(ballotRound.status, 201, JSON.stringify(ballotRound.body));
+        const memberDelete = await scoped(app, 'delete', '/api/games/' + gameC.body.id, bob);
+        assert.equal(memberDelete.status, 403, JSON.stringify(memberDelete.body));
+        assert.equal((await scoped(app, 'post', '/api/votes/cancel', alice).send({ round: ballotRound.body.round })).status, 200);
+      }
+      assert.equal((await scoped(app, 'delete', '/api/games/' + gameC.body.id, bob)).status, 204, 'without a running ballot the unused game may go');
+
       // Starting and cancelling a draft is open to every member.
       const cancelDraft = await scoped(app, 'post', '/api/draft/start', bob).send({
         gameId: gameA.body.id,
