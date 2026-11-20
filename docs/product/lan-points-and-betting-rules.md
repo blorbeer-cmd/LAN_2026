@@ -150,7 +150,8 @@ frühere Endstände bleiben unverändert.
 Nach Eventende sind neue Tipps gesperrt, während Ergebnisse und Verlauf sichtbar bleiben.
 
 Ändert sich die Aufstellung eines Wettbewerbs vor dem Spiel, etwa durch Verschieben eines Spielers
-im Feinschliff oder durch ein korrigiertes Vorrundenspiel im K.-o.-Baum, gilt:
+im Feinschliff, durch Entfernen eines Spielers (auch wenn dabei ein Team wegfällt) oder durch ein
+korrigiertes Vorrundenspiel im K.-o.-Baum, gilt:
 
 - Ohne Tipps übernimmt der bestehende Markt die neue Aufstellung. Link und Mitteilung bleiben gültig.
 - Ein offener Markt mit Tipps wird vollständig erstattet. Im selben Schritt öffnet für dieselbe

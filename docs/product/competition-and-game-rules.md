@@ -171,6 +171,26 @@ Die Spielberechnung übernimmt die Platzregel des Zielkonzepts
   free result form with game choice and „Frei-für-alle“ stays in Auswertung.
   A drawn lineup moves players by drag and drop on desktop; touch and phone layouts additionally
   show a native team picker per player row. There is no tap-to-select highlight of other teams.
+  Anyone who may move players can also remove one without an extra symbol: on desktop by
+  dragging the player out of the lineup and dropping them anywhere else on the page, on touch
+  via „Aus dem Match entfernen“ in the same team picker, by keyboard with Entf/Rücktaste on the
+  focused row. A dialog names the player and the consequence before anything changes; the row's
+  tooltip names both drag gestures. In a recorded result the rows can only be dragged out (no
+  moves) and the picker offers only the removal.
+  Removal takes the player out of the lineup entirely
+  (`DELETE /api/matchmaking/draws/:id/players/:playerId`):
+  - In an open draw, a team that loses its last player disappears as long as two teams remain;
+    the last player of one of only two teams offers no remove action (delete the draw instead).
+    Nothing has been awarded yet, so the removed player simply earns no points from the later
+    result. The draw keeps its creator and its later Orga point.
+  - In a recorded result the player leaves the draw and the match result together. Every team
+    keeps its place, so the removed player loses this match's game points — including the
+    participation point of a last place — while everyone else keeps theirs. A team's last player
+    has no remove action because removing them would change the placements; edit or delete the
+    result instead. Settled tips block the change like any result correction.
+  - A draw that became a tournament offers no removal; tournament teams stay unchanged.
+  Check and write are one transaction: of two parallel removals of the same lineup state, one
+  wins and the other receives `409`. All devices update after the commit.
   Successful seat-neighbor grouping stays silent; a note appears only when requested seat neighbors
   still had to be placed in opposing teams.
 - **Player skill display** — `skillDisplay.js` renders the shared activity icon plus the selected

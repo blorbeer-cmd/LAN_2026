@@ -634,3 +634,107 @@ test('DELETE /api/matchmaking/draws/:id protects tournament-owned draws', async 
   assert.equal(deleted.status, 409);
   assert.ok(db.prepare('SELECT id FROM tournaments WHERE id = ?').get(tournament.body.id));
 });
+
+type DrawTeam = { players: Array<{ id: string }>; totalRating: number };
+const teamIds = (teams: DrawTeam[]) => teams.map((team) => team.players.map((player) => player.id));
+const removePlayer = (drawId: string, playerId: string) =>
+  request(app).delete(`/api/matchmaking/draws/${drawId}/players/${playerId}`);
+
+test('DELETE /api/matchmaking/draws/:id/players/:playerId removes a player and drops a team only while two remain', async () => {
+  const game = await request(app).post('/api/games').send({ name: 'Remove Player Open Draw' });
+  const draw = await request(app).post('/api/matchmaking')
+    .send({ gameId: game.body.id, playerIds: playerIds.slice(0, 4), teamCount: 3 });
+  const lineup = teamIds(draw.body.teams);
+  const big = lineup.findIndex((ids) => ids.length === 2);
+  const [soloA, soloB] = lineup.filter((ids) => ids.length === 1).map((ids) => ids[0]);
+
+  assert.equal((await removePlayer(draw.body.id, 'not valid!')).status, 400);
+  assert.equal((await removePlayer('nope', playerIds[0])).status, 404);
+
+  const fromBig = await removePlayer(draw.body.id, lineup[big][0]);
+  assert.equal(fromBig.status, 200);
+  assert.deepEqual(fromBig.body.teams[big].players.map((p: { id: string }) => p.id), [lineup[big][1]]);
+  assert.equal(fromBig.body.teams.length, 3);
+  const rating = db.prepare('SELECT rating FROM skills WHERE game_id = ? AND player_id = ?').get(game.body.id, lineup[big][1]) as
+    { rating: number } | undefined;
+  assert.equal(fromBig.body.teams[big].totalRating, rating?.rating ?? 3);
+
+  const dropped = await removePlayer(draw.body.id, soloA);
+  assert.equal(dropped.status, 200);
+  assert.equal(dropped.body.teams.length, 2);
+  assert.equal(teamIds(dropped.body.teams).flat().includes(soloA), false);
+
+  const lastTwo = await removePlayer(draw.body.id, soloB);
+  assert.equal(lastTwo.status, 409);
+  assert.match(lastTwo.body.error, /mindestens zwei Teams/);
+  const stored = db.prepare('SELECT teams FROM matchmaking_draws WHERE id = ?').get(draw.body.id) as { teams: string };
+  assert.equal(JSON.parse(stored.teams).length, 2);
+});
+
+test('DELETE /api/matchmaking/draws/:id/players/:playerId lets exactly one of two parallel removals win', async () => {
+  const game = await request(app).post('/api/games').send({ name: 'Remove Player Race' });
+  const draw = await request(app).post('/api/matchmaking')
+    .send({ gameId: game.body.id, playerIds: playerIds.slice(0, 4), teamCount: 2 });
+  const target = draw.body.teams[0].players[0].id;
+
+  const statuses = (await Promise.all([removePlayer(draw.body.id, target), removePlayer(draw.body.id, target)]))
+    .map((res) => res.status).sort();
+  assert.deepEqual(statuses, [200, 409]);
+  const stored = db.prepare('SELECT teams FROM matchmaking_draws WHERE id = ?').get(draw.body.id) as { teams: string };
+  assert.deepEqual(teamIds(JSON.parse(stored.teams)).flat().sort(),
+    playerIds.slice(0, 4).filter((id) => id !== target).sort());
+});
+
+test('DELETE /api/matchmaking/draws/:id/players/:playerId on a recorded result takes away only that player\'s game points', async () => {
+  const game = await request(app).post('/api/games').send({ name: 'Remove Player Recorded' });
+  const draw = await request(app).post('/api/matchmaking')
+    .send({ gameId: game.body.id, playerIds: playerIds.slice(0, 4), teamCount: 2 });
+  const [winners, losers] = teamIds(draw.body.teams);
+  const recorded = await request(app).post('/api/matches').send({
+    gameId: game.body.id,
+    teams: [{ playerIds: winners }, { playerIds: losers }],
+    winnerTeamIndex: 0,
+    drawId: draw.body.id,
+  });
+  assert.equal(recorded.status, 201);
+  const leaver = losers[0];
+
+  const removed = await removePlayer(draw.body.id, leaver);
+  assert.equal(removed.status, 200);
+  assert.equal(removed.body.matchId, recorded.body.id);
+  assert.equal(removed.body.winnerTeamIndex, 0);
+  assert.deepEqual(teamIds(removed.body.teams), [winners, losers.slice(1)]);
+  const match = db.prepare('SELECT result FROM matches WHERE id = ?').get(recorded.body.id) as { result: string };
+  assert.deepEqual(JSON.parse(match.result).teams.map((t: { playerIds: string[] }) => t.playerIds), [winners, losers.slice(1)]);
+
+  // Last place still earns its participation point for the remaining loser;
+  // the removed player no longer appears at all.
+  const standings = (await request(app).get(`/api/leaderboard?gameId=${game.body.id}`)).body.standings as
+    Array<{ playerId: string; points: number }>;
+  const pointsOf = new Map(standings.map((s) => [s.playerId, s.points]));
+  assert.equal(pointsOf.has(leaver), false);
+  for (const id of winners) assert.equal(pointsOf.get(id), 4);
+  assert.equal(pointsOf.get(losers[1]), 1);
+  const award = db.prepare('SELECT amount FROM points_playing_awards WHERE player_id = ? AND source_key = ?')
+    .get(leaver, `match:${recorded.body.id}`) as { amount: number } | undefined;
+  assert.equal(award?.amount ?? 0, 0);
+
+  const lastOfTeam = await removePlayer(draw.body.id, losers[1]);
+  assert.equal(lastOfTeam.status, 409);
+});
+
+test('DELETE /api/matchmaking/draws/:id/players/:playerId leaves tournament teams unchanged', async () => {
+  const game = await request(app).post('/api/games').send({ name: 'Remove Player Tournament Guard' });
+  const draw = await request(app).post('/api/matchmaking')
+    .send({ gameId: game.body.id, playerIds: playerIds.slice(0, 4), teamCount: 2 });
+  const tournament = await request(app).post('/api/tournaments').send({
+    gameId: game.body.id,
+    format: 'single_elimination',
+    drawId: draw.body.id,
+    teams: teamIds(draw.body.teams).map((ids) => ({ playerIds: ids })),
+  });
+  assert.equal(tournament.status, 201);
+  const res = await removePlayer(draw.body.id, draw.body.teams[0].players[0].id);
+  assert.equal(res.status, 409);
+  assert.match(res.body.error, /Turnier/);
+});
