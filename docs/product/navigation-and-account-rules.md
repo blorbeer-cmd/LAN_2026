@@ -266,10 +266,10 @@ trailing action. Orga uses the reserved second row for its tabs only on phone an
   readable without opening the entry, and one square copy icon (named „<Titel> kopieren“) in the
   fixed right column. From `--bp-lg` the dialog widens to `--info-board-panel-width` and lists the
   rows in two columns, left column first. A row opens the entry's detail dialog with the full text
-  and clickable links, its last change and „Kopieren“; group admins and owners additionally get
-  „Bearbeiten“ and a muted „Löschen“ text button whose confirmation stays red. Only group admins
-  and owners see the small primary „Eintrag anlegen“ at the right of the dialog header, matching
-  the server, which accepts writes from those roles only. As pure reference material the dialog
+  and clickable links, its last change, „Kopieren“, „Bearbeiten“ and a muted „Löschen“ text button
+  whose confirmation stays red. Every group member maintains the entries: all see the small primary
+  „Eintrag anlegen“ at the right of the dialog header, matching the server, which accepts writes
+  from every member (deleting after the usual password confirmation). As pure reference material the dialog
   has no close button; Escape and a tap outside close it. The entry form stacks „Titel“ and a
   one-line „Inhalt“ that grows with its text above equally wide „Abbrechen“ and „Anlegen“. An open
   dialog refreshes itself on `info:changed` instead of stacking a second copy. Its nested forms and

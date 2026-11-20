@@ -47,7 +47,7 @@ infoBoardRouter.get('/', (req, res) => {
   res.json({ entries: rows.map(serialize), summary: { total: rows.length } });
 });
 
-infoBoardRouter.post('/', requireGroupRole('admin'), (req, res) => {
+infoBoardRouter.post('/', requireGroupRole('member'), (req, res) => {
   const { title, content, eventId } = req.body ?? {};
   if (!isNonEmptyString(title, MAX_TITLE_LENGTH)) {
     return res.status(400).json({ error: `Titel ist erforderlich (1-${MAX_TITLE_LENGTH} Zeichen).` });
@@ -75,7 +75,7 @@ infoBoardRouter.post('/', requireGroupRole('admin'), (req, res) => {
   res.status(201).json(serialize(row));
 });
 
-infoBoardRouter.patch('/:id', requireGroupRole('admin'), (req, res) => {
+infoBoardRouter.patch('/:id', requireGroupRole('member'), (req, res) => {
   const existing = db
     .prepare('SELECT * FROM info_entries WHERE id = ? AND group_id = ?')
     .get(req.params.id, req.group!.id) as InfoRow | undefined;
@@ -104,7 +104,7 @@ infoBoardRouter.patch('/:id', requireGroupRole('admin'), (req, res) => {
   res.json(serialize({ ...existing, ...next }));
 });
 
-infoBoardRouter.delete('/:id', requireGroupRole('admin'), requireRecentReauthentication, (req, res) => {
+infoBoardRouter.delete('/:id', requireGroupRole('member'), requireRecentReauthentication, (req, res) => {
   const existing = db.prepare('SELECT * FROM info_entries WHERE id = ? AND group_id = ?').get(
     req.params.id,
     req.group!.id,

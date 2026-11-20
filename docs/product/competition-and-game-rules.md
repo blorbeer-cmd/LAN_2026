@@ -210,8 +210,10 @@ Die Spielberechnung übernimmt die Platzregel des Zielkonzepts
   `--bp-sm` it collapses to a square „+“ with the same accessible name so it still fits beside the
   three tabs. The „Spiel vorschlagen“ form exposes the same game metadata that can later be edited: title,
   platform and its link, YouTube gameplay link, genres, additional info and the seat-neighbor
-  default. Process-name mappings remain an admin-only management action because they control
-  automatic game detection on participant computers.
+  default. Every group member manages the catalog from the game's detail dialog: editing,
+  process-name mappings (they control automatic game detection on participant computers),
+  „In Katalog übernehmen“/„Zurück zu Vorschlägen“ and „Spiel löschen“ after the usual password
+  confirmation. Members may also add a catalog game directly instead of suggesting it.
   Below the tabs, the sort buttons and the filter controls share one compact
   `.tournament-section-panel` — the same bordered/accent-rail pattern the Tournament create form
   uses to separate sibling control groups, but one panel instead of two so the
@@ -490,8 +492,7 @@ Die Spielberechnung übernimmt die Platzregel des Zielkonzepts
   distribution and who voted how stay hidden from everyone while the round is open, only the
   participation shows; without it the running result and, unless anonymous, the voters are visible
   to the event's participants. After closing, the result is visible to them and, unless the round
-  is anonymous, who voted how. Any member may start a round; only community admins start a
-  runoff.
+  is anonymous, who voted how. Any member may start a round and, on a tie, the runoff.
   A cancelled round is deleted together with its votes and the next round may reuse its number, so
   the client tells rounds apart by number and start time and never carries a cancelled round's
   ballot over.

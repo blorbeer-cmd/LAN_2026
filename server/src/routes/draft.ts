@@ -156,7 +156,7 @@ draftRouter.get('/', (req, res) => {
 });
 
 // POST /api/draft/start - body: { gameId, captainIds: [..], poolPlayerIds: [..] }
-draftRouter.post('/start', requireGroupRole('admin'), (req, res) => {
+draftRouter.post('/start', requireGroupRole('member'), (req, res) => {
   const groupId = req.group!.id;
   const scope = resolveRequestGroupEventScope(req, undefined);
   if (!scope.ok || !scope.eventId) return res.status(409).json({ error: 'Kein aktives Event verfügbar.' });
@@ -407,8 +407,8 @@ draftRouter.post('/pick', ...withBodyPlayerIdentity, (req, res) => {
   res.json(state);
 });
 
-// POST /api/draft/cancel - abandon the running draft (group admin/owner).
-draftRouter.post('/cancel', requireGroupRole('admin'), (req, res) => {
+// POST /api/draft/cancel - abandon the running draft (any group member).
+draftRouter.post('/cancel', requireGroupRole('member'), (req, res) => {
   const scope = resolveRequestGroupEventScope(req, undefined);
   if (!scope.ok || !scope.eventId) return res.status(409).json({ error: 'Kein aktives Event verfügbar.' });
   if (!requireGroupEventAccess(req, res, scope.eventId)) return;

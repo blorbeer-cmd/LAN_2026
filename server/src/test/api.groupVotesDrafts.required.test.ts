@@ -56,20 +56,15 @@ test('votes and drafts stay roles-gated and event-scoped inside the one real gro
       assert.equal((await scoped(app, 'put', '/api/events/' + eventA.body.id + '/participants', alice)
         .send({ playerIds: [alice.account.id, bob.account.id, eve.account.id] })).status, 200);
 
-      // Starting a vote is a group activity, so every active member may do it.
-      // Closing stays with admins plus the member who started that round;
-      // cancelling remains admin-only.
-      const memberRunoff = await scoped(app, 'post', '/api/votes/start', bob).send({ mode: 'single', gameIds: [gameA.body.id] });
-      assert.equal(memberRunoff.status, 403);
+      // Starting a vote (a runoff too, see voteB below) is a group activity,
+      // so every active member may do it. Closing stays with admins plus the
+      // member who started that round; cancelling remains admin-only.
       const memberVote = await scoped(app, 'post', '/api/votes/start', bob).send({});
       assert.equal(memberVote.status, 201, JSON.stringify(memberVote.body));
       assert.equal(memberVote.body.createdBy, bob.account.id);
       assert.equal((await scoped(app, 'post', '/api/votes/close', eve).send({})).status, 403);
       assert.equal((await scoped(app, 'post', '/api/votes/cancel', bob).send({})).status, 403);
       assert.equal((await scoped(app, 'post', '/api/votes/close', bob).send({})).status, 200);
-      assert.equal((await scoped(app, 'post', '/api/draft/start', bob).send({
-        gameId: gameA.body.id, captainIds: [alice.account.id, bob.account.id], poolPlayerIds: [eve.account.id],
-      })).status, 403);
 
       assert.equal((await scoped(app, 'post', '/api/events/' + eventA.body.id + '/tracking/start', alice).send({})).status, 200);
       assert.equal((await scoped(app, 'put', '/api/me/active-event', alice).send({ eventId: eventA.body.id })).status, 200);
@@ -129,7 +124,8 @@ test('votes and drafts stay roles-gated and event-scoped inside the one real gro
       assert.equal((await scoped(app, 'put', '/api/me/active-event', bob).send({ eventId: eventB.body.id })).status, 200);
       assert.equal((await scoped(app, 'put', '/api/me/active-event', eve).send({ eventId: eventB.body.id })).status, 200);
 
-      const voteB = await scoped(app, 'post', '/api/votes/start', alice).send({ mode: 'single', title: 'B vote' });
+      // A runoff-style single round is open to every member, not just admins.
+      const voteB = await scoped(app, 'post', '/api/votes/start', bob).send({ mode: 'single', title: 'B vote' });
       assert.equal(voteB.status, 201, JSON.stringify(voteB.body));
       assert.equal(voteB.body.round, 3, 'round counters are group-local, not event-local');
       assert.equal(voteB.body.eventId, eventB.body.id);
@@ -138,15 +134,14 @@ test('votes and drafts stay roles-gated and event-scoped inside the one real gro
       const historyAAfter = await scoped(app, 'get', '/api/votes/history', alice).query({ eventId: eventA.body.id });
       assert.deepEqual(historyAAfter.body.history.map((round) => round.title), ['A vote'], 'event A history stays put after switching tracking');
 
-      // Cancel paths are moderation operations too.
-      const cancelDraft = await scoped(app, 'post', '/api/draft/start', alice).send({
+      // Starting and cancelling a draft is open to every member.
+      const cancelDraft = await scoped(app, 'post', '/api/draft/start', bob).send({
         gameId: gameA.body.id,
         captainIds: [alice.account.id, bob.account.id],
         poolPlayerIds: [eve.account.id],
       });
-      assert.equal(cancelDraft.status, 201);
-      assert.equal((await scoped(app, 'post', '/api/draft/cancel', bob).send({})).status, 403);
-      assert.equal((await scoped(app, 'post', '/api/draft/cancel', alice).send({})).status, 200);
+      assert.equal(cancelDraft.status, 201, JSON.stringify(cancelDraft.body));
+      assert.equal((await scoped(app, 'post', '/api/draft/cancel', eve).send({})).status, 200);
 
       const membershipDraft = await scoped(app, 'post', '/api/draft/start', alice).send({
         gameId: gameA.body.id,

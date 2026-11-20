@@ -231,20 +231,15 @@ function validateTeamSizes(
   return { min, max };
 }
 
-// POST /api/games - create a game. Two shapes in practice: an admin adding a
-// tracked game (name, team size, no status = defaults to 'catalog'), or a
-// player suggestion from the Spiele view (name + optional platform/trailer,
+// POST /api/games - create a game. Every group member may do both shapes: add
+// a tracked game directly (name, team size, no status = defaults to
+// 'catalog'), or a player suggestion from the Spiele view (name + optional platform/trailer,
 // status: 'suggestion', playerId so it's attributed as createdBy). A missing
 // suggestion trailer is filled with a YouTube gameplay search link below.
 gamesRouter.post(
   '/',
   ...withBodyPlayerIdentity,
-  (req, res, next) => {
-    if (req.body?.status !== 'suggestion') {
-      return requireGroupRole('admin')(req, res, next);
-    }
-    next();
-  },
+  requireGroupRole('member'),
   (req, res) => {
     const {
       name,
@@ -365,7 +360,7 @@ const resolveGame = resolveGroupResource<GameRow>({
 });
 
 // PATCH /api/games/:id - edit name/icon/team sizes/platform/trailer.
-gamesRouter.patch('/:id', resolveGame, requireGroupRole('admin'), (req, res) => {
+gamesRouter.patch('/:id', resolveGame, requireGroupRole('member'), (req, res) => {
   const existing = req.groupResource as GameRow;
 
   const { name, icon, iconImage, minTeamSize, maxTeamSize, platform, platformUrl, trailerUrl, genres, info, considerSeatNeighborsDefault } =
@@ -466,7 +461,7 @@ gamesRouter.patch('/:id', resolveGame, requireGroupRole('admin'), (req, res) => 
 // regular catalog entry. Guarded against a double-tap racing itself: the
 // second request finds status already 'catalog' and gets a clean 409 instead
 // of silently re-broadcasting.
-gamesRouter.post('/:id/promote', resolveGame, requireGroupRole('admin'), (req, res) => {
+gamesRouter.post('/:id/promote', resolveGame, requireGroupRole('member'), (req, res) => {
   const existing = req.groupResource as GameRow;
   if (existing.status !== 'suggestion') return res.status(409).json({ error: 'Spiel ist bereits im Katalog.' });
 
@@ -488,7 +483,7 @@ gamesRouter.post('/:id/promote', resolveGame, requireGroupRole('admin'), (req, r
 // POST /api/games/:id/demote - the inverse of promote: pushes a catalog entry
 // back into the suggestions list. Guarded the same way against a double-tap
 // racing itself.
-gamesRouter.post('/:id/demote', resolveGame, requireGroupRole('admin'), (req, res) => {
+gamesRouter.post('/:id/demote', resolveGame, requireGroupRole('member'), (req, res) => {
   const existing = req.groupResource as GameRow;
   if (existing.status !== 'catalog') return res.status(409).json({ error: 'Spiel ist bereits ein Vorschlag.' });
 
@@ -525,7 +520,7 @@ gamesRouter.delete(
     next();
   },
   resolveGame,
-  requireGroupRole('admin'),
+  requireGroupRole('member'),
   requireRecentReauthentication,
   (req, res) => {
     const existing = req.groupResource as GameRow;
@@ -556,7 +551,7 @@ gamesRouter.delete(
 );
 
 // POST /api/games/:id/processes - add a process-name mapping for agent scans.
-gamesRouter.post('/:id/processes', resolveGame, requireGroupRole('admin'), (req, res) => {
+gamesRouter.post('/:id/processes', resolveGame, requireGroupRole('member'), (req, res) => {
   const game = req.groupResource as GameRow;
 
   const { processName } = req.body ?? {};
@@ -584,7 +579,7 @@ gamesRouter.post('/:id/processes', resolveGame, requireGroupRole('admin'), (req,
 });
 
 // DELETE /api/games/:id/processes/:processName - remove a mapping.
-gamesRouter.delete('/:id/processes/:processName', resolveGame, requireGroupRole('admin'), (req, res) => {
+gamesRouter.delete('/:id/processes/:processName', resolveGame, requireGroupRole('member'), (req, res) => {
   const game = req.groupResource as GameRow;
   const result = db
     .prepare('DELETE FROM game_process_names WHERE game_id = ? AND process_name = ?')

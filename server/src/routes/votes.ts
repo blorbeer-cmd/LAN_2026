@@ -610,9 +610,6 @@ votesRouter.post('/start', requireGroupRole('member'), (req, res) => {
   if (mode !== undefined && mode !== 'single' && mode !== 'points') {
     return res.status(400).json({ error: 'mode muss "single" oder "points" sein.' });
   }
-  if (mode === 'single' && req.groupMembership?.role === 'member') {
-    return res.status(403).json({ error: 'Stichwahlen können nur von Community-Admins gestartet werden.' });
-  }
   const nextMode: VoteMode = mode === 'single' ? 'single' : 'points';
   if (anonymous !== undefined && typeof anonymous !== 'boolean') {
     return res.status(400).json({ error: 'anonymous muss true oder false sein.' });

@@ -1,5 +1,5 @@
 // Single-group catalog/presence suite: game catalog, process-name mappings,
-// skills/preferences and the live-status board stay roles-gated inside the
+// skills/preferences and the live-status board work for every member of the
 // one real group, and unknown resource ids 404 instead of leaking existence.
 
 import { execFileSync } from 'child_process';
@@ -59,21 +59,38 @@ test('game catalog, process names, skills/preferences and live status are roles-
       assert.equal((await scoped(app, 'get', '/api/games/does-not-exist', bob.cookie, groupId)).status, 404);
       assert.equal((await scoped(app, 'patch', '/api/games/does-not-exist', bob.cookie, groupId).send({ name: 'Hijacked' })).status, 404);
 
-      // Vertical authorization: a regular group member may submit a
-      // suggestion, but every catalog/process mutation stays admin-only.
+      // Every group member manages the catalog: direct catalog entries,
+      // edits, promote/demote, process names and (after a password
+      // confirmation) deletion are not reserved for admins.
       const bobSuggestion = await scoped(app, 'post', '/api/games', bob.cookie, groupId).send({ name: 'Bob Suggestion', status: 'suggestion' });
       assert.equal(bobSuggestion.status, 201, JSON.stringify(bobSuggestion.body));
-      assert.equal((await scoped(app, 'post', '/api/games', bob.cookie, groupId).send({ name: 'Forbidden Catalog', status: 'catalog' })).status, 403);
-      assert.equal((await scoped(app, 'patch', '/api/games/' + gameA.body.id, bob.cookie, groupId).send({ name: 'Forbidden Rename' })).status, 403);
-      assert.equal((await scoped(app, 'post', '/api/games/' + bobSuggestion.body.id + '/promote', bob.cookie, groupId).send({})).status, 403);
-      assert.equal((await scoped(app, 'delete', '/api/games/' + bobSuggestion.body.id, bob.cookie, groupId)).status, 403);
-      assert.equal((await scoped(app, 'post', '/api/games/' + gameA.body.id + '/processes', bob.cookie, groupId).send({ processName: 'forbidden.exe' })).status, 403);
+      const bobCatalog = await scoped(app, 'post', '/api/games', bob.cookie, groupId).send({ name: 'Bob Catalog', status: 'catalog' });
+      assert.equal(bobCatalog.status, 201, JSON.stringify(bobCatalog.body));
+      assert.equal(bobCatalog.body.status, 'catalog');
+      const bobRename = await scoped(app, 'patch', '/api/games/' + bobSuggestion.body.id, bob.cookie, groupId).send({ name: 'Bob Renamed' });
+      assert.equal(bobRename.status, 200, JSON.stringify(bobRename.body));
+      assert.equal(bobRename.body.name, 'Bob Renamed');
+      const bobPromote = await scoped(app, 'post', '/api/games/' + bobSuggestion.body.id + '/promote', bob.cookie, groupId).send({});
+      assert.equal(bobPromote.status, 200, JSON.stringify(bobPromote.body));
+      assert.equal(bobPromote.body.status, 'catalog');
+      const bobDemote = await scoped(app, 'post', '/api/games/' + bobSuggestion.body.id + '/demote', bob.cookie, groupId).send({});
+      assert.equal(bobDemote.status, 200, JSON.stringify(bobDemote.body));
+      assert.equal(bobDemote.body.status, 'suggestion');
+      const bobProc = await scoped(app, 'post', '/api/games/' + bobCatalog.body.id + '/processes', bob.cookie, groupId).send({ processName: 'Member.exe' });
+      assert.equal(bobProc.status, 201, JSON.stringify(bobProc.body));
+      assert.equal((await scoped(app, 'delete', '/api/games/' + bobCatalog.body.id + '/processes/member.exe', bob.cookie, groupId)).status, 204);
+      // Deleting stays behind the shared password confirmation.
+      const bobDeleteWithoutReauth = await scoped(app, 'delete', '/api/games/' + bobCatalog.body.id, bob.cookie, groupId);
+      assert.equal(bobDeleteWithoutReauth.status, 403);
+      assert.equal(bobDeleteWithoutReauth.body.code, 'reauth_required');
+      assert.equal((await request(app).post('/api/auth/reauth').set('Cookie', bob.cookie).send({ password: bob.password })).status, 204);
+      assert.equal((await scoped(app, 'delete', '/api/games/' + bobCatalog.body.id, bob.cookie, groupId)).status, 204);
+      assert.equal((await scoped(app, 'get', '/api/games/' + bobCatalog.body.id, alice.cookie, groupId)).status, 404);
 
       // Process names are unique per group: the same name cannot map to a
       // second game once claimed.
       const procA = await scoped(app, 'post', '/api/games/' + gameA.body.id + '/processes', alice.cookie, groupId).send({ processName: 'shared.exe' });
       assert.equal(procA.status, 201, JSON.stringify(procA.body));
-      assert.equal((await scoped(app, 'delete', '/api/games/' + gameA.body.id + '/processes/shared.exe', bob.cookie, groupId)).status, 403);
       const gameB = await scoped(app, 'post', '/api/games', alice.cookie, groupId).send({ name: 'Second Game', status: 'catalog' });
       const procClashSameGroup = await scoped(app, 'post', '/api/games/' + gameB.body.id + '/processes', alice.cookie, groupId).send({ processName: 'shared.exe' });
       assert.equal(procClashSameGroup.status, 409);

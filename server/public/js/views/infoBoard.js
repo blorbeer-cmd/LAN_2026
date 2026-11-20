@@ -1,8 +1,7 @@
 // Info: the pinned answers to the questions everyone asks five times per
-// evening — WLAN password, Discord link, game-server IPs, house rules. Group
-// admins and owners maintain the entries (the server gates every write on
-// that role); everyone reads them, and each entry has a one-tap copy button
-// since most of them exist to be pasted somewhere.
+// evening — WLAN password, Discord link, game-server IPs, house rules. Every
+// group member reads and maintains the entries, and each entry has a one-tap
+// copy button since most of them exist to be pasted somewhere.
 //
 // This is a topbar "i" dialog instead of an own area: it is pure reference
 // material people look up mid-conversation, so it must be reachable from
@@ -14,7 +13,7 @@ import { openModal, confirmDialog } from '../modal.js';
 import { showToast } from '../toast.js';
 import { withStepUp } from '../reauth.js';
 import { emptyStateHtml } from '../emptyState.js';
-import { isGroupAdmin } from '../groupContext.js';
+import { currentGroup } from '../groupContext.js';
 import { icon } from '../icons.js';
 
 let cache = null;
@@ -134,10 +133,15 @@ async function deleteEntry(entry) {
   }
 }
 
-// The full entry: content with clickable links, copy for everyone and edit or
-// delete for admins.
+// Every group member may create, edit and delete entries (see
+// routes/infoBoard.ts); without a resolved group there is nothing to change.
+function canEditEntries() {
+  return Boolean(currentGroup());
+}
+
+// The full entry: content with clickable links, copy, edit and delete.
 function openEntryDetail(entry) {
-  const canEdit = isGroupAdmin();
+  const canEdit = canEditEntries();
   const meta = [
     entry.updatedAt ? `Geändert ${escapeHtml(formatDateTime(entry.updatedAt))}` : '',
     canEdit ? '<button type="button" class="profile-link-btn" data-detail-delete>Löschen</button>' : '',
@@ -271,7 +275,7 @@ export function openInfoBoard({ focusEntryId = null } = {}) {
     return;
   }
   if (cache === null) load();
-  const canEdit = isGroupAdmin();
+  const canEdit = canEditEntries();
   const { el } = openModal('Info', bodyHtml(), {
     tourKey: 'info',
     headerAction: canEdit ? '<button type="button" class="btn btn-primary btn-sm" id="info-new-btn">Eintrag anlegen</button>' : '',
