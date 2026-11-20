@@ -234,8 +234,10 @@ content column by accident. Mein Profil offers Automatic/Desktop/Laptop as one a
 choice. Automatic follows `--bp-xl`; below that breakpoint every preference intentionally retains
 compact geometry.
 The desktop rail uses standard 32px rows for a hovering fine pointer, with compact group spacing.
-Coarse-pointer navigation retains 44px targets. Labels and keyboard focus remain fully visible;
-the main list scrolls only when the available window height still cannot fit its entries.
+Coarse-pointer navigation retains 44px targets. Labels and keyboard focus remain fully visible.
+When the window is too short for the whole main list, Automatic uses the laptop shell instead of a
+scrolling rail and returns to the rail once the window is tall enough; an explicit Desktop choice
+keeps the rail and lets only its main list scroll.
 
 ## Breakpoints
 

@@ -450,6 +450,15 @@ flowTest('wide desktop adapts the shared shell and pilot views without changing 
   await page.waitForFunction(() => document.documentElement.dataset.layoutMode === 'desktop');
   assert.equal(await page.locator('.desktop-nav').isVisible(), true);
   assert.equal(await page.locator('.bottom-nav').isHidden(), true);
+  // An explicit Desktop choice keeps the rail in a window too short for it;
+  // only its main list scrolls.
+  await page.setViewportSize({ width: 1920, height: 480 });
+  await page.waitForFunction(() => {
+    const list = document.getElementById('desktop-nav-main');
+    return list && list.scrollHeight - list.clientHeight > 1;
+  });
+  assert.equal(await page.getAttribute('html', 'data-layout-mode'), 'desktop');
+  await page.setViewportSize({ width: 1920, height: 1080 });
   await page.click('.desktop-nav-btn[data-view="arcade"]');
   await page.waitForSelector('#arcade-create-lobby');
 
@@ -500,6 +509,15 @@ flowTest('wide desktop adapts the shared shell and pilot views without changing 
   await page.waitForSelector('#profile-layout');
   await page.selectOption('#profile-layout', 'auto');
   await page.waitForFunction(() => document.documentElement.dataset.layoutPreference === 'auto' && document.documentElement.dataset.layoutMode === 'desktop');
+  // Automatic uses the laptop shell instead of a rail that would scroll, and
+  // returns to the rail once the window is tall enough again.
+  await page.setViewportSize({ width: 1920, height: 480 });
+  await page.waitForFunction(() => document.documentElement.dataset.layoutMode === 'laptop');
+  assert.equal(await page.locator('.desktop-nav').isHidden(), true);
+  assert.equal(await page.locator('.bottom-nav').isVisible(), true);
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await page.waitForFunction(() => document.documentElement.dataset.layoutMode === 'desktop');
+  assert.equal(await page.locator('.bottom-nav').isHidden(), true);
   await page.click('.desktop-nav-btn[data-view="arcade"]');
   await page.waitForSelector('#arcade-create-lobby');
   await page.setViewportSize({ width: 390, height: 844 });

@@ -201,9 +201,13 @@ test('real LAN account, automatic orga credits, own-game betting notification, h
   await setPointsVisibility(true);
   await admin.setViewportSize({ width: 1366, height: 720 });
   const compactRail = await admin.locator('.desktop-nav-main').evaluate((element) => ({
+    // Automatic would swap a scrolling rail for the laptop shell, which hides
+    // the rail and would make the overflow below trivially zero.
+    layoutMode: document.documentElement.dataset.layoutMode,
     overflow: element.scrollHeight - element.clientHeight,
     rowHeights: Array.from(document.querySelectorAll('.desktop-nav-btn'), (button) => button.getBoundingClientRect().height),
   }));
+  assert.equal(compactRail.layoutMode, 'desktop', `the full LAN rail stays on a small desktop: ${JSON.stringify(compactRail)}`);
   assert.ok(compactRail.overflow <= 1, `the full LAN rail fits a small desktop: ${JSON.stringify(compactRail)}`);
   assert.ok(compactRail.rowHeights.every((height) => height >= 31 && height <= 33));
   await admin.setViewportSize({ width: 1440, height: 900 });

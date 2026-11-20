@@ -47,7 +47,7 @@ import {
 import { invalidateEventScopedViews, invalidateViewCaches, invalidateViewsAfterReconnect } from './viewLifecycle.js';
 import { viewDefinition } from './viewManifest.js';
 import { appHash, localRouteKey, parseAppHash } from './appRoute.js';
-import { applyLayoutModeForPlayer, layoutModeForPlayer, LAYOUT_MODES } from './layoutMode.js';
+import { applyLayoutModeForPlayer, forgetAutomaticRailFit } from './layoutMode.js';
 import { createStartupDataGate } from './startupDataGate.js';
 
 installIconReplacement();
@@ -360,8 +360,23 @@ function renderDesktopNavigation() {
     main.append(...groups);
     reconcileDesktopNavEntries(utilities, desktopNav.utilities, pool, null);
     root.dataset.signature = signature;
+    // Different entries need a different height, so Automatic decides afresh
+    // whether the rail fits without scrolling.
+    forgetAutomaticRailFit();
+    syncLayoutMode();
   }
   syncDesktopNavigationActiveState();
+}
+
+// Re-resolves the account's shell after the window or the rail's entries
+// change: Automatic follows --bp-xl and also falls back to the laptop shell
+// when the desktop rail would have to scroll (see layoutMode.js).
+function syncLayoutMode() {
+  const previous = document.documentElement.dataset.layoutMode;
+  applyLayoutModeForPlayer(getMyId());
+  if (document.documentElement.dataset.layoutMode !== previous) {
+    window.dispatchEvent(new Event('respawn:layout-mode-changed'));
+  }
 }
 
 function queueSharedRefresh({ render = true } = {}) {
@@ -845,14 +860,16 @@ function wireNav() {
   // Feedback is reachable from every view via this topbar icon; the view it
   // was opened from is captured automatically (see lastSubstantiveView).
   document.getElementById('feedback-btn').addEventListener('click', () => openFeedbackModal(lastSubstantiveView));
-  const desktopLayoutQuery = window.matchMedia('(min-width: 1280px)');
-  desktopLayoutQuery.addEventListener('change', () => {
-    if (layoutModeForPlayer(getMyId()) !== LAYOUT_MODES.auto) return;
-    const previous = document.documentElement.dataset.layoutMode;
-    applyLayoutModeForPlayer(getMyId(), { wide: desktopLayoutQuery.matches });
-    if (document.documentElement.dataset.layoutMode !== previous) {
-      window.dispatchEvent(new Event('respawn:layout-mode-changed'));
-    }
+  window.matchMedia('(min-width: 1280px)').addEventListener('change', syncLayoutMode);
+  // Height changes (window resize, browser zoom) can make the rail fit or
+  // overflow without crossing the width breakpoint. Once per frame is enough.
+  let layoutSyncFrame = 0;
+  window.addEventListener('resize', () => {
+    if (layoutSyncFrame) return;
+    layoutSyncFrame = requestAnimationFrame(() => {
+      layoutSyncFrame = 0;
+      syncLayoutMode();
+    });
   });
   // Info is reference material people look up mid-conversation, so it opens
   // over whatever they were doing instead of costing them their current view.
