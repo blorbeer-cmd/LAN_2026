@@ -621,7 +621,19 @@ flowTest('Kiosk: centers tournament content and shows only the latest feature pu
     activity_tracked: false,
     games: [{ game_id: `game-${gameName}`, game_name: gameName, game_icon: null, since: Date.now(), foreground: true }],
   });
+  // While closed, further live requests wait in the route: a socket signal
+  // from the server's own sweep must not repaint the card mid-check.
+  let liveRequestGate: Promise<void> | null = null;
+  let openLiveRequestGate = () => {};
+  const closeLiveRequests = () => {
+    liveRequestGate = new Promise((resolve) => { openLiveRequestGate = resolve; });
+  };
+  const openLiveRequests = () => {
+    liveRequestGate = null;
+    openLiveRequestGate();
+  };
   const liveBoardRoute = async (route: import('playwright').Route) => {
+    if (liveRequestGate) await liveRequestGate;
     const response = await route.fetch();
     const board = (await response.json()) as KioskLivePlayer[];
     await route.fulfill({ response, json: liveBoardEdit ? liveBoardEdit(board) : board });
@@ -635,7 +647,7 @@ flowTest('Kiosk: centers tournament content and shows only the latest feature pu
     // has read orders the release after the kiosk handled that return: it
     // renders synchronously once apiFetch has the body.
     await page.evaluate(() => {
-      const kiosk = window as unknown as { releaseKioskFrames: () => void; kioskLiveBodies: number };
+      const kiosk = window as unknown as { holdKioskFrames: () => void; releaseKioskFrames: () => void; kioskLiveBodies: number };
       kiosk.kioskLiveBodies = 0;
       const originalText = Response.prototype.text;
       Response.prototype.text = async function text(this: Response) {
@@ -649,17 +661,27 @@ flowTest('Kiosk: centers tournament content and shows only the latest feature pu
         window.requestAnimationFrame = original;
         held.splice(0).forEach((callback) => original(callback));
       };
-      window.requestAnimationFrame = (callback) => {
-        held.push(callback);
-        return 0;
+      kiosk.holdKioskFrames = () => {
+        window.requestAnimationFrame = (callback) => {
+          held.push(callback);
+          return 0;
+        };
       };
     });
+    const holdKioskFrames = () => page.evaluate(() => (window as unknown as { holdKioskFrames: () => void }).holdKioskFrames());
+    const releaseKioskFrames = () => page.evaluate(() => (window as unknown as { releaseKioskFrames: () => void }).releaseKioskFrames());
+    const kioskLiveProbes = (count: number) => page.waitForFunction(
+      (expected) => document.querySelectorAll('#kiosk-live .kiosk-live-probe').length >= expected,
+      count,
+      { polling: 50 },
+    );
     // Interval polling: the default frame-based polling would wait on the held frames.
     const kioskReadLiveBodies = (count: number) => page.waitForFunction(
       (expected) => (window as unknown as { kioskLiveBodies: number }).kioskLiveBodies >= expected,
       count,
       { polling: 50 },
     );
+    await holdKioskFrames();
     liveBoardEdit = (board) => board.map((player, index) => (index === 0 ? playing(player, player.player_id, player.name, 'Kiosk-Zwischenspiel') : player));
     await setOwnNote(null);
     await kioskReadLiveBodies(1);
@@ -667,12 +689,38 @@ flowTest('Kiosk: centers tournament content and shows only the latest feature pu
     liveBoardEdit = null;
     await setOwnNote(null);
     await kioskReadLiveBodies(2);
-    await page.evaluate(() => (window as unknown as { releaseKioskFrames: () => void }).releaseKioskFrames());
+    closeLiveRequests();
+    await releaseKioskFrames();
     // The probe leaves once the parked settle has finished; a stale paint
     // would follow in the same task, before the next poll reads the card.
     await page.waitForFunction(() => !document.querySelector('#kiosk-live .kiosk-live-probe'));
     assert.equal(await page.locator('#kiosk-live >> text=Kiosk-Zwischenspiel').count(), 0, 'a game that already ended again must not be painted');
     assert.equal(await page.locator('#kiosk-live > .kiosk-live-active').count(), 0);
+    openLiveRequests();
+
+    // A resize while a newer board is still being measured re-settles that
+    // newer board, never the older one still on screen. Each resize starts a
+    // settle of its own (one more parked probe), which orders the release
+    // after both resize re-settles.
+    const kioskViewport = page.viewportSize()!;
+    await holdKioskFrames();
+    liveBoardEdit = (board) => board.map((player, index) => (index === 0 ? playing(player, player.player_id, player.name, 'Kiosk-Neues-Spiel') : player));
+    await setOwnNote(null);
+    await kioskReadLiveBodies(3);
+    closeLiveRequests();
+    await kioskLiveProbes(1);
+    await page.setViewportSize({ width: kioskViewport.width - 120, height: kioskViewport.height });
+    await kioskLiveProbes(2);
+    await page.setViewportSize(kioskViewport);
+    await kioskLiveProbes(3);
+    await releaseKioskFrames();
+    await page.waitForFunction(() => !document.querySelector('#kiosk-live .kiosk-live-probe'));
+    assert.equal(
+      await page.locator('#kiosk-live > .kiosk-live-grid .kiosk-live-detail >> text=Kiosk-Neues-Spiel').count(),
+      1,
+      'a resize must re-settle the newest board, not the one that was on screen',
+    );
+    openLiveRequests();
 
     // Many games on the 1280 px screen: the one-line strip keeps whole
     // name/count pairs and sums up the rest instead of shrinking every name.
@@ -697,36 +745,66 @@ flowTest('Kiosk: centers tournament content and shows only the latest feature pu
       }),
     }));
     assert.ok(strip.overflow <= 1, `the strip stays on one line inside the card: ${JSON.stringify(strip)}`);
-    assert.match(strip.more ?? '', /^\+\d+ weitere$/);
+    assert.match(strip.more ?? '', /^\+\d+$/);
+    assert.match(
+      (await page.locator('#kiosk-live > .kiosk-live-active .kiosk-live-more').getAttribute('aria-label')) ?? '',
+      /^(1 weiteres Spiel|\d+ weitere Spiele)$/,
+    );
     assert.ok(strip.names.length >= 1 && strip.names.every((width) => width >= 30), `every shown game keeps a readable name: ${JSON.stringify(strip)}`);
     assert.ok(strip.counts.every(Boolean), `no shown player count is cut off: ${JSON.stringify(strip)}`);
     assert.equal(Number(/\d+/.exec(strip.more ?? '')?.[0]) + strip.names.length, 8, 'shown and summed-up games add up to all running games');
 
+    // A largest game that fits on its own keeps its whole name, even when a
+    // smaller group would need the "+N" pill next to it.
+    const longGame = 'Die Siedler – Aufstieg eines Königreichs';
+    liveBoardEdit = (board) => [
+      playing(board[0], 'kiosk-long-player-1', 'Spieler Siedler 1', longGame),
+      playing(board[0], 'kiosk-long-player-2', 'Spieler Siedler 2', longGame),
+      playing(board[0], 'kiosk-small-player', 'Spieler Factorio', 'Factorio'),
+    ];
+    await setOwnNote(null);
+    await page.waitForSelector('#kiosk-live > .kiosk-live-grid >> text=Spieler Factorio');
+    const longName = await page.locator('#kiosk-live > .kiosk-live-active').evaluate((element) => {
+      const name = element.querySelector('.kiosk-live-game strong')!;
+      return { overflow: element.scrollWidth - element.clientWidth, cut: name.scrollWidth - name.clientWidth, text: name.textContent };
+    });
+    assert.ok(longName.overflow <= 1, `the strip stays on one line: ${JSON.stringify(longName)}`);
+    assert.equal(longName.text, longGame);
+    assert.ok(longName.cut <= 0, `a largest game that fits on its own is not shortened: ${JSON.stringify(longName)}`);
+
     // A single game whose name alone is wider than the strip shortens only
-    // its name; its count stays whole inside the card.
+    // its name, never to nothing, also beside a smaller group; its count
+    // stays whole inside the card.
     const overlongGame = `Kiosk-Spiel ${'mit sehr langem Namen '.repeat(6)}`.trim();
-    liveBoardEdit = (board) => [playing(board[0], 'kiosk-overlong-player', 'Spieler Lang', overlongGame)];
+    liveBoardEdit = (board) => [
+      playing(board[0], 'kiosk-overlong-player', 'Spieler Lang', overlongGame),
+      playing(board[0], 'kiosk-overlong-player-2', 'Spieler Lang 2', overlongGame),
+      playing(board[0], 'kiosk-overlong-small', 'Spieler Klein', 'Factorio'),
+    ];
     await setOwnNote(null);
     // The previous strip was squeezed as well; wait for the new board first.
     await page.waitForSelector('#kiosk-live > .kiosk-live-grid >> text=Spieler Lang');
     await page.waitForSelector('#kiosk-live > .kiosk-live-active .kiosk-live-game.is-squeezed');
     const squeezed = await page.locator('#kiosk-live > .kiosk-live-active').evaluate((element) => {
       const right = element.getBoundingClientRect().right;
+      const name = element.querySelector('.kiosk-live-game strong')!;
       return {
         overflow: element.scrollWidth - element.clientWidth,
-        name: element.querySelector('.kiosk-live-game strong')!.getBoundingClientRect().width,
+        name: name.getBoundingClientRect().width,
+        minimum: parseFloat(getComputedStyle(name).fontSize) * 3,
         countInside: element.querySelector('.kiosk-live-active-count')!.getBoundingClientRect().right <= right + 0.5,
-        more: element.querySelector('.kiosk-live-more:not([hidden])') !== null,
       };
     });
     assert.deepEqual(
-      { fits: squeezed.overflow <= 1, readableName: squeezed.name >= 30, countInside: squeezed.countInside, more: squeezed.more },
-      { fits: true, readableName: true, countInside: true, more: false },
+      { fits: squeezed.overflow <= 1, readableName: squeezed.name >= squeezed.minimum, countInside: squeezed.countInside },
+      { fits: true, readableName: true, countInside: true },
       JSON.stringify(squeezed),
     );
   } finally {
+    openLiveRequests();
     await page.unroute('**/api/live', liveBoardRoute);
     await page.evaluate(() => (window as unknown as { releaseKioskFrames?: () => void }).releaseKioskFrames?.());
+    await page.setViewportSize({ width: 1280, height: 720 });
   }
   await setOwnNote(null);
   await page.waitForFunction(() => !document.querySelector('#kiosk-live > .kiosk-live-active'));

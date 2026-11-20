@@ -687,7 +687,7 @@
 }
 /* "Gerade aktiv" above the roster, as on Home: one pill per running game.
    It stays one line so it never pushes roster rows onto another page; with
-   many games the smallest groups collapse into one "+N weitere" pill
+   many games the smallest groups collapse into one compact "+N" pill
    (fitKioskLiveActive) instead of every name shrinking. Passive
    TV labels in the chip look at the TV meta size, not the interactive .chip
    control. */
@@ -708,7 +708,7 @@
 .kiosk-live-game {
   /* No min-width: 0 here: a pill never shrinks below its readable name and
      count, so a game that does not fit overflows the strip and moves into
-     the "+N weitere" pill instead of overlapping its neighbours. */
+     the "+N" pill instead of overlapping its neighbours. */
   display: inline-flex;
   flex: 0 1 auto;
   align-items: center;

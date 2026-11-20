@@ -280,6 +280,10 @@ const LIVE_MIN_COLUMN_WIDTH = 140;
 const LIVE_MIN_PAGE_SIZE = 6;
 const LIVE_ROTATE_INTERVAL_MS = 6_000;
 let liveAllPlayers = [];
+// The newest board received, which a settle may still be measuring while
+// liveAllPlayers holds the one on screen. A re-settle after a resize uses
+// this one, so it never treats an older painted board as the newest news.
+let liveLatestPlayers = [];
 let liveColumns = 1;
 let livePageSize = null; // null = everyone fits at liveColumns, no paging
 let liveCompact = false; // tighter rows before any paging
@@ -454,6 +458,7 @@ function sortLivePlayers(players) {
 }
 
 async function renderLive(players) {
+  liveLatestPlayers = players;
   const container = document.getElementById('kiosk-live');
   if (players.length === 0) {
     liveSettleToken += 1; // an in-flight settle must not paint over the empty state
@@ -505,7 +510,7 @@ if (kioskLiveElement) {
   new ResizeObserver(() => {
     clearTimeout(liveResizeTimer);
     liveResizeTimer = setTimeout(() => {
-      if (liveAllPlayers.length > 0) void renderLive(liveAllPlayers);
+      if (liveLatestPlayers.length > 0) void renderLive(liveLatestPlayers);
     }, 150);
   }).observe(kioskLiveElement);
 }

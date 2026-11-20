@@ -29,8 +29,10 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu TV-Kiosk, Jam
   without the own pause toggle („Dein Status“), a single-line „Gerade aktiv“ strip above the roster
   names each running game with its player count (people icon plus number, „N Spieler“ as accessible
   name), largest group first; it is omitted while nobody plays and never wraps: game names stay
-  whole, games that do not fit, the smallest groups first, are summed up in one „+N weitere“ label,
-  and only a largest game too long on its own shortens its name. Each row shows avatar, name with a
+  whole, games that do not fit, the smallest groups first, are summed up in one compact „+N“ label
+  („N weitere Spiele“ as accessible name). The largest game's whole name comes before that label;
+  only a largest game too long on its own shortens its name, never below about six characters next
+  to its count. Each row shows avatar, name with a
   second line below it, and a status dot instead of a text badge: filled green with a glow for
   „Spielt“, filled blue for „Online“, an amber ring for „Pause“ and a hollow grey ring for
   „Offline“; the German state stays available as the dot's accessible name and tooltip. The second
