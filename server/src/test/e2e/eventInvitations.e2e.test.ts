@@ -147,8 +147,8 @@ test('manager invites a member who accepts and both open clients update', async 
   // data and therefore belongs in this check.
   await memberPage.click('#info-btn');
   await memberPage.waitForSelector('.info-board-modal .info-board-dialog');
-  // Only group admins and owners maintain the entries.
-  assert.equal(await memberPage.locator('#info-new-btn').count(), 0);
+  // Every member maintains the entries, not just group admins and owners.
+  assert.equal(await memberPage.locator('#info-new-btn').count(), 1);
   await memberPage.keyboard.press('Escape');
   await memberPage.waitForSelector('.info-board-modal', { state: 'detached' });
   await memberPage.waitForTimeout(300);
