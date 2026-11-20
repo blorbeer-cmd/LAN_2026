@@ -23,7 +23,9 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Routen, Rolle
     choice is stored as
     `respawn_layout_mode:<verified-account-id>`, survives logout/reload and is restored before the
     authenticated app becomes visible. Automatic is the default and resolves against `--bp-xl` on
-    every breakpoint change. It changes neither routes nor permissions. The active event
+    every breakpoint change; it also keeps the compact shell while the window is too short for the
+    rail's main list to fit without scrolling. An explicit Desktop choice keeps the rail and scrolls
+    its main list instead. It changes neither routes nor permissions. The active event
     snapshot and the same role checks filter both navigation surfaces. Everything else lives under
     „Mehr“ on compact layouts, in the topbar, or (for the
     merged Rangliste/Statistiken/

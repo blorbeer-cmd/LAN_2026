@@ -201,9 +201,13 @@ test('real LAN account, automatic orga credits, own-game betting notification, h
   await setPointsVisibility(true);
   await admin.setViewportSize({ width: 1366, height: 720 });
   const compactRail = await admin.locator('.desktop-nav-main').evaluate((element) => ({
+    // Automatic would swap a scrolling rail for the laptop shell, which hides
+    // the rail and would make the overflow below trivially zero.
+    layoutMode: document.documentElement.dataset.layoutMode,
     overflow: element.scrollHeight - element.clientHeight,
     rowHeights: Array.from(document.querySelectorAll('.desktop-nav-btn'), (button) => button.getBoundingClientRect().height),
   }));
+  assert.equal(compactRail.layoutMode, 'desktop', `the full LAN rail stays on a small desktop: ${JSON.stringify(compactRail)}`);
   assert.ok(compactRail.overflow <= 1, `the full LAN rail fits a small desktop: ${JSON.stringify(compactRail)}`);
   assert.ok(compactRail.rowHeights.every((height) => height >= 31 && height <= 33));
   await admin.setViewportSize({ width: 1440, height: 900 });
@@ -847,8 +851,8 @@ test('token-only kiosk pages every result participant and removes point columns 
           const area = element.getBoundingClientRect();
           return {
             fits: document.documentElement.scrollWidth <= document.documentElement.clientWidth,
-            captionHeight: element.querySelector('.kiosk-result-caption')!.getBoundingClientRect().height,
-            caption: element.querySelector('.kiosk-result-caption')!.textContent,
+            captionHeight: document.querySelector('#kiosk-tournament-title .kiosk-result-caption')!.getBoundingClientRect().height,
+            caption: document.querySelector('#kiosk-tournament-title .kiosk-result-caption')!.textContent,
             rows: Array.from(element.querySelectorAll('tbody tr')).filter((row) => !(row as HTMLElement).hidden).map((row) => ({
               name: row.querySelector('.kiosk-result-name')!.textContent!, bottom: row.getBoundingClientRect().bottom,
             })), bottom: area.bottom,
@@ -908,7 +912,7 @@ test('token-only kiosk pages every result participant and removes point columns 
       sawChampion = false;
       for (let turn = 0; turn < 90 && (seenRankings.size < 4 || !sawTip || !sawChampion); turn++) {
         if (await results.isVisible()) {
-          const caption = await results.locator('.kiosk-result-caption').textContent() ?? '';
+          const caption = await kiosk.locator('#kiosk-tournament-title .kiosk-result-caption').textContent() ?? '';
           if (await results.locator('.kiosk-result-table--ranking').count()) seenRankings.add(caption);
           if (caption.includes('Turniersieger')) sawChampion = true;
           if (caption.includes('Finale') && (await results.textContent())?.includes('Points Bob')) {
@@ -958,7 +962,7 @@ test('token-only kiosk pages every result participant and removes point columns 
       const shown = await probe.evaluate(() => {
         const panel = document.querySelector('#rows') as HTMLElement;
         return panel.hidden || !panel.querySelector('.kiosk-result-table--ranking') ? null : {
-          title: panel.querySelector('.kiosk-result-caption')!.textContent!,
+          title: document.querySelector('#heading .kiosk-result-caption')!.textContent!,
           names: Array.from(panel.querySelectorAll('tbody tr:not([hidden]) .kiosk-result-name'), (el) => el.textContent!),
         };
       });
@@ -966,7 +970,7 @@ test('token-only kiosk pages every result participant and removes point columns 
       await probe.clock.runFor(9_000);
       const stable = await probe.evaluate(() => {
         const w = window as any, panel = document.querySelector('#rows')!;
-        const cursor = () => [panel.querySelector('.kiosk-result-caption')?.textContent, panel.querySelector('.kiosk-result-pages')?.textContent, (panel as HTMLElement).hidden];
+        const cursor = () => [document.querySelector('#heading .kiosk-result-caption')?.textContent, panel.querySelector('.kiosk-result-pages')?.textContent, (panel as HTMLElement).hidden];
         const before = cursor();
         w.rotationFeed.items[0].activityAt++;
         w.rotationPoints.rounds[0].pot++;

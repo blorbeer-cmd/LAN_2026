@@ -20,7 +20,6 @@ function resultHtml(item, rows, showPoints) {
     ? date.toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
     : 'Zeitpunkt unbekannt';
   return `<div class="kiosk-result-page">
-    <div class="kiosk-result-caption">${escapeHtml(item.gameName)}</div>
     <div class="kiosk-result-meta"><time${validDate ? ` datetime="${escapeHtml(date.toISOString())}"` : ''}>${escapeHtml(stamp)}</time>${item.draw || item.corrected ? `<span>${[item.draw ? 'Remis' : '', item.corrected ? 'korrigiert' : ''].filter(Boolean).join(' · ')}</span>` : ''}</div>
     <table class="kiosk-result-table" aria-label="${escapeHtml(item.gameName)}">
       <thead><tr><th scope="col">Platz</th><th scope="col">Spieler</th>${showPoints ? '<th scope="col" aria-label="Spielpunkte">Punkte</th>' : ''}</tr></thead>
@@ -44,20 +43,39 @@ function marketRows(item) {
       count: outcome.tippers.length, name: tipper?.name ?? (tipper ? 'Anonym' : 'Noch keine Tipps'), stake: tipper?.stake })));
 }
 
-function pointsHtml(page, rows) {
-  const ranking = page.kind === 'ranking';
-  const item = page.item;
-  const caption = ranking ? item.title
-    : `${item.tournament.name} · ${item.sourceType === 'tournament' ? 'Turniersieger' : item.tournament.phase}`;
-  const meta = ranking ? '' : `${item.status === 'settled' ? 'Abgerechnet' : item.status === 'open' ? 'Tipps offen' : 'Tipps geschlossen'} · Topf ${item.pot} P. · ${item.tipCount} Tipps`;
+function pageCaption(page) {
+  if (page.kind === 'result') return page.item.gameName;
+  if (page.kind === 'ranking') return page.item.title;
+  const { item } = page;
+  return `${item.tournament.name} · ${item.sourceType === 'tournament' ? 'Turniersieger' : item.tournament.phase}`;
+}
+
+function rankingTableHtml(caption, rows) {
+  return `<table class="kiosk-result-table kiosk-result-table--ranking" aria-label="${escapeHtml(caption)}">
+      <thead><tr><th scope="col" aria-label="Rang">#</th><th scope="col">Spieler</th><th scope="col">Punkte</th></tr></thead>
+      <tbody>${rows.map((row) => `<tr><td>${row.rank === null ? '–' : `${escapeHtml(row.rank)}.`}</td><td><span class="kiosk-result-name">${escapeHtml(row.name)}</span></td><td>${escapeHtml(row.points)}</td></tr>`).join('')}</tbody>
+    </table>`;
+}
+
+// A ranking fills two columns, left first, with perColumn rows each.
+function rankingHtml(page, rows, perColumn) {
+  const caption = pageCaption(page);
+  const columns = [rows.slice(0, perColumn), rows.slice(perColumn, perColumn * 2)].filter((column) => column.length);
   return `<div class="kiosk-result-page">
-    <div class="kiosk-result-caption">${escapeHtml(caption)}</div>
-    ${meta ? `<div class="kiosk-result-meta">${escapeHtml(meta)}</div>` : ''}
-    <table class="kiosk-result-table${ranking ? ' kiosk-result-table--ranking' : ' kiosk-result-table--market'}" aria-label="${escapeHtml(caption)}">
-      <thead><tr>${ranking ? '<th scope="col">Rang</th><th scope="col">Spieler</th><th scope="col">Punkte</th>' : '<th scope="col">Team</th><th scope="col">Tipps</th><th scope="col" aria-label="Einsatz in Punkten">P.</th>'}</tr></thead>
-      <tbody>${rows.map((row) => ranking
-        ? `<tr><td>${row.rank === null ? '–' : `${escapeHtml(row.rank)}.`}</td><td><span class="kiosk-result-name">${escapeHtml(row.name)}</span></td><td>${escapeHtml(row.points)}</td></tr>`
-        : `<tr${row.winner ? ' class="is-winner"' : ''}><td><span class="kiosk-result-name">${escapeHtml(row.label)}</span>${row.winner ? '<span class="kiosk-result-win">Sieg</span>' : ''}<div class="kiosk-result-meta">${row.count} Tipps · ${row.total} P.</div></td><td><span class="kiosk-result-name">${escapeHtml(row.name)}</span></td><td>${row.stake === undefined ? '–' : `${row.stake} P.`}</td></tr>`).join('')}</tbody>
+    <div class="kiosk-result-columns">${columns.map((column) => rankingTableHtml(caption, column)).join('')}</div>
+    <div class="kiosk-result-pages"></div>
+  </div>`;
+}
+
+function marketHtml(page, rows) {
+  const { item } = page;
+  const caption = pageCaption(page);
+  const meta = `${item.status === 'settled' ? 'Abgerechnet' : item.status === 'open' ? 'Tipps offen' : 'Tipps geschlossen'} · Topf ${item.pot} P. · ${item.tipCount} Tipps`;
+  return `<div class="kiosk-result-page">
+    <div class="kiosk-result-meta">${escapeHtml(meta)}</div>
+    <table class="kiosk-result-table kiosk-result-table--market" aria-label="${escapeHtml(caption)}">
+      <thead><tr><th scope="col">Team</th><th scope="col">Tipps</th><th scope="col" aria-label="Einsatz in Punkten">P.</th></tr></thead>
+      <tbody>${rows.map((row) => `<tr${row.winner ? ' class="is-winner"' : ''}><td><span class="kiosk-result-name">${escapeHtml(row.label)}</span>${row.winner ? '<span class="kiosk-result-win">Sieg</span>' : ''}<div class="kiosk-result-meta">${row.count} Tipps · ${row.total} P.</div></td><td><span class="kiosk-result-name">${escapeHtml(row.name)}</span></td><td>${row.stake === undefined ? '–' : `${row.stake} P.`}</td></tr>`).join('')}</tbody>
     </table><div class="kiosk-result-pages"></div>
   </div>`;
 }
@@ -86,8 +104,46 @@ export function createKioskResultsPanel({ results, tournament, title }) {
     ];
   }
 
+  function pagesLabel(total, shown) {
+    return shown < total || offset > 0 ? `${offset + 1}–${shown} von ${total}` : '';
+  }
+
+  // Rankings split their rows over two columns, so instead of hiding rows
+  // from the bottom the per-column count shrinks until both columns fit.
+  function fitRanking() {
+    const page = pages()[index];
+    const rows = page.rows.slice(offset);
+    const total = page.rows.length;
+    const overflows = () => {
+      const footer = results.querySelector('.kiosk-result-pages');
+      const available = results.getBoundingClientRect().bottom - footer.getBoundingClientRect().height;
+      return [...results.querySelectorAll('tbody tr:last-child')].some((row) => row.getBoundingClientRect().bottom > available);
+    };
+    const paint = (perColumn) => {
+      results.innerHTML = rankingHtml(page, rows, perColumn);
+      const shown = offset + Math.min(rows.length, perColumn * 2);
+      // Measure with the footer line present, like fit() does.
+      results.querySelector('.kiosk-result-pages').textContent = `${offset + 1}–${shown} von ${total}`;
+      return shown;
+    };
+    results.classList.remove('is-compact');
+    let perColumn = Math.max(1, Math.ceil(rows.length / 2));
+    let shown = paint(perColumn);
+    while (perColumn > 1 && overflows()) {
+      perColumn -= 1;
+      shown = paint(perColumn);
+    }
+    if (overflows()) results.classList.add('is-compact');
+    nextOffset = shown;
+    results.querySelector('.kiosk-result-pages').textContent = pagesLabel(total, shown);
+  }
+
   function fit() {
     if (results.hidden) return;
+    if (pages()[index]?.kind === 'ranking') {
+      fitRanking();
+      return;
+    }
     const rows = [...results.querySelectorAll('tbody tr')];
     if (!rows.length) return;
     rows.forEach((row) => { row.hidden = false; });
@@ -100,7 +156,7 @@ export function createKioskResultsPanel({ results, tournament, title }) {
     let count = rows.length;
     while (count > 1 && rows[count - 1].getBoundingClientRect().bottom > available) rows[--count].hidden = true;
     nextOffset = offset + count;
-    footer.textContent = nextOffset < total || offset > 0 ? `${offset + 1}–${nextOffset} von ${total}` : '';
+    footer.textContent = pagesLabel(total, nextOffset);
   }
 
   function render() {
@@ -111,14 +167,20 @@ export function createKioskResultsPanel({ results, tournament, title }) {
     tournament.hidden = showingResults;
     const page = list[index];
     const heading = page?.kind === 'ranking' ? 'LAN-Punkte' : page?.kind === 'market' ? 'Wetten' : 'Ergebnisse';
-    title.innerHTML = `${icon(domainIcon('tournaments'))} ${escapeHtml(showingResults ? heading : tournamentTitle)}`;
+    // The page caption shares the heading line, right-aligned.
+    const caption = showingResults && page ? `<span class="kiosk-result-caption">${escapeHtml(pageCaption(page))}</span>` : '';
+    title.innerHTML = `${icon(domainIcon('tournaments'))} ${escapeHtml(showingResults ? heading : tournamentTitle)}${caption}`;
     if (!page) {
       results.innerHTML = emptyStateHtml(failed ? 'Ergebnisse gerade nicht erreichbar.' : loaded ? 'Noch keine Ergebnisse.' : 'Lädt…', { className: 'kiosk-empty-state' });
       return;
     }
+    if (page.kind === 'ranking') {
+      fitRanking();
+      return;
+    }
     results.innerHTML = page.kind === 'result'
       ? resultHtml(page.item, page.rows.slice(offset), feed.showPoints)
-      : pointsHtml(page, page.rows.slice(offset));
+      : marketHtml(page, page.rows.slice(offset));
     fit();
   }
 

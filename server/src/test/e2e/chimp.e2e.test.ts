@@ -84,6 +84,9 @@ test('Chimp Test: a shared round on phone and laptop, reveal on a mistake, round
     assert.equal(new Set(geometry.map((box) => box.x)).size, 5);
     assert.ok(geometry.every((box) => box.width >= 44 && box.height >= 44), 'tiles keep the 44px touch target');
     await assertNoOverflow(host.page.locator('#view-container'));
+    // The round reaches the guest over its own socket; measure only once the
+    // guest shows the same numbers, or an empty grid reads as zero rows.
+    await readNumbers(guest.page, 4);
     const guestGeometry = await guest.page.locator('.chimp-cell').evaluateAll((cells) => cells.map((cell) => Math.round(cell.getBoundingClientRect().y)));
     assert.equal(new Set(guestGeometry).size, 5, 'laptop grid has five rows of eight');
 

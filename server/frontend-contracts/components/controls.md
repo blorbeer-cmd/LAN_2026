@@ -656,7 +656,7 @@ Die bisherige Ausnahme `legacy-secondary-modifier` ist in Paket 5 aufgelöst: De
 
 - `registry:topbar-title`: Permanent 44px brand/navigation row.
 
-- `registry:desktop-navigation`: Desktop rail rows use `--control-height` with a hovering fine pointer and `--tap-target-size` otherwise. Main and utility padding use `--space-2`; group separators use `--space-1`. All labels remain visible and keyboard-accessible. The real LAN navigation including points and admin utilities fits at 1366×720 without scrolling; shorter windows retain an accessible scroll fallback.
+- `registry:desktop-navigation`: Desktop rail rows use `--control-height` with a hovering fine pointer and `--tap-target-size` otherwise. Main and utility padding use `--space-2`; group separators use `--space-1`. All labels remain visible and keyboard-accessible. The real LAN navigation including points and admin utilities fits at 1366×720 without scrolling. In a shorter window Automatic switches to the laptop shell; an explicit Desktop choice retains an accessible scroll fallback.
 
 - `registry:page-heading`: Permanent page-header alignment row.
 

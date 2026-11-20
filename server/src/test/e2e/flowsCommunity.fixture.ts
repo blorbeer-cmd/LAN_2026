@@ -589,7 +589,8 @@ flowTest('Kiosk: centers tournament content and shows only the latest feature pu
   };
   await page.waitForSelector('#kiosk-live .kiosk-live-row');
   await setOwnNote('Kiosk-Pause');
-  await page.waitForSelector('#kiosk-live .badge-paused');
+  // The state is a dot that still names itself for assistive technology.
+  await page.waitForSelector('#kiosk-live .kiosk-live-status.is-paused[aria-label="Pause"]');
   await page.locator('#kiosk-live').evaluate((live) => {
     const records: MutationRecord[] = [];
     new MutationObserver((batch) => records.push(...batch))
@@ -656,7 +657,13 @@ flowTest('Kiosk: centers tournament content and shows only the latest feature pu
     const text = document.querySelector('.kiosk-vote-header .badge')?.textContent ?? '';
     return /^1 \/ \d+ abgestimmt$/.test(text.trim());
   });
-  assert.equal(await page.locator('.kiosk-vote-header').evaluate((element) => getComputedStyle(element).alignItems), 'center');
+  // Query and read in one synchronous page step: the vote card repaints its
+  // content when the dashboard height changes (banner or Jam bar appearing),
+  // and a header detached between locating and reading reports no style.
+  assert.equal(await page.evaluate(() => {
+    const header = document.querySelector('.kiosk-vote-header');
+    return header ? getComputedStyle(header).alignItems : null;
+  }), 'center');
   await page.waitForSelector('.kiosk-vote-result.is-concealed >> text=1 Stimme');
   assert.equal(await page.locator(`.kiosk-vote-result:has-text("${games[1].name}")`).count(), 0);
   assert.notEqual(await page.locator('.kiosk-vote-result.is-concealed strong').evaluate((element) => getComputedStyle(element).filter), 'none');
