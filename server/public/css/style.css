@@ -301,7 +301,12 @@ textarea {
 }
 
 .topbar {
-  height: var(--topbar-height);
+  /* The status-bar inset is padding inside a border-box bar, so it has to be
+     added to the height too. Otherwise an installed iOS web app (status bar
+     style black-translucent) squeezes the 56px bar into the inset: its
+     buttons ride up under the clock and spill over the top of the page,
+     covering it and catching its taps. */
+  height: calc(var(--topbar-height) + env(safe-area-inset-top));
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -453,7 +458,7 @@ textarea {
   right: 0;
   z-index: 30;
   width: min(var(--notification-panel-width), calc(100vw - var(--space-4)));
-  max-height: calc(100dvh - var(--topbar-height) - var(--shell-bottom-inset) - var(--space-6));
+  max-height: calc(100dvh - var(--topbar-height) - env(safe-area-inset-top) - var(--shell-bottom-inset) - var(--space-6));
   overflow-y: auto;
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -463,7 +468,7 @@ textarea {
 @media (max-width: 639px) { /* --bp-md */
   .notification-center-panel {
     position: fixed;
-    top: calc(var(--topbar-height) + var(--space-2));
+    top: calc(var(--topbar-height) + env(safe-area-inset-top) + var(--space-2));
     right: var(--space-2);
     left: var(--space-2);
     width: auto;
@@ -1583,7 +1588,7 @@ textarea {
   }
   :root[data-layout-mode='desktop'] .desktop-nav {
     position: fixed;
-    top: var(--topbar-height);
+    top: calc(var(--topbar-height) + env(safe-area-inset-top));
     bottom: 0;
     left: 0;
     z-index: 10;
