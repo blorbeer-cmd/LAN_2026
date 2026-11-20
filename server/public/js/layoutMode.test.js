@@ -4,6 +4,8 @@ import assert from 'node:assert/strict';
 import {
   DEFAULT_LAYOUT_MODE,
   applyLayoutModeForPlayer,
+  fitAutomaticDesktopRail,
+  forgetAutomaticRailFit,
   layoutModeForPlayer,
   layoutModeStorageKey,
   resolvedLayoutMode,
@@ -65,4 +67,52 @@ test('invalid or blocked storage falls back safely', () => {
   assert.equal(applyLayoutModeForPlayer('alice', { storage: blockedStorage, root, wide: false }), 'auto');
   assert.equal(root.dataset.layoutPreference, 'auto');
   assert.equal(root.dataset.layoutMode, 'laptop');
+});
+
+test('automatic falls back to the laptop shell while the desktop rail would scroll', () => {
+  forgetAutomaticRailFit();
+  const root = { dataset: { layoutPreference: 'auto', layoutMode: 'desktop' } };
+  const railList = { scrollHeight: 520, clientHeight: 400, measured: 0 };
+  const measuringRail = new Proxy(railList, {
+    get: (target, key) => {
+      if (key === 'scrollHeight') target.measured += 1;
+      return target[key];
+    },
+  });
+
+  fitAutomaticDesktopRail({ root, railList: measuringRail, viewportHeight: 700 });
+  assert.equal(root.dataset.layoutMode, 'laptop');
+
+  // Still too short: decided from the remembered height, without rendering the rail again.
+  root.dataset.layoutMode = 'desktop';
+  fitAutomaticDesktopRail({ root, railList: measuringRail, viewportHeight: 810 });
+  assert.equal(root.dataset.layoutMode, 'laptop');
+  assert.equal(railList.measured, 1);
+
+  // Tall enough for the measured overflow: the rail returns and fits.
+  root.dataset.layoutMode = 'desktop';
+  railList.clientHeight = 520;
+  fitAutomaticDesktopRail({ root, railList: measuringRail, viewportHeight: 820 });
+  assert.equal(root.dataset.layoutMode, 'desktop');
+
+  // Fewer entries reset the remembered height, so a short window may fit again.
+  forgetAutomaticRailFit();
+  railList.scrollHeight = 300;
+  railList.clientHeight = 300;
+  fitAutomaticDesktopRail({ root, railList: measuringRail, viewportHeight: 600 });
+  assert.equal(root.dataset.layoutMode, 'desktop');
+});
+
+test('an explicit Desktop choice and a hidden rail keep the desktop shell', () => {
+  forgetAutomaticRailFit();
+  const explicit = { dataset: { layoutPreference: 'desktop', layoutMode: 'desktop' } };
+  fitAutomaticDesktopRail({ root: explicit, railList: { scrollHeight: 900, clientHeight: 300 }, viewportHeight: 500 });
+  assert.equal(explicit.dataset.layoutMode, 'desktop');
+
+  const hidden = { dataset: { layoutPreference: 'auto', layoutMode: 'desktop' } };
+  fitAutomaticDesktopRail({ root: hidden, railList: { scrollHeight: 0, clientHeight: 0 }, viewportHeight: 500 });
+  assert.equal(hidden.dataset.layoutMode, 'desktop');
+  // Sub-pixel rounding is not a scrolling list.
+  fitAutomaticDesktopRail({ root: hidden, railList: { scrollHeight: 401, clientHeight: 400 }, viewportHeight: 500 });
+  assert.equal(hidden.dataset.layoutMode, 'desktop');
 });

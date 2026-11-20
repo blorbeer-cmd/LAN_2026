@@ -50,8 +50,42 @@ export function setLayoutModeForPlayer(playerId, mode, {
   if (root) {
     root.dataset.layoutPreference = normalized;
     root.dataset.layoutMode = resolvedLayoutMode(normalized, { wide });
+    fitAutomaticDesktopRail({ root });
   }
   return normalized;
+}
+
+// Automatic prefers the laptop shell over a desktop rail whose main list would
+// have to scroll; an explicit Desktop choice keeps the scrolling rail. The
+// window height the rail last needed is remembered, so a window that is still
+// too short decides without measuring and a taller one brings the rail back.
+// The measurement runs synchronously right after the desktop marker is set, so
+// the browser never paints the rejected shell in between.
+let automaticRailMinHeight = 0;
+
+export function forgetAutomaticRailFit() {
+  automaticRailMinHeight = 0;
+}
+
+export function fitAutomaticDesktopRail({
+  root = globalThis.document?.documentElement ?? null,
+  railList = globalThis.document?.getElementById('desktop-nav-main') ?? null,
+  viewportHeight = globalThis.innerHeight ?? 0,
+} = {}) {
+  if (!root || !railList) return;
+  if (root.dataset.layoutPreference !== LAYOUT_MODES.auto || root.dataset.layoutMode !== LAYOUT_MODES.desktop) return;
+  if (viewportHeight < automaticRailMinHeight) {
+    root.dataset.layoutMode = LAYOUT_MODES.laptop;
+    return;
+  }
+  // A hidden rail (app shell not shown yet) measures 0 and keeps Desktop; the
+  // app re-checks once the shell and its entries are rendered. One pixel of
+  // sub-pixel rounding is not a scrolling list.
+  const overflow = railList.scrollHeight - railList.clientHeight;
+  if (overflow > 1) {
+    automaticRailMinHeight = viewportHeight + overflow;
+    root.dataset.layoutMode = LAYOUT_MODES.laptop;
+  }
 }
 
 export function applyLayoutModeForPlayer(playerId, options = {}) {

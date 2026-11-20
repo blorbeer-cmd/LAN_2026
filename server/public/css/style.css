@@ -51,7 +51,7 @@
   --topbar-height: 56px;
   --shell-bottom-inset: calc(var(--nav-height) + env(safe-area-inset-bottom));
   --content-max-width: 720px;
-  --desktop-nav-width: 176px;
+  --desktop-nav-width: 192px;
   --desktop-supporting-pane-min-width: 320px;
   --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
 
@@ -1616,7 +1616,7 @@ textarea {
     display: block;
     padding: 0 var(--space-2) var(--space-1);
     color: var(--text-muted);
-    font-size: var(--font-size-2xs);
+    font-size: var(--font-size-sm);
     font-weight: var(--font-weight-bold);
     letter-spacing: 0.08em;
     text-transform: uppercase;
@@ -1630,7 +1630,7 @@ textarea {
     gap: var(--space-2);
     padding: var(--space-2);
     color: var(--text-muted);
-    font-size: var(--font-size-xs);
+    font-size: var(--font-size-md);
     text-align: left;
     white-space: nowrap;
     cursor: pointer;
