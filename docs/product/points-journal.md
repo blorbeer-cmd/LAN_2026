@@ -54,6 +54,10 @@ erhalten zusätzlich `tournament:<id>:placement` mit 5/3/1; Freilose erzeugen ke
 Wiederöffnen eines Turniers entfernt vorläufig seine Platzierungsboni. Löschen entfernt den
 Anspruch der jeweiligen Quelle; beim Turnierlöschen bleiben die weiterhin dokumentierten
 Matches bestehen. Auch Katalog- und Auslosungslöschungen korrigieren die Ansprüche atomar.
+Wird ein Spieler aus einem bereits eingetragenen Match entfernt, berechnet dieselbe Transaktion
+seinen Anspruch `match:<id>` auf 0, auch den Teilnahmepunkt eines letzten Platzes. Die
+Platzierungen der Teams und damit die Punkte aller anderen bleiben gleich; die Orga-Gutschrift
+bleibt beim Ersteller. Aus einer Auslosung ohne Ergebnis entsteht noch kein Anspruch.
 
 **Entschiedene Neuberechnung:** Ändert sich der tatsächliche Punkteanspruch, ersetzt der aus
 dem neuen Ergebnis berechnete Wert den vorherigen Anspruch einschließlich einer manuellen
