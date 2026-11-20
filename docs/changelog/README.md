@@ -4,7 +4,7 @@ Diese Übersicht dokumentiert die Entwicklung von Respawn aus der verifizierten 
 GitHub-Historie. Gemergte Pull Requests erhalten eine Datei unter `docs/changelog/pr/`; die
 zugehörigen Arbeitsbranches sind unter `docs/changelog/branches/` erfasst.
 
-Stand: 2026-11-14 · Basis: `main` auf `c8b9595` · Lückenlos dokumentiert ist der Bereich
+Stand: 2026-11-20 · Basis: `main` auf `21686d3` · Lückenlos dokumentiert ist der Bereich
 #214–#352; #214–#225, #249, #254, #310, #315, #324–#340 und #351 wurden nicht gemergt (offen,
 geschlossen oder unter einer anderen PR-Nummer im selben Branch gelandet) und erhalten daher keinen
 eigenen Eintrag. Beim früheren Vollabgleich fielen außerdem neun ältere, nicht zu R5 gehörende
@@ -15,14 +15,14 @@ PRs #529–#535 sowie die am 2026-09-16 gemergten PRs #636, #637 und #639; die B
 und #536–#635 sind noch nicht erfasst. #638 wurde geschlossen, nicht gemergt, und erhält daher
 keinen Eintrag. Am 2026-09-26 nachgetragen sind die UI-Polish-PRs #657, #662 bis #664, #666 bis
 #671, #674 und #677, am 2026-09-27 #685, am 2026-10-10 der Arcade-PR #732 und am 2026-11-13 die
-Wett-PRs #756 und #758 samt Historien-PR #757, am 2026-11-14 die Wett-PRs #760 bis #762; ihre
+Wett-PRs #756 und #758 samt Historien-PR #757, am 2026-11-14 die Wett-PRs #760 bis #762, am 2026-11-20 der Jam-PR #767; ihre
 Zusammenfassungen stammen aus der PR-Beschreibung. Die PRs #640 bis #656, #658 bis #661 und #665 sowie die gemergten PRs zwischen
-#733 und #755 sind noch nicht erfasst.
+#733 und #755 und zwischen #763 und #766 sind noch nicht erfasst.
 
 ## Übersicht
 
-- Gemergte PRs dokumentiert: 259 (Dateien unter `pr/`)
-- Branch-Seiten dokumentiert: 220 (Dateien unter `branches/`)
+- Gemergte PRs dokumentiert: 260 (Dateien unter `pr/`)
+- Branch-Seiten dokumentiert: 221 (Dateien unter `branches/`)
 - Gemergte PRs #214–#352: 83 von 83 dokumentiert
 - Technische Synchronisations-Merges ohne eigenen PR sind nicht als eigene Feature-Einträge aufgeführt.
 
@@ -30,6 +30,7 @@ Zusammenfassungen stammen aus der PR-Beschreibung. Die PRs #640 bis #656, #658 b
 
 | Datum | PR | Änderung | Branch |
 |---|---:|---|---|
+| 2026-11-20 | [#767](https://github.com/blorbeer-cmd/LAN_2026/pull/767) | [Keep the Jam silent on an empty queue and accept pasted Spotify links](pr/pr-767-keep-the-jam-silent-on-an-empty-queue-and-accept-pasted-spotify-links.md) | `claude/jam-empty-queue-pause` |
 | 2026-11-14 | [#762](https://github.com/blorbeer-cmd/LAN_2026/pull/762) | [Make betting state visible and live across the app](pr/pr-762-make-betting-state-visible-and-live-across-the-app.md) | `claude/betting-app-visibility` |
 | 2026-11-13 | [#761](https://github.com/blorbeer-cmd/LAN_2026/pull/761) | [Start concurrent journal writers one after another in the test](pr/pr-761-start-concurrent-journal-writers-one-after-another-in-the-test.md) | `claude/a7-stable-concurrent-writers` |
 | 2026-11-13 | [#760](https://github.com/blorbeer-cmd/LAN_2026/pull/760) | [Scope tournament result corrections to the markets they can change](pr/pr-760-scope-tournament-result-corrections-to-the-markets-they-can-change.md) | `claude/a5-scoped-tournament-corrections` |
