@@ -226,7 +226,7 @@ columns; below that it keeps the shared modal width.
 `--search-select-results-max-height` (320px) keeps a long searchable option list usable without
 letting it cover the full page; additional results scroll inside the dark listbox.
 `--shell-bottom-inset` reserves the phone/laptop bottom navigation plus safe area and becomes zero
-for the wide desktop side rail. `--desktop-nav-width` (176px) keeps that rail compact while labels
+for the wide desktop side rail. `--desktop-nav-width` (192px) keeps that rail compact while labels
 remain visible, while `--desktop-supporting-pane-min-width` (320px) prevents supporting dashboard
 cards from collapsing below a useful scan width. Wide-desktop content may grow to 1600px; its
 centering calculation explicitly subtracts the rail so the navigation never narrows the usable
