@@ -589,7 +589,8 @@ flowTest('Kiosk: centers tournament content and shows only the latest feature pu
   };
   await page.waitForSelector('#kiosk-live .kiosk-live-row');
   await setOwnNote('Kiosk-Pause');
-  await page.waitForSelector('#kiosk-live .badge-paused');
+  // The state is a dot that still names itself for assistive technology.
+  await page.waitForSelector('#kiosk-live .kiosk-live-status.is-paused[aria-label="Pause"]');
   await page.locator('#kiosk-live').evaluate((live) => {
     const records: MutationRecord[] = [];
     new MutationObserver((batch) => records.push(...batch))
