@@ -129,6 +129,15 @@ test('game catalog, process names, skills/preferences and live status are roles-
 
       const statsA = await scoped(app, 'get', '/api/stats/playtime', alice.cookie, groupId);
       assert.ok(statsA.body.entries.some((entry) => entry.gameId === trackedGame.body.id));
+
+      // A game with history (here: tracked play time) would cascade that
+      // history away, so only admins may delete it; the member gets a 403
+      // and the play time stays.
+      const memberDeletesHistory = await scoped(app, 'delete', '/api/games/' + trackedGame.body.id, bob.cookie, groupId);
+      assert.equal(memberDeletesHistory.status, 403, JSON.stringify(memberDeletesHistory.body));
+      assert.match(memberDeletesHistory.body.error, /nur Community-Admins/);
+      assert.equal((await scoped(app, 'get', '/api/games/' + trackedGame.body.id, alice.cookie, groupId)).status, 200);
+      assert.equal((await scoped(app, 'delete', '/api/games/' + trackedGame.body.id, alice.cookie, groupId)).status, 204);
     })().catch((error) => {
       console.error(error);
       process.exit(1);

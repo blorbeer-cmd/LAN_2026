@@ -505,8 +505,21 @@ gamesRouter.post('/:id/demote', resolveGame, requireGroupRole('member'), (req, r
   res.json(withProcessNames(db.prepare('SELECT * FROM games WHERE id = ?').get(existing.id) as GameRow));
 });
 
+// Tables whose rows ON DELETE CASCADE removes together with a game and that
+// record shared history: tracked play time, ballots, drafts, draws, matches
+// and tournaments of any event. Internal allow-list, see gameHasHistory.
+const GAME_HISTORY_TABLES = ['play_sessions', 'votes', 'drafts', 'matchmaking_draws', 'matches', 'tournaments'] as const;
+
+function gameHasHistory(gameId: string): boolean {
+  return GAME_HISTORY_TABLES.some((table) => db.prepare(`SELECT 1 FROM ${table} WHERE game_id = ? LIMIT 1`).get(gameId) !== undefined);
+}
+
 // DELETE /api/games/:id - cascades to process names, skills, preferences,
 // votes, matches; sets live_status.game_id to NULL for anyone currently on it.
+// Every member may remove a game without history (a typo, an unused
+// suggestion). Once the cascade would also erase play time, votes or
+// competition data, deleting stays with group admins/owners, matching the
+// admin-only deletion of draws, matches, tournaments and vote history.
 // Checked ahead of the group-ownership resolver: an Arcade title (group_id
 // NULL) would otherwise 404 there before reaching this more specific 400.
 gamesRouter.delete(
@@ -524,6 +537,13 @@ gamesRouter.delete(
   requireRecentReauthentication,
   (req, res) => {
     const existing = req.groupResource as GameRow;
+    // Synchronous from here to the DELETE, so no competing request can add
+    // history between this check and the cascade.
+    if (req.groupMembership?.role === 'member' && gameHasHistory(existing.id)) {
+      return res.status(403).json({
+        error: 'Dieses Spiel hat bereits Spielzeiten, Abstimmungen oder Wettbewerbe. Löschen können es nur Community-Admins.',
+      });
+    }
     const affectedEvents = withBettingAccounting(undefined, () => {
       assertGameEditable(req.group!.id, existing.id);
       const creditedBefore = grantGroupSkillBonuses(req.group!.id);

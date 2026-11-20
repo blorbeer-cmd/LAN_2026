@@ -56,7 +56,7 @@ test('votes and drafts stay roles-gated and event-scoped inside the one real gro
       assert.equal((await scoped(app, 'put', '/api/events/' + eventA.body.id + '/participants', alice)
         .send({ playerIds: [alice.account.id, bob.account.id, eve.account.id] })).status, 200);
 
-      // Starting a vote (a runoff too, see voteB below) is a group activity,
+      // Starting a vote (a runoff too, see the tie below) is a group activity,
       // so every active member may do it. Closing stays with admins plus the
       // member who started that round; cancelling remains admin-only.
       const memberVote = await scoped(app, 'post', '/api/votes/start', bob).send({});
@@ -124,8 +124,7 @@ test('votes and drafts stay roles-gated and event-scoped inside the one real gro
       assert.equal((await scoped(app, 'put', '/api/me/active-event', bob).send({ eventId: eventB.body.id })).status, 200);
       assert.equal((await scoped(app, 'put', '/api/me/active-event', eve).send({ eventId: eventB.body.id })).status, 200);
 
-      // A runoff-style single round is open to every member, not just admins.
-      const voteB = await scoped(app, 'post', '/api/votes/start', bob).send({ mode: 'single', title: 'B vote' });
+      const voteB = await scoped(app, 'post', '/api/votes/start', alice).send({ mode: 'single', title: 'B vote' });
       assert.equal(voteB.status, 201, JSON.stringify(voteB.body));
       assert.equal(voteB.body.round, 3, 'round counters are group-local, not event-local');
       assert.equal(voteB.body.eventId, eventB.body.id);
@@ -133,6 +132,35 @@ test('votes and drafts stay roles-gated and event-scoped inside the one real gro
 
       const historyAAfter = await scoped(app, 'get', '/api/votes/history', alice).query({ eventId: eventA.body.id });
       assert.deepEqual(historyAAfter.body.history.map((round) => round.title), ['A vote'], 'event A history stays put after switching tracking');
+
+      // A member may start a runoff, but only for a closed tie of the same
+      // event, and always over exactly that round's winners.
+      const gameB = await scoped(app, 'post', '/api/games', alice).send({ name: 'Vote Game B', status: 'catalog' });
+      assert.equal(gameB.status, 201, JSON.stringify(gameB.body));
+      async function closedPointsRound(pointsA, pointsB) {
+        const started = await scoped(app, 'post', '/api/votes/start', alice).send({ mode: 'points', gameIds: [gameA.body.id, gameB.body.id] });
+        assert.equal(started.status, 201, JSON.stringify(started.body));
+        const ballot = await scoped(app, 'post', '/api/votes/points', bob).send({
+          round: started.body.round,
+          entries: [{ gameId: gameA.body.id, points: pointsA }, { gameId: gameB.body.id, points: pointsB }],
+        });
+        assert.equal(ballot.status, 200, JSON.stringify(ballot.body));
+        assert.equal((await scoped(app, 'post', '/api/votes/close', alice).send({ round: started.body.round })).status, 200);
+        return started.body.round;
+      }
+      const clearRound = await closedPointsRound(5, 1);
+      const tieRound = await closedPointsRound(3, 3);
+      const memberRunoff = (body) => scoped(app, 'post', '/api/votes/start', bob).send({ mode: 'single', ...body });
+      assert.equal((await memberRunoff({ gameIds: [gameA.body.id, gameB.body.id] })).status, 400, 'a member runoff needs its source round');
+      assert.equal((await memberRunoff({ sourceRound: voteA.body.round })).status, 404, 'a round of another event is no source');
+      assert.equal((await memberRunoff({ sourceRound: clearRound })).status, 409, 'a round without a tie has nothing to decide');
+      const tieRunoff = await memberRunoff({ sourceRound: tieRound, title: 'Stichwahl', gameIds: [gameA.body.id] });
+      assert.equal(tieRunoff.status, 201, JSON.stringify(tieRunoff.body));
+      const storedRunoff = db.prepare('SELECT selected_game_ids AS selected, created_by AS createdBy FROM vote_rounds WHERE source_round = ?').get(tieRound);
+      assert.deepEqual(JSON.parse(storedRunoff.selected).sort(), [gameA.body.id, gameB.body.id].sort(), 'the server re-asks both tied winners');
+      assert.equal(storedRunoff.createdBy, bob.account.id);
+      assert.equal((await memberRunoff({ sourceRound: tieRound })).status, 409, 'one runoff per tie');
+      assert.equal((await scoped(app, 'post', '/api/votes/cancel', alice).send({})).status, 200);
 
       // Starting and cancelling a draft is open to every member.
       const cancelDraft = await scoped(app, 'post', '/api/draft/start', bob).send({

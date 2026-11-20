@@ -596,7 +596,10 @@ votesRouter.get('/mine', ...withQueryPlayerIdentity, (req, res) => {
 // Body: { mode?, title?, info?, gameIds?, anonymous?, hideLiveResults? }
 // - mode: 'points' (default, the normal voting mode) or 'single' — 'single'
 //   is only meant for a runoff between tied winners (see /close), it's not
-//   offered as a choice when starting a fresh round.
+//   offered as a choice when starting a fresh round. Every member may start
+//   a runoff, but a plain member only for a closed round of the same event
+//   that ended in a tie (sourceRound required); the server then re-asks
+//   exactly that round's winners, ignoring any gameIds sent along.
 // - title/info: optional free text shown to voters.
 // - gameIds: optional preselection of which games this round covers; omit
 //   for "every game in the catalog".
@@ -628,10 +631,15 @@ votesRouter.post('/start', requireGroupRole('member'), (req, res) => {
   }
 
   let selectedGameIds: string[] | null = null;
+  let requestedGameIds: unknown = gameIds;
   const runoffWinners = new Set<string>();
   let sourceRoundToStore: number | null = null;
   if (mode === 'single') {
     const sourceRound = req.body?.sourceRound;
+    const memberRunoff = req.groupMembership?.role === 'member';
+    if (memberRunoff && sourceRound === undefined) {
+      return res.status(400).json({ error: 'Eine Stichwahl braucht eine abgeschlossene Abstimmung mit Gleichstand.' });
+    }
     if (sourceRound !== undefined) {
       if (!isIntInRange(sourceRound, 1, Number.MAX_SAFE_INTEGER)) {
         return res.status(400).json({ error: 'sourceRound muss eine positive Ganzzahl sein.' });
@@ -653,12 +661,18 @@ votesRouter.post('/start', requireGroupRole('member'), (req, res) => {
     ).get(groupId, eventId, sourceRoundToStore)) {
       return res.status(409).json({ error: 'Für diese Abstimmung läuft bereits eine Stichwahl.' });
     }
+    if (memberRunoff) {
+      if (runoffWinners.size < 2) {
+        return res.status(409).json({ error: 'Diese Abstimmung endete nicht mit einem Gleichstand.' });
+      }
+      requestedGameIds = [...runoffWinners];
+    }
   }
-  if (gameIds !== undefined) {
-    if (!Array.isArray(gameIds) || gameIds.length === 0) {
+  if (requestedGameIds !== undefined) {
+    if (!Array.isArray(requestedGameIds) || requestedGameIds.length === 0) {
       return res.status(400).json({ error: 'Mindestens ein Spiel muss ausgewählt sein.' });
     }
-    const uniqueIds = [...new Set(gameIds)];
+    const uniqueIds = [...new Set(requestedGameIds)];
     for (const id of uniqueIds) {
       if (typeof id !== 'string' || !id) return res.status(400).json({ error: 'Ungültige gameId.' });
       const game = db.prepare('SELECT id, status FROM games WHERE id = ? AND group_id = ?').get(id, req.group!.id) as

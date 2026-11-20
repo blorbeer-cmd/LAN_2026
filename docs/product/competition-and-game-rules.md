@@ -213,7 +213,9 @@ Die Spielberechnung übernimmt die Platzregel des Zielkonzepts
   default. Every group member manages the catalog from the game's detail dialog: editing,
   process-name mappings (they control automatic game detection on participant computers),
   „In Katalog übernehmen“/„Zurück zu Vorschlägen“ and „Spiel löschen“ after the usual password
-  confirmation. Members may also add a catalog game directly instead of suggesting it.
+  confirmation. Members may also add a catalog game directly instead of suggesting it. Deleting
+  a game that already has play time, votes, drafts, draws, matches or tournaments would erase
+  that history too, so such a game can only be deleted by community admins.
   Below the tabs, the sort buttons and the filter controls share one compact
   `.tournament-section-panel` — the same bordered/accent-rail pattern the Tournament create form
   uses to separate sibling control groups, but one panel instead of two so the
@@ -492,7 +494,9 @@ Die Spielberechnung übernimmt die Platzregel des Zielkonzepts
   distribution and who voted how stay hidden from everyone while the round is open, only the
   participation shows; without it the running result and, unless anonymous, the voters are visible
   to the event's participants. After closing, the result is visible to them and, unless the round
-  is anonymous, who voted how. Any member may start a round and, on a tie, the runoff.
+  is anonymous, who voted how. Any member may start a round and, on a tie, the runoff. A
+  member's runoff must name a closed round of the same event that ended in a tie, and the server
+  re-asks exactly that round's winners.
   A cancelled round is deleted together with its votes and the next round may reuse its number, so
   the client tells rounds apart by number and start time and never carries a cancelled round's
   ballot over.
