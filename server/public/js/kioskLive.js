@@ -32,3 +32,36 @@ export function kioskLiveActiveHtml(players) {
     .join('');
   return `<div class="kiosk-live-active"><span class="kiosk-live-active-label">Gerade aktiv</span>${chips}</div>`;
 }
+
+// Keeps the one-line strip readable once it is on screen: every shown game
+// keeps its name next to its count, the smallest groups give way first, and
+// whatever no longer fits is summed up in one "+N weitere" pill. Only a
+// largest game that is too long on its own shortens its name.
+// Runs again only for a fresh paint or a new strip width, so an unchanged
+// board leaves the strip alone.
+export function fitKioskLiveActive(container) {
+  const strip = container.querySelector('.kiosk-live-active');
+  if (!strip) return;
+  const width = String(strip.clientWidth);
+  if (strip.dataset.fittedWidth === width) return;
+  const pills = [...strip.querySelectorAll('.kiosk-live-game:not(.kiosk-live-more)')];
+  let more = strip.querySelector('.kiosk-live-more');
+  if (!more) {
+    more = document.createElement('span');
+    more.className = 'kiosk-live-game kiosk-live-more';
+    strip.append(more);
+  }
+  const overflows = () => strip.scrollWidth > strip.clientWidth + 1;
+  for (const pill of pills) pill.hidden = false;
+  pills[0].classList.remove('is-squeezed');
+  more.hidden = true;
+  let shown = pills.length;
+  while (shown > 1 && overflows()) {
+    shown -= 1;
+    pills[shown].hidden = true;
+    more.hidden = false;
+    more.textContent = `+${pills.length - shown} weitere`;
+  }
+  if (overflows()) pills[0].classList.add('is-squeezed');
+  strip.dataset.fittedWidth = width;
+}

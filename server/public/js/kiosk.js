@@ -14,7 +14,7 @@ import { installDomainIcons } from './domainIcons.js';
 import { snakeArenaLegendHtml } from './arcade/shared/snakeArenaLegend.js';
 import { emptyStateHtml } from './emptyState.js';
 import { kioskMusicQueueHtml, kioskMusicQueueKey } from './kioskMusic.js';
-import { kioskLiveActiveHtml, kioskLiveRowHtml } from './kioskLive.js';
+import { fitKioskLiveActive, kioskLiveActiveHtml, kioskLiveRowHtml } from './kioskLive.js';
 import { createKioskResultsPanel } from './kioskResults.js';
 import {
   connectLocalSpotifyPlayer,
@@ -409,6 +409,7 @@ function renderLivePageContent() {
   container.style.setProperty('--live-columns', String(liveColumns));
   if (livePageSize === null) {
     paintLive(container, livePageHtml(liveActiveHtml, liveRowsHtml));
+    fitKioskLiveActive(container);
     stopLiveRotation();
     return;
   }
@@ -416,6 +417,7 @@ function renderLivePageContent() {
   if (livePageIndex >= totalPages) livePageIndex = 0;
   const items = liveAllPlayers.slice(livePageIndex * livePageSize, livePageIndex * livePageSize + livePageSize);
   paintLive(container, livePageHtml(liveActiveHtml, items.map(kioskLiveRowHtml).join(''), totalPages, livePageIndex));
+  fitKioskLiveActive(container);
   if (totalPages > 1) {
     if (liveRotationTimer === null) {
       liveRotationTimer = setInterval(() => {
@@ -461,8 +463,14 @@ async function renderLive(players) {
   // never changes that height, so a new player count needs no re-settle.
   const layoutKey = `${sorted.length}|${container.clientWidth}x${container.clientHeight}|${activeHtml ? 'active' : ''}`;
   // Agent reports and the offline sweep re-send an unchanged board many
-  // times a minute; those must not touch the card at all.
-  if (layoutKey === liveLayoutKey && rowsHtml === liveRowsHtml) return;
+  // times a minute; those must not touch the card at all. The board this
+  // card already shows is still the newest one, though: a settle started
+  // for an in-between board (a game that has already ended again) must not
+  // paint over it once its measuring finishes.
+  if (layoutKey === liveLayoutKey && rowsHtml === liveRowsHtml) {
+    liveSettleToken += 1;
+    return;
+  }
   if (layoutKey !== liveLayoutKey) {
     const settled = await settleLiveLayout(sorted, activeHtml);
     if (!settled) return; // superseded by a fresher call; that one will paint

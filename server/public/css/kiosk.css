@@ -675,9 +675,10 @@
 }
 /* "Gerade aktiv" above the roster, as on Home: one pill per running game.
    It stays one line so it never pushes roster rows onto another page; with
-   many games their names shorten instead (each row names its game in full
-   width anyway). Passive TV labels in the chip look at the TV meta size,
-   not the interactive .chip control. */
+   many games their names shorten to a readable minimum and the smallest
+   groups collapse into one "+N weitere" pill (fitKioskLiveActive). Passive
+   TV labels in the chip look at the TV meta size, not the interactive .chip
+   control. */
 .kiosk-live-active {
   display: flex;
   flex-shrink: 0;
@@ -693,11 +694,13 @@
   white-space: nowrap;
 }
 .kiosk-live-game {
+  /* No min-width: 0 here: a pill never shrinks below its readable name and
+     count, so a game that does not fit overflows the strip and moves into
+     the "+N weitere" pill instead of overlapping its neighbours. */
   display: inline-flex;
   flex: 0 1 auto;
   align-items: center;
   gap: var(--space-2);
-  min-width: 0;
   padding: var(--space-1) var(--space-3);
   background: var(--bg-elevated-2);
   border: 1px solid var(--border);
@@ -705,9 +708,24 @@
   white-space: nowrap;
 }
 .kiosk-live-game strong {
-  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+/* The largest game alone is wider than the strip: only its name shortens,
+   its count stays whole (fitKioskLiveActive in kioskLive.js). */
+.kiosk-live-game.is-squeezed {
+  min-width: 0;
+}
+.kiosk-live-game.is-squeezed strong {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.kiosk-live-active > [hidden] {
+  display: none;
+}
+.kiosk-live-more {
+  flex-shrink: 0;
+  color: var(--text-muted);
 }
 .kiosk-live-active-count {
   display: inline-flex;

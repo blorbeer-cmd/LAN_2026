@@ -28,8 +28,9 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu TV-Kiosk, Jam
 - **Live-Status**: shows every participant including offline ones, playing first. Like Home, but
   without the own pause toggle („Dein Status“), a single-line „Gerade aktiv“ strip above the roster
   names each running game with its player count (people icon plus number, „N Spieler“ as accessible
-  name), largest group first; it is omitted while nobody plays and shortens long game names instead
-  of wrapping. Each row shows avatar, name with a second line below it, and a status dot instead of
+  name), largest group first; it is omitted while nobody plays and never wraps: long game names
+  shorten to a readable minimum, and games that still do not fit, the smallest groups first, are
+  summed up in one „+N weitere“ label. Each row shows avatar, name with a second line below it, and a status dot instead of
   a text badge: filled green with a glow for „Spielt“, filled blue for „Online“, an amber ring for
   „Pause“ and a hollow grey ring for „Offline“; the German state stays available as the dot's
   accessible name and tooltip. The second line names the running game (foreground game first) for

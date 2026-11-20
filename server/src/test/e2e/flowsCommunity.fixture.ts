@@ -607,6 +607,129 @@ flowTest('Kiosk: centers tournament content and shows only the latest feature pu
   }));
   assert.equal(liveMutations, 0, 'an unchanged live board must not repaint the Live-Status card');
   await setOwnNote(null);
+  await page.waitForFunction(() => !document.querySelector('#kiosk-live .kiosk-live-status.is-paused'));
+
+  // Running games: the board is rewritten in the route so the test controls
+  // which games run without a Windows agent.
+  type KioskLivePlayer = { player_id: string; name: string; state: string; games: unknown[]; activity_tracked?: boolean };
+  let liveBoardEdit: ((board: KioskLivePlayer[]) => KioskLivePlayer[]) | null = null;
+  const playing = (player: KioskLivePlayer, id: string, name: string, gameName: string): KioskLivePlayer => ({
+    ...player,
+    player_id: id,
+    name,
+    state: 'playing',
+    activity_tracked: false,
+    games: [{ game_id: `game-${gameName}`, game_name: gameName, game_icon: null, since: Date.now(), foreground: true }],
+  });
+  const liveBoardRoute = async (route: import('playwright').Route) => {
+    const response = await route.fetch();
+    const board = (await response.json()) as KioskLivePlayer[];
+    await route.fulfill({ response, json: liveBoardEdit ? liveBoardEdit(board) : board });
+  };
+  await page.route('**/api/live', liveBoardRoute);
+  try {
+    // A board that is already on screen again must cancel a settle still
+    // measuring an in-between board: holding animation frames parks the
+    // settle for the short game board mid-measurement while the board
+    // returns to the one the card shows. Counting the live bodies the page
+    // has read orders the release after the kiosk handled that return: it
+    // renders synchronously once apiFetch has the body.
+    await page.evaluate(() => {
+      const kiosk = window as unknown as { releaseKioskFrames: () => void; kioskLiveBodies: number };
+      kiosk.kioskLiveBodies = 0;
+      const originalText = Response.prototype.text;
+      Response.prototype.text = async function text(this: Response) {
+        const body = await originalText.call(this);
+        if (new URL(this.url).pathname === '/api/live') kiosk.kioskLiveBodies += 1;
+        return body;
+      };
+      const held: FrameRequestCallback[] = [];
+      const original = window.requestAnimationFrame.bind(window);
+      kiosk.releaseKioskFrames = () => {
+        window.requestAnimationFrame = original;
+        held.splice(0).forEach((callback) => original(callback));
+      };
+      window.requestAnimationFrame = (callback) => {
+        held.push(callback);
+        return 0;
+      };
+    });
+    // Interval polling: the default frame-based polling would wait on the held frames.
+    const kioskReadLiveBodies = (count: number) => page.waitForFunction(
+      (expected) => (window as unknown as { kioskLiveBodies: number }).kioskLiveBodies >= expected,
+      count,
+      { polling: 50 },
+    );
+    liveBoardEdit = (board) => board.map((player, index) => (index === 0 ? playing(player, player.player_id, player.name, 'Kiosk-Zwischenspiel') : player));
+    await setOwnNote(null);
+    await kioskReadLiveBodies(1);
+    await page.waitForSelector('#kiosk-live .kiosk-live-probe', { state: 'attached' });
+    liveBoardEdit = null;
+    await setOwnNote(null);
+    await kioskReadLiveBodies(2);
+    await page.evaluate(() => (window as unknown as { releaseKioskFrames: () => void }).releaseKioskFrames());
+    // The probe leaves once the parked settle has finished; a stale paint
+    // would follow in the same task, before the next poll reads the card.
+    await page.waitForFunction(() => !document.querySelector('#kiosk-live .kiosk-live-probe'));
+    assert.equal(await page.locator('#kiosk-live >> text=Kiosk-Zwischenspiel').count(), 0, 'a game that already ended again must not be painted');
+    assert.equal(await page.locator('#kiosk-live > .kiosk-live-active').count(), 0);
+
+    // Many games on the 1280 px screen: the one-line strip keeps whole
+    // name/count pairs and sums up the rest instead of shrinking every name.
+    liveBoardEdit = (board) => Array.from({ length: 8 }, (_, index) =>
+      playing(board[0], `kiosk-game-player-${index}`, `Spieler ${index + 1}`, `Kiosk-Spiel mit langem Namen ${index + 1}`));
+    await setOwnNote(null);
+    await page.waitForSelector('#kiosk-live > .kiosk-live-grid .kiosk-live-detail >> text=Kiosk-Spiel mit langem Namen 1');
+    await page.waitForSelector('#kiosk-live > .kiosk-live-active .kiosk-live-more:not([hidden])');
+    const strip = await page.locator('#kiosk-live > .kiosk-live-active').evaluate((element) => ({
+      overflow: element.scrollWidth - element.clientWidth,
+      more: element.querySelector('.kiosk-live-more')!.textContent,
+      names: Array.from(element.querySelectorAll('.kiosk-live-game:not([hidden]) strong'), (name) => name.getBoundingClientRect().width),
+      // Each shown pill holds its whole count and ends before the next one
+      // starts, so no count is cut off or covered by a neighbour.
+      counts: Array.from(element.querySelectorAll('.kiosk-live-game:not([hidden])')).map((pill, index, pills) => {
+        const box = pill.getBoundingClientRect();
+        const count = pill.querySelector('.kiosk-live-active-count')?.getBoundingClientRect() ?? box;
+        const next = pills[index + 1]?.getBoundingClientRect();
+        return count.right <= box.right + 0.5
+          && box.right <= element.getBoundingClientRect().right + 0.5
+          && (!next || box.right <= next.left + 0.5);
+      }),
+    }));
+    assert.ok(strip.overflow <= 1, `the strip stays on one line inside the card: ${JSON.stringify(strip)}`);
+    assert.match(strip.more ?? '', /^\+\d+ weitere$/);
+    assert.ok(strip.names.length >= 1 && strip.names.every((width) => width >= 30), `every shown game keeps a readable name: ${JSON.stringify(strip)}`);
+    assert.ok(strip.counts.every(Boolean), `no shown player count is cut off: ${JSON.stringify(strip)}`);
+    assert.equal(Number(/\d+/.exec(strip.more ?? '')?.[0]) + strip.names.length, 8, 'shown and summed-up games add up to all running games');
+
+    // A single game whose name alone is wider than the strip shortens only
+    // its name; its count stays whole inside the card.
+    const overlongGame = `Kiosk-Spiel ${'mit sehr langem Namen '.repeat(6)}`.trim();
+    liveBoardEdit = (board) => [playing(board[0], 'kiosk-overlong-player', 'Spieler Lang', overlongGame)];
+    await setOwnNote(null);
+    // The previous strip was squeezed as well; wait for the new board first.
+    await page.waitForSelector('#kiosk-live > .kiosk-live-grid >> text=Spieler Lang');
+    await page.waitForSelector('#kiosk-live > .kiosk-live-active .kiosk-live-game.is-squeezed');
+    const squeezed = await page.locator('#kiosk-live > .kiosk-live-active').evaluate((element) => {
+      const right = element.getBoundingClientRect().right;
+      return {
+        overflow: element.scrollWidth - element.clientWidth,
+        name: element.querySelector('.kiosk-live-game strong')!.getBoundingClientRect().width,
+        countInside: element.querySelector('.kiosk-live-active-count')!.getBoundingClientRect().right <= right + 0.5,
+        more: element.querySelector('.kiosk-live-more:not([hidden])') !== null,
+      };
+    });
+    assert.deepEqual(
+      { fits: squeezed.overflow <= 1, readableName: squeezed.name >= 30, countInside: squeezed.countInside, more: squeezed.more },
+      { fits: true, readableName: true, countInside: true, more: false },
+      JSON.stringify(squeezed),
+    );
+  } finally {
+    await page.unroute('**/api/live', liveBoardRoute);
+    await page.evaluate(() => (window as unknown as { releaseKioskFrames?: () => void }).releaseKioskFrames?.());
+  }
+  await setOwnNote(null);
+  await page.waitForFunction(() => !document.querySelector('#kiosk-live > .kiosk-live-active'));
   // The newsticker opens with a few generated lines: one lead headline with
   // its kicker, all of them fitted inside the tile.
   await page.waitForSelector('#kiosk-newsticker .kiosk-news-item.is-first .kiosk-news-kicker >> text=Eilmeldung');
