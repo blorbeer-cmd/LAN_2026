@@ -62,6 +62,19 @@ export function feedEntryTitle(entry) {
   return String(entry?.title ?? '').replace(LEGACY_FEED_PREFIX, '');
 }
 
+// Who created what the entry announces (Durchsage, Abstimmung, ...): "von
+// <Name>", or '' for system notifications and erased accounts.
+export function feedEntryActor(entry) {
+  const name = typeof entry?.actorName === 'string' ? entry.actorName.trim() : '';
+  return name ? `von ${name}` : '';
+}
+
+// Title plus creator for surfaces that render it as one line of text.
+export function feedEntryHeading(entry) {
+  const actor = feedEntryActor(entry);
+  return actor ? `${feedEntryTitle(entry)} ${actor}` : feedEntryTitle(entry);
+}
+
 export function feedEntryIcon(entry) {
   return domainIcon(feedLinkView(entry?.url));
 }
@@ -76,6 +89,6 @@ export function isFeedEntryObsolete(entry, now = Date.now()) {
 
 // Bell + title + body markup for the read-only Kiosk banner.
 export function bannerContentHtml(entry) {
-  const title = entry?.eventName ? `${entry.eventName} · ${feedEntryTitle(entry)}` : feedEntryTitle(entry);
+  const title = entry?.eventName ? `${entry.eventName} · ${feedEntryHeading(entry)}` : feedEntryHeading(entry);
   return `${icon(feedEntryIcon(entry))}<span class="notification-banner-text"><strong>${escapeHtml(title)}</strong><span class="notification-banner-body">${escapeHtml(entry.body)}</span></span>`;
 }
