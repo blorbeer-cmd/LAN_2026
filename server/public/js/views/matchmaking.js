@@ -389,11 +389,8 @@ function renderDrawCard(draw, { editable: editableInput, showGame = false, prima
       : ''
     : '';
 
-  const serverHtml = inTournament || draw.matchId ? '' : drawServerHtml(draw);
-  // The "i" opens the stored details directly from the header, so they are
-  // reachable even while an open game's tile stays collapsed.
-  const serverAction = editable
-    ? `${serverHtml ? `<button type="button" class="tournament-fixture-action" data-draw-server-info="${draw.id}" aria-label="Server und Passwort anzeigen" title="Server und Passwort anzeigen">${icon('info')}</button>` : ''}<button type="button" class="tournament-fixture-action" data-draw-server="${draw.id}" aria-label="Server und Passwort bearbeiten" title="Server und Passwort bearbeiten">${icon('server')}</button>`
+  const serverAction = editable && !draw.matchId
+    ? `<button type="button" class="tournament-fixture-action" data-draw-server-info="${escapeHtml(draw.id)}" aria-haspopup="dialog" aria-label="Server und Passwort" title="Server und Passwort">${icon('info')}</button>`
     : '';
 
   // Same action slot as tournament fixtures: a pencil for a recorded result,
@@ -413,7 +410,7 @@ function renderDrawCard(draw, { editable: editableInput, showGame = false, prima
       <span class="muted">${draw.teams.length} Teams</span>${draw.source === 'draft' ? '<span class="badge">Captain Draft</span>' : ''}${inTournament ? '' : competitionBettingSummaryHtml('draw', draw.id)}`;
     const cardActions = `${actions}${inTournament ? '' : competitionBettingHtml('draw', draw.id, pointsContext)}${isGroupAdmin() ? `<button type="button" class="tournament-fixture-action" data-delete-draw="${draw.id}" aria-label="Auslosung löschen" title="Auslosung löschen">${icon('trash')}</button>` : ''}`;
     return historyItemHtml(`o-${draw.id}`, draw.gameName, meta, cardActions,
-      `${serverHtml}<div class="tournament-team-preview-grid" data-draw-teams="${draw.id}">${teamsHtml}</div>${seatingNote}`, 'matchmaking-open-draw-item', drawIncludesMe(draw));
+      `<div class="tournament-team-preview-grid" data-draw-teams="${draw.id}">${teamsHtml}</div>${seatingNote}`, 'matchmaking-open-draw-item', drawIncludesMe(draw));
   }
 
   return `
@@ -428,74 +425,53 @@ function renderDrawCard(draw, { editable: editableInput, showGame = false, prima
         </div>
         ${actions ? `<div class="matchmaking-draw-actions">${actions}${inTournament ? '' : competitionBettingHtml('draw', draw.id, pointsContext, { keyPrefix: 'betting-fresh' })}</div>` : ''}
       </div>
-      ${serverHtml}
       <div class="tournament-team-preview-grid" data-draw-teams="${draw.id}">${teamsHtml}</div>
       ${seatingNote}
       ${inTournament ? '' : bettingHiddenHintHtml()}
     </div>`;
 }
 
-// Where an open Match is hosted: the same credential chips with a copy action
-// as a tournament's active lobbies, shown only once something is stored.
-function drawServerHtml(draw) {
-  const credential = (label, value, kind) => `
-      <span class="tournament-lobby-credential">
-        <span>${label}</span>
-        <code>${escapeHtml(value)}</code>
-        <button type="button" class="icon-btn tournament-lobby-copy" data-copy-draw-server="${escapeHtml(draw.id)}" data-copy-draw-kind="${kind}" title="${label} kopieren" aria-label="${label} kopieren">${icon('copy')}</button>
-      </span>`;
-  if (!draw.serverAddress && !draw.serverPassword) return '';
-  return `<div class="tournament-lobby-access matchmaking-draw-server" aria-label="Server und Passwort">
-      ${draw.serverAddress ? credential('Server', draw.serverAddress, 'address') : ''}
-      ${draw.serverPassword ? credential('Passwort', draw.serverPassword, 'password') : ''}
-    </div>`;
-}
-
-function wireDrawServerCopy(root) {
-  root.querySelectorAll('[data-copy-draw-server]').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      const isPassword = btn.dataset.copyDrawKind === 'password';
-      const draw = findDrawById(btn.dataset.copyDrawServer);
-      const value = isPassword ? draw?.serverPassword : draw?.serverAddress;
-      if (!value) return;
-      try {
-        await copyText(value);
-        showToast(isPassword ? 'Passwort kopiert.' : 'Server kopiert.');
-      } catch {
-        showToast('Kopieren nicht möglich – bitte manuell markieren.', { error: true });
-      }
-    });
-  });
-}
-
-function openDrawServerInfo(draw) {
-  openModal('Server und Passwort', `
-    <div class="stack" data-draw-server-info-body>
-      <div class="muted result-dialog-subtitle">${escapeHtml(draw.gameName)} · ${draw.teams.length} Teams</div>
-      ${drawServerHtml(draw)}
-    </div>`, { onMount: (el) => wireDrawServerCopy(el) });
-}
-
 // Server address and password are optional; clearing both fields removes them.
 function openDrawServerDialog(draw, ctx) {
+  const field = (id, label, value, maxLength) => `
+      <div>
+        <label class="field-label" for="${id}">${label}</label>
+        <div class="row matchmaking-draw-server-field">
+          <input type="text" id="${id}" maxlength="${maxLength}" autocomplete="off" value="${escapeHtml(value ?? '')}" />
+          <button type="button" class="icon-btn" data-copy-draw-server="${id}" aria-label="${label} kopieren" title="${label} kopieren"${value ? '' : ' disabled'}>${icon('copy')}</button>
+        </div>
+      </div>`;
   const { close, el } = openModal('Server und Passwort', `
     <form class="stack" data-draw-server-form>
       <div class="muted result-dialog-subtitle">${escapeHtml(draw.gameName)} · ${draw.teams.length} Teams</div>
-      <div class="field-row">
-        <div><label class="field-label" for="draw-server-address">Server</label><input type="text" id="draw-server-address" maxlength="100" placeholder="192.168.178.20:27015" autocomplete="off" value="${escapeHtml(draw.serverAddress ?? '')}" /></div>
-        <div><label class="field-label" for="draw-server-password">Passwort</label><input type="text" id="draw-server-password" maxlength="60" placeholder="zocken123" autocomplete="off" value="${escapeHtml(draw.serverPassword ?? '')}" /></div>
-      </div>
+      ${field('draw-server-address', 'Server', draw.serverAddress, 100)}
+      ${field('draw-server-password', 'Passwort', draw.serverPassword, 60)}
       <div class="draw-tournament-footer"><button type="submit" class="btn btn-primary btn-sm">Speichern</button></div>
     </form>`);
-  el.querySelector('#draw-server-address')?.focus();
+  const address = el.querySelector('#draw-server-address');
+  const password = el.querySelector('#draw-server-password');
+  address.focus();
+  el.querySelectorAll('[data-copy-draw-server]').forEach((button) => {
+    const input = el.querySelector(`#${button.dataset.copyDrawServer}`);
+    input.addEventListener('input', () => { button.disabled = !input.value.trim(); });
+    button.addEventListener('click', async () => {
+      try {
+        await copyText(input.value.trim());
+        showToast(`${input.labels[0].textContent} kopiert.`);
+      } catch {
+        input.select();
+        showToast('Bitte den markierten Text manuell kopieren.', { error: true });
+      }
+    });
+  });
   el.querySelector('[data-draw-server-form]').addEventListener('submit', async (event) => {
     event.preventDefault();
     const submit = event.currentTarget.querySelector('[type="submit"]');
     submit.disabled = true;
     try {
       const updated = await api.matchmaking.updateDrawServer(draw.id, {
-        serverAddress: el.querySelector('#draw-server-address').value.trim() || null,
-        serverPassword: el.querySelector('#draw-server-password').value.trim() || null,
+        serverAddress: address.value.trim() || null,
+        serverPassword: password.value.trim() || null,
       });
       applyUpdatedDraw(updated);
       close();
@@ -778,19 +754,12 @@ function wireDrawCards(container, ctx) {
       showToast(err.message, { error: true });
     }
   }));
-  container.querySelectorAll('[data-draw-server]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const draw = findDrawById(btn.dataset.drawServer);
-      if (draw) openDrawServerDialog(draw, ctx);
-    });
-  });
   container.querySelectorAll('[data-draw-server-info]').forEach((btn) => {
     btn.addEventListener('click', () => {
       const draw = findDrawById(btn.dataset.drawServerInfo);
-      if (draw) openDrawServerInfo(draw);
+      if (draw && !draw.matchId && !draw.tournamentId) openDrawServerDialog(draw, ctx);
     });
   });
-  wireDrawServerCopy(container);
   container.querySelectorAll('[data-draw-tournament]').forEach((btn) => {
     btn.addEventListener('click', () => {
       const draw = findDrawById(btn.dataset.drawTournament);
@@ -1320,9 +1289,12 @@ function wireDraftBoard(container, ctx) {
   const cancelBtn = container.querySelector('#draft-cancel');
   if (cancelBtn) {
     cancelBtn.addEventListener('click', async () => {
+      // Bind the confirmation to the draft it was opened for: if that draft
+      // ends meanwhile, the server refuses instead of cancelling the next one.
+      const draftId = draftCache?.draft?.id;
       if (!(await confirmDialog('Draft wirklich abbrechen?', { confirmText: 'Draft abbrechen', danger: true }))) return;
       try {
-        draftCache = await api.draft.cancel();
+        draftCache = await api.draft.cancel(draftId);
         ctx.rerender();
       } catch (err) {
         showToast(err.message, { error: true });

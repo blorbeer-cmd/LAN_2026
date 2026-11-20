@@ -582,7 +582,7 @@ export const api = {
     start: (data) => apiFetch('/api/draft/start', { method: 'POST', body: JSON.stringify(data) }),
     pick: (playerId, pickPlayerId) =>
       apiFetch('/api/draft/pick', { method: 'POST', body: JSON.stringify({ playerId, pickPlayerId }) }),
-    cancel: () => apiFetch('/api/draft/cancel', { method: 'POST' }),
+    cancel: (draftId) => apiFetch('/api/draft/cancel', { method: 'POST', body: JSON.stringify({ draftId }) }),
   },
 
   broadcasts: {
@@ -751,6 +751,8 @@ export const api = {
       apiFetch('/api/music/requests', { method: 'POST', body: JSON.stringify({ playerId, trackId }) }),
     removeRequest: (playerId, requestId) =>
       apiFetch(`/api/music/requests/${requestId}`, { method: 'DELETE', body: JSON.stringify({ playerId }) }),
+    removePlaylist: (playerId) =>
+      apiFetch('/api/music/playlist', { method: 'DELETE', body: JSON.stringify({ playerId }) }),
     reorder: (playerId, requestIds) =>
       apiFetch('/api/music/requests/order', { method: 'PUT', body: JSON.stringify({ playerId, requestIds }) }),
     skip: (playerId) => apiFetch('/api/music/skip', { method: 'POST', body: JSON.stringify({ playerId }) }),

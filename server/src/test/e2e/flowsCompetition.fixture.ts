@@ -1153,19 +1153,36 @@ flowTest('matchmaking Historie marks a recorded draw as Unentschieden', async ()
   assert.ok(await page.locator('#match-history-open .team-player .rating').count() >= 2);
   assert.equal(await page.locator('#match-history-open .team-player-name strong').first().innerText(), alice.name);
   assert.ok(await page.locator('#match-history-open .team-skill-total').count() >= 2);
-  // Server details are noted on the open game and shown as copyable chips.
-  await openDraw.locator('[data-draw-server]').click();
-  await page.fill('.modal #draw-server-address', '10.0.0.5:27015');
-  await page.fill('.modal #draw-server-password', 'zocken123');
-  await page.click('.modal [data-draw-server-form] button[type="submit"]');
-  const serverChips = openDraw.locator('.matchmaking-draw-server code');
-  await serverChips.nth(1).waitFor();
-  assert.deepEqual(await serverChips.allInnerTexts(), ['10.0.0.5:27015', 'zocken123']);
-  assert.equal(await openDraw.locator('.matchmaking-draw-server [data-copy-draw-server]').count(), 2);
-  // The header "i" shows the same details without expanding the game.
-  await openDraw.locator('[data-draw-server-info]').click();
-  assert.deepEqual(await page.locator('.modal [data-draw-server-info-body] code').allInnerTexts(), ['10.0.0.5:27015', 'zocken123']);
-  await page.click('.modal [data-close]');
+  await drawToggle.click();
+  const viewport = page.viewportSize()!;
+  try {
+    await page.setViewportSize({ width: 1024, height: viewport.height });
+    const serverInfo = openDraw.getByRole('button', { name: /Server und Passwort/ });
+    assert.equal(await serverInfo.count(), 1);
+    await serverInfo.press('Enter');
+    const serverDialog = page.getByRole('dialog', { name: 'Server und Passwort' });
+    const address = serverDialog.getByLabel('Server', { exact: true });
+    const password = serverDialog.getByLabel('Passwort', { exact: true });
+    assert.equal(await drawToggle.getAttribute('aria-expanded'), 'false');
+    assert.equal(await address.inputValue(), '');
+    await address.fill('10.0.0.5:27015');
+    await password.fill('zocken123');
+    await serverDialog.getByRole('button', { name: 'Speichern' }).click();
+    await serverDialog.waitFor({ state: 'hidden' });
+
+    await page.setViewportSize({ width: 390, height: viewport.height });
+    await serverInfo.click();
+    assert.equal(await address.inputValue(), '10.0.0.5:27015');
+    assert.equal(await password.inputValue(), 'zocken123');
+    assert.equal(await serverDialog.getByRole('button', { name: 'Passwort kopieren' }).isEnabled(), true);
+    assert.equal(await serverDialog.evaluate((dialog) => dialog.scrollWidth <= dialog.clientWidth), true);
+    await page.keyboard.press('Escape');
+    await serverDialog.waitFor({ state: 'hidden' });
+  } finally {
+    await page.setViewportSize(viewport);
+  }
+  await drawToggle.click();
+  assert.doesNotMatch(await openDraw.innerText(), /10\.0\.0\.5|zocken123/);
   await page.click('#match-history-open [data-record-draw]');
 
   const panelHeight = await page.locator('.modal .result-mode-panels').evaluate((element) => element.getBoundingClientRect().height);

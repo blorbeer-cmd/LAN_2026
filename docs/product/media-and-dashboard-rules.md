@@ -25,13 +25,23 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu TV-Kiosk, Jam
 - **Cards**: Four cards remain a 2×2 grid: Live-Status and Newsticker above Abstimmung and
   Turnier/Ergebnisse. The Jam bar sits between the banner and the cards. Banner, header and Jam bar share the card edges and the card
   content inset. A card without data centers one short line at content size in the whole card.
-- **Live-Status**: shows every participant including offline ones, playing first. Each row shows
-  avatar, name and a status dot instead of a text badge: filled green with a glow for „Spielt“,
-  filled blue for „Online“, an amber ring for „Pause“ and a hollow grey ring for „Offline“; the German
-  state stays available as the dot's accessible name and tooltip. It uses the fewest columns (up to
-  four, each at least 140 px wide) that show everyone; long names are shortened with an ellipsis
-  instead of widening a column. If four columns still do not fit, the rows tighten first. Only a
-  roster too large for four tight columns rotates pages, marked by dots, as a last resort.
+- **Live-Status**: shows every participant including offline ones, playing first. Like Home, but
+  without the own pause toggle („Dein Status“), a single-line „Gerade aktiv“ strip above the roster
+  names each running game with its player count (people icon plus number, „N Spieler“ as accessible
+  name), largest group first; it is omitted while nobody plays and never wraps: game names stay
+  whole, games that do not fit, the smallest groups first, are summed up in one compact „+N“ label
+  („N weitere Spiele“ as accessible name). The largest game's whole name comes before that label;
+  only a largest game too long on its own shortens its name, never below about six characters next
+  to its count. Each row shows avatar, name with a
+  second line below it, and a status dot instead of a text badge: filled green with a glow for
+  „Spielt“, filled blue for „Online“, an amber ring for „Pause“ and a hollow grey ring for
+  „Offline“; the German state stays available as the dot's accessible name and tooltip. The second
+  line names the running game (foreground game first) for a playing participant and the state
+  otherwise, so every row has the same height. It uses the fewest columns (up to four, each at least
+  140 px wide) that show everyone; long names and games are shortened with an ellipsis instead of
+  widening a column. If four columns still do not fit, the rows tighten first. Only a roster too
+  large for four tight columns rotates pages, marked by dots, as a last resort; the strip stays on
+  every page.
 - **Newsticker**: a timeline of playful, clearly invented headlines. The server writes one new
   line every three to ten minutes for the whole event, so every Broadcast screen of that event shows the same
   feed; a new feed starts with a full set of ten lines. A screen that runs on a signed-in account
@@ -59,7 +69,10 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu TV-Kiosk, Jam
   The displayed round vertically centers its participant
   count in the status header and show the current ranking in one column, with every game name
   replaced by a stable, differently sized random-character mask plus blur so the room display
-  cannot influence voting. Single-choice runoffs are explicitly labeled „Stichwahl“. Rows keep
+  cannot influence voting. Single-choice runoffs are explicitly labeled „Stichwahl“. The muted
+  line below the heading — of the running round and of the revealed result — names the title and
+  the starter („von <Name>“); like in the Vote view, legacy rounds and deleted starters show no
+  name. Rows keep
   their normal size; the card shows as many as fit and re-fits whenever its height changes, for
   example when entering fullscreen. After a round closes, a five-second countdown hides every
   result and reuses Arcade's large layered gradient/glow number with its per-second pop effect.
@@ -125,10 +138,24 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu TV-Kiosk, Jam
   table with one fixed „Hinzufügen“ or „Abspielen“ column. A playlist
   result starts its complete Spotify playback context and replaces the
   current playback plus pending requests after explicit confirmation. While that context is active,
-  „Als Nächstes“ reads Spotify's live queue and names the actual next track. It then shows the
-  remaining playlist-track count separately from additional song requests.
-  Those requests follow Spotify's append-only queue in request order; reorder and remove
-  controls stay hidden because Spotify exposes neither operation for its live queue. Requests form a quiet table without column headers and
+  „Als Nächstes“ reads Spotify's live queue and lists the next five songs in Spotify's order,
+  playlist songs and requests alike (a controller package downloaded before this change reports
+  only the next song until it is downloaded again). Below them it shows how many further playlist
+  songs remain. A request removed during the playlist is left out of that list.
+  The same song may be requested several times; each copy is its own request with its own
+  requester and position. When a song ends and the identical song starts again from the
+  beginning while a copy still waits, that copy becomes the playing request.
+  Those requests follow Spotify's append-only queue in request order; reordering stays hidden
+  because Spotify exposes no reorder for its live queue. „Entfernen“ in a request's detail dialog
+  still works: the request leaves the queue immediately, and because Spotify cannot drop it from
+  its own queue, the Jam skips that song the moment Spotify starts it. While a playlist is active,
+  the header of „Als Nächstes“ carries a neutral „Playlist entfernen“ for every member, confirmed in
+  a red dialog. The song playing at that moment may finish; afterwards the waiting requests play,
+  or the Jam pauses when none wait. The playlist and its next-track preview leave app and kiosk at
+  once. The removal is remembered: should Spotify keep playing that playlist anyway (for example
+  after the controller lost its planned switch), the next playlist song counts as foreign playback
+  and is replaced by the waiting requests or paused. Of two parallel removals one wins, the other
+  receives `409`. Requests form a quiet table without column headers and
   with equal row heights: position, small artwork, title (shortened after 40 characters) above the
   artist, requester (the viewer's own name in bold) and duration; on phones the requester joins the
   artist line. Their order is the shared queue order. Clicking a row opens a detail dialog with the

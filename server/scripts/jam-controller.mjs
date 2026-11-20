@@ -649,10 +649,13 @@ async function sendHeartbeat() {
     const playback = await spotify('/me/player');
     playbackAvailable = true;
     let nextTrack = null;
+    let upcomingTracks;
     if (playback?.context?.type === 'playlist') {
       try {
         const queue = await spotify('/me/player/queue');
         nextTrack = publicTrack(queue?.queue?.[0]);
+        // Respawn shows the next few songs of a running playlist.
+        upcomingTracks = (queue?.queue || []).slice(0, 10).map(publicTrack).filter(Boolean);
       } catch (error) {
         console.error('[Jam] Spotify-Warteschlange:', error.message);
       }
@@ -661,6 +664,7 @@ async function sendHeartbeat() {
       track: publicTrack(playback.item), deviceId: playback.device?.id || null,
       context: playback.context ? { type: playback.context.type || null, uri: playback.context.uri || null } : null,
       nextTrack,
+      ...(upcomingTracks ? { upcomingTracks } : {}),
       isPlaying: Boolean(playback.is_playing), progressMs: Number(playback.progress_ms || 0),
     } : null;
     runtime.spotify = 'connected';

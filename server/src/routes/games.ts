@@ -4,9 +4,9 @@
 // recognize what's running (FR-07, FR-10). See server/CLAUDE.md games reorg
 // for why this replaced the old separate games/game_catalog split.
 
-import { Router } from 'express';
+import { Router, type Request } from 'express';
 import { nanoid } from 'nanoid';
-import { db } from '../db';
+import { db, OUTSIDE_EVENTS_ID } from '../db';
 import { broadcast, Events } from '../realtime';
 import { isNonEmptyString, isIntInRange, isValidAvatar } from '../validation';
 import { writeAdminAudit } from '../adminAudit';
@@ -231,21 +231,19 @@ function validateTeamSizes(
   return { min, max };
 }
 
-// POST /api/games - create a game. Two shapes in practice: an admin adding a
-// tracked game (name, team size, no status = defaults to 'catalog'), or a
-// player suggestion from the Spiele view (name + optional platform/trailer,
+// POST /api/games - create a game. Every group member may do both shapes: add
+// a tracked game directly (name, team size, no status = defaults to
+// 'catalog'), or a player suggestion from the Spiele view (name + optional platform/trailer,
 // status: 'suggestion', playerId so it's attributed as createdBy). A missing
 // suggestion trailer is filled with a YouTube gameplay search link below.
 gamesRouter.post(
   '/',
   ...withBodyPlayerIdentity,
-  (req, res, next) => {
-    if (req.body?.status !== 'suggestion') {
-      return requireGroupRole('admin')(req, res, next);
-    }
-    next();
-  },
+  requireGroupRole('member'),
   (req, res) => {
+    if (req.body?.status !== 'suggestion' && !memberMayChangeCatalog(req)) {
+      return res.status(403).json({ error: CATALOG_FROZEN_ERROR });
+    }
     const {
       name,
       icon,
@@ -365,7 +363,7 @@ const resolveGame = resolveGroupResource<GameRow>({
 });
 
 // PATCH /api/games/:id - edit name/icon/team sizes/platform/trailer.
-gamesRouter.patch('/:id', resolveGame, requireGroupRole('admin'), (req, res) => {
+gamesRouter.patch('/:id', resolveGame, requireGroupRole('member'), (req, res) => {
   const existing = req.groupResource as GameRow;
 
   const { name, icon, iconImage, minTeamSize, maxTeamSize, platform, platformUrl, trailerUrl, genres, info, considerSeatNeighborsDefault } =
@@ -466,8 +464,9 @@ gamesRouter.patch('/:id', resolveGame, requireGroupRole('admin'), (req, res) => 
 // regular catalog entry. Guarded against a double-tap racing itself: the
 // second request finds status already 'catalog' and gets a clean 409 instead
 // of silently re-broadcasting.
-gamesRouter.post('/:id/promote', resolveGame, requireGroupRole('admin'), (req, res) => {
+gamesRouter.post('/:id/promote', resolveGame, requireGroupRole('member'), (req, res) => {
   const existing = req.groupResource as GameRow;
+  if (!memberMayChangeCatalog(req)) return res.status(403).json({ error: CATALOG_FROZEN_ERROR });
   if (existing.status !== 'suggestion') return res.status(409).json({ error: 'Spiel ist bereits im Katalog.' });
 
   let creditedEvents: string[];
@@ -488,9 +487,11 @@ gamesRouter.post('/:id/promote', resolveGame, requireGroupRole('admin'), (req, r
 // POST /api/games/:id/demote - the inverse of promote: pushes a catalog entry
 // back into the suggestions list. Guarded the same way against a double-tap
 // racing itself.
-gamesRouter.post('/:id/demote', resolveGame, requireGroupRole('admin'), (req, res) => {
+gamesRouter.post('/:id/demote', resolveGame, requireGroupRole('member'), (req, res) => {
   const existing = req.groupResource as GameRow;
+  if (!memberMayChangeCatalog(req)) return res.status(403).json({ error: CATALOG_FROZEN_ERROR });
   if (existing.status !== 'catalog') return res.status(409).json({ error: 'Spiel ist bereits ein Vorschlag.' });
+  if (!memberMayShrinkCatalog(req)) return res.status(403).json({ error: CATALOG_SKILL_BONUS_ERROR });
 
   const trailerUrl = isYoutubeUrl(existing.trailer_url)
     ? existing.trailer_url
@@ -510,8 +511,66 @@ gamesRouter.post('/:id/demote', resolveGame, requireGroupRole('admin'), (req, re
   res.json(withProcessNames(db.prepare('SELECT * FROM games WHERE id = ?').get(existing.id) as GameRow));
 });
 
+// Tables whose rows ON DELETE CASCADE removes together with a game and that
+// record ratings or shared history across events. Internal allow-list.
+const GAME_HISTORY_TABLES = ['skills', 'preferences', 'play_sessions', 'votes', 'drafts', 'matchmaking_draws', 'matches', 'tournaments'] as const;
+
+function gameHasHistory(gameId: string): boolean {
+  return GAME_HISTORY_TABLES.some((table) => db.prepare(`SELECT 1 FROM ${table} WHERE game_id = ? LIMIT 1`).get(gameId) !== undefined);
+}
+
+// A running round without an explicit selection puts every catalog game on
+// its ballot, so adding, promoting or demoting a game would change ballots
+// voters may already have filled in. While such a round runs, only admins
+// change which games are in the catalog.
+function wholeCatalogVoteIsRunning(groupId: string): boolean {
+  return db
+    .prepare('SELECT 1 FROM vote_rounds WHERE group_id = ? AND closed_at IS NULL AND selected_game_ids IS NULL LIMIT 1')
+    .get(groupId) !== undefined;
+}
+
+const CATALOG_FROZEN_ERROR = 'Gerade läuft eine Abstimmung über alle Katalogspiele. Bis zu ihrem Ende ändern nur Community-Admins den Katalog.';
+
+function memberMayChangeCatalog(req: Request): boolean {
+  return req.groupMembership?.role !== 'member' || !wholeCatalogVoteIsRunning(req.group!.id);
+}
+
+const CATALOG_SKILL_BONUS_ERROR =
+  'Solange eine Punktewertung offen ist, können nur Community-Admins Spiele aus dem Katalog entfernen. Der Katalog bestimmt den Skill-Bonus.';
+
+// Reducing the catalog can make a permanent Skill bonus payable, either
+// immediately or when someone submits another rating or joins the event.
+function memberMayShrinkCatalog(req: Request): boolean {
+  return req.groupMembership?.role !== 'member' ||
+    !db.prepare(
+      `SELECT 1 FROM events e LEFT JOIN points_settings ps ON ps.event_id = e.id
+       WHERE e.group_id = ? AND e.id != ? AND ps.closed_at IS NULL LIMIT 1`,
+    ).get(req.group!.id, OUTSIDE_EVENTS_ID);
+}
+
+// A running vote can carry a game before anyone has voted for it: listed in
+// its explicit selection, or (without a selection) as one of the catalog
+// games every such ballot covers. Deleting it would pull it off ballots that
+// voters may already have open.
+function gameIsOnOpenBallot(game: GameRow): boolean {
+  return db
+    .prepare(
+      `SELECT 1 FROM vote_rounds
+       WHERE group_id = ? AND closed_at IS NULL
+         AND ((selected_game_ids IS NULL AND ? = 1)
+           OR EXISTS (SELECT 1 FROM json_each(vote_rounds.selected_game_ids) WHERE value = ?))
+       LIMIT 1`,
+    )
+    .get(game.group_id, game.status === 'suggestion' ? 0 : 1, game.id) !== undefined;
+}
+
 // DELETE /api/games/:id - cascades to process names, skills, preferences,
 // votes, matches; sets live_status.game_id to NULL for anyone currently on it.
+// Every member may remove a game without history (a typo, an unused
+// suggestion). Once the cascade would also erase ratings, play time, votes or
+// competition data, or the game sits on a running vote's ballot, deleting
+// stays with group admins/owners, matching the
+// admin-only deletion of draws, matches, tournaments and vote history.
 // Checked ahead of the group-ownership resolver: an Arcade title (group_id
 // NULL) would otherwise 404 there before reaching this more specific 400.
 gamesRouter.delete(
@@ -525,10 +584,20 @@ gamesRouter.delete(
     next();
   },
   resolveGame,
-  requireGroupRole('admin'),
+  requireGroupRole('member'),
   requireRecentReauthentication,
   (req, res) => {
     const existing = req.groupResource as GameRow;
+    // Synchronous from here to the DELETE, so no competing request can add
+    // history between this check and the cascade.
+    if (req.groupMembership?.role === 'member' && (gameHasHistory(existing.id) || gameIsOnOpenBallot(existing))) {
+      return res.status(403).json({
+        error: 'Dieses Spiel hat Bewertungen oder wird bereits in Spielzeiten, Abstimmungen oder Wettbewerben verwendet. Löschen können es nur Community-Admins.',
+      });
+    }
+    if (existing.status === 'catalog' && !memberMayShrinkCatalog(req)) {
+      return res.status(403).json({ error: CATALOG_SKILL_BONUS_ERROR });
+    }
     const affectedEvents = withBettingAccounting(undefined, () => {
       assertGameEditable(req.group!.id, existing.id);
       const creditedBefore = grantGroupSkillBonuses(req.group!.id);
@@ -556,7 +625,7 @@ gamesRouter.delete(
 );
 
 // POST /api/games/:id/processes - add a process-name mapping for agent scans.
-gamesRouter.post('/:id/processes', resolveGame, requireGroupRole('admin'), (req, res) => {
+gamesRouter.post('/:id/processes', resolveGame, requireGroupRole('member'), (req, res) => {
   const game = req.groupResource as GameRow;
 
   const { processName } = req.body ?? {};
@@ -584,7 +653,7 @@ gamesRouter.post('/:id/processes', resolveGame, requireGroupRole('admin'), (req,
 });
 
 // DELETE /api/games/:id/processes/:processName - remove a mapping.
-gamesRouter.delete('/:id/processes/:processName', resolveGame, requireGroupRole('admin'), (req, res) => {
+gamesRouter.delete('/:id/processes/:processName', resolveGame, requireGroupRole('member'), (req, res) => {
   const game = req.groupResource as GameRow;
   const result = db
     .prepare('DELETE FROM game_process_names WHERE game_id = ? AND process_name = ?')

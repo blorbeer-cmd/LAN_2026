@@ -11,6 +11,13 @@ export const musicControllerRouter = Router();
 // LAN. Avoid presenting that recoverable delay as a dead controller.
 const ONLINE_MS = 30_000;
 const COMMAND_TIMEOUT_MS = 15_000;
+// A same-song restart must be clearly earlier than the expected position:
+// heartbeats arrive every few seconds and Spotify reports progress coarsely.
+const SAME_TRACK_RESTART_MS = 10_000;
+// Spotify reports up to 20 queued songs; a few spare entries keep five
+// visible after hiding removed requests.
+const UPCOMING_TRACKS_REPORTED = 10;
+const UPCOMING_TRACKS_SHOWN = 5;
 export const MUSIC_CONTROLLER_RETENTION_MS = 24 * 60 * 60 * 1000;
 const MUSIC_CONTROLLER_EXPIRY_SWEEP_MS = 6 * 60 * 60 * 1000;
 
@@ -252,23 +259,29 @@ musicControllerRouter.post('/commands/:id/result', controllerAuth, (req, res) =>
   res.status(204).end();
 });
 
-// One pause at a time per group: heartbeats keep reporting the foreign song
-// until Spotify has actually paused, and each must not queue another command.
-const foreignPausesPending = new Set<string>();
+// One correction at a time per group: heartbeats keep reporting the foreign
+// song until Spotify has actually paused or moved on, and each must not queue
+// another command. A correction pauses, skips a removed request, or switches
+// from a removed playlist to the waiting requests.
+const foreignCorrectionsPending = new Set<string>();
 
-function pauseForeignPlayback(groupId: string, deviceId: string): void {
-  if (foreignPausesPending.has(groupId)) return;
-  foreignPausesPending.add(groupId);
-  issueMusicControllerCommand(groupId, 'pause', { deviceId })
+function replaceForeignPlayback(groupId: string, type: 'pause' | 'next' | 'playUris', payload: Record<string, unknown>): void {
+  if (foreignCorrectionsPending.has(groupId)) return;
+  foreignCorrectionsPending.add(groupId);
+  issueMusicControllerCommand(groupId, type, payload)
     .catch(() => { /* best effort: the next heartbeat retries */ })
-    .finally(() => foreignPausesPending.delete(groupId));
+    .finally(() => foreignCorrectionsPending.delete(groupId));
 }
 
 function syncSessionPlayback(groupId: string, playback: unknown, now: number): void {
   const session = db.prepare(
-    "SELECT id, device_id, current_track_uri, playback_context_json FROM music_sessions WHERE group_id = ? AND status = 'active'",
+    `SELECT id, device_id, current_track_uri, playback_context_json, playback_progress_ms, playback_updated_at,
+            playback_is_playing FROM music_sessions WHERE group_id = ? AND status = 'active'`,
   ).get(groupId) as
-    | { id: string; device_id: string; current_track_uri: string | null; playback_context_json: string | null }
+    | {
+        id: string; device_id: string; current_track_uri: string | null; playback_context_json: string | null;
+        playback_progress_ms: number; playback_updated_at: number | null; playback_is_playing: number;
+      }
     | undefined;
   if (!session) return;
   const value = playback && typeof playback === 'object' ? playback as Record<string, unknown> : null;
@@ -276,17 +289,47 @@ function syncSessionPlayback(groupId: string, playback: unknown, now: number): v
   const track = value?.track && typeof value.track === 'object' ? value.track as Record<string, unknown> : null;
   const uri = typeof track?.uri === 'string' ? track.uri : null;
   const context = value?.context && typeof value.context === 'object' ? value.context as Record<string, unknown> : null;
+  const reportedProgress = Number.isSafeInteger(value?.progressMs) ? Number(value?.progressMs) : 0;
+  // The same song may be requested twice in a row. Its second copy starts
+  // with the same URI, so a jump back to the start of a song that was well
+  // underway, while another copy still waits, counts as the next request.
+  const expectedProgress = session.playback_progress_ms +
+    (session.playback_is_playing && session.playback_updated_at ? Math.max(0, now - session.playback_updated_at) : 0);
+  const restartedSameTrack = Boolean(uri) && uri === session.current_track_uri &&
+    reportedProgress + SAME_TRACK_RESTART_MS < expectedProgress &&
+    Boolean(db.prepare(
+      "SELECT 1 FROM music_requests WHERE session_id = ? AND track_uri = ? AND status IN ('sending', 'queued') LIMIT 1",
+    ).get(session.id, uri));
+  // The copy already playing keeps matching; after a restart the oldest
+  // waiting copy takes over.
   const matchingRequest = uri
     ? db.prepare(
-        "SELECT id FROM music_requests WHERE session_id = ? AND track_uri = ? AND status IN ('sending', 'queued', 'playing') ORDER BY created_at LIMIT 1",
-      ).get(session.id, uri) as { id: string } | undefined
+        `SELECT id FROM music_requests WHERE session_id = ? AND track_uri = ?
+           AND status IN ('sending', 'queued', 'playing') AND (? = 0 OR status != 'playing')
+         ORDER BY CASE status WHEN 'playing' THEN 0 ELSE 1 END, created_at LIMIT 1`,
+      ).get(session.id, uri, restartedSameTrack ? 1 : 0) as { id: string } | undefined
     : undefined;
   let playbackContextJson = session.playback_context_json;
+  // A playlist removed from the queue keeps a marker until Spotify has left
+  // it: only the song that was playing at the removal may still finish.
+  let removedPlaylistTrack = false;
+  // A request removed during the playlist may already sit in Spotify's queue.
+  let skipRemovedRequest = false;
   if (playbackContextJson) {
     try {
       const stored = JSON.parse(playbackContextJson) as Record<string, unknown>;
-      if (context?.type !== 'playlist' || context.uri !== stored.uri) {
+      const removed = stored.removedPlaylist && typeof stored.removedPlaylist === 'object'
+        ? stored.removedPlaylist as { uri?: unknown; keepTrackUri?: unknown }
+        : null;
+      if (removed) {
+        if (context?.type !== 'playlist' || context.uri !== removed.uri) playbackContextJson = null;
+        else removedPlaylistTrack = Boolean(uri) && !matchingRequest && uri !== removed.keepTrackUri;
+      } else if (context?.type !== 'playlist' || context.uri !== stored.uri) {
         playbackContextJson = null;
+      } else if (uri && !matchingRequest && Array.isArray(stored.skipUris) && stored.skipUris.includes(uri)) {
+        skipRemovedRequest = true;
+        stored.skipUris = stored.skipUris.filter((entry) => entry !== uri);
+        playbackContextJson = JSON.stringify(stored);
       } else {
         const trackCount = Number.isSafeInteger(stored.trackCount) && Number(stored.trackCount) >= 0
           ? Number(stored.trackCount)
@@ -300,9 +343,25 @@ function syncSessionPlayback(groupId: string, playback: unknown, now: number): v
         if (uri && !matchingRequest && uri !== observedTrackUri) remainingTrackCount = Math.max(0, remainingTrackCount - 1);
         stored.remainingTrackCount = remainingTrackCount;
         stored.observedTrackUri = uri && !matchingRequest ? uri : observedTrackUri;
-        stored.nextTrack = value?.nextTrack && typeof value.nextTrack === 'object'
-          ? value.nextTrack
-          : null;
+        // Requests removed during the playlist may still sit in Spotify's
+        // queue; unless another copy is still wanted they are hidden here
+        // too, so the preview shows what will actually be heard.
+        const skipUris = new Set((Array.isArray(stored.skipUris) ? stored.skipUris : [])
+          .filter((entry): entry is string => typeof entry === 'string')
+          .filter((entry) => !db.prepare(
+            "SELECT 1 FROM music_requests WHERE session_id = ? AND track_uri = ? AND status IN ('sending', 'queued') LIMIT 1",
+          ).get(session.id, entry)));
+        const visible = (entry: unknown): entry is Record<string, unknown> =>
+          Boolean(entry) && typeof entry === 'object' && !skipUris.has(String((entry as Record<string, unknown>).uri));
+        // Newer controllers report the next songs of Spotify's queue; older
+        // ones only the next one.
+        if (Array.isArray(value?.upcomingTracks)) {
+          stored.upcomingTracks = value.upcomingTracks.slice(0, UPCOMING_TRACKS_REPORTED).filter(visible).slice(0, UPCOMING_TRACKS_SHOWN);
+          stored.nextTrack = (stored.upcomingTracks as unknown[])[0] ?? null;
+        } else {
+          delete stored.upcomingTracks;
+          stored.nextTrack = visible(value?.nextTrack) ? value?.nextTrack : null;
+        }
         playbackContextJson = JSON.stringify(stored);
       }
     } catch {
@@ -316,11 +375,22 @@ function syncSessionPlayback(groupId: string, playback: unknown, now: number): v
   const waitingRequests = (db.prepare(
     "SELECT COUNT(*) AS count FROM music_requests WHERE session_id = ? AND status IN ('sending', 'queued')",
   ).get(session.id) as { count: number }).count;
-  const foreignTrack = Boolean(uri) && !matchingRequest && !playbackContextJson &&
-    context?.type !== 'playlist' && waitingRequests === 0;
-  if (foreignTrack && value?.isPlaying) pauseForeignPlayback(groupId, session.device_id);
+  const foreignTrack = removedPlaylistTrack || skipRemovedRequest || (Boolean(uri) && !matchingRequest &&
+    !playbackContextJson && context?.type !== 'playlist' && waitingRequests === 0);
+  if (foreignTrack && value?.isPlaying) {
+    if (skipRemovedRequest) {
+      replaceForeignPlayback(groupId, 'next', { deviceId: session.device_id });
+    } else if (removedPlaylistTrack && waitingRequests > 0) {
+      const uris = (db.prepare(
+        "SELECT track_uri FROM music_requests WHERE session_id = ? AND status IN ('sending', 'queued') ORDER BY created_at",
+      ).all(session.id) as Array<{ track_uri: string }>).map((row) => row.track_uri);
+      replaceForeignPlayback(groupId, 'playUris', { deviceId: session.device_id, uris });
+    } else {
+      replaceForeignPlayback(groupId, 'pause', { deviceId: session.device_id });
+    }
+  }
   db.transaction(() => {
-    if (session.current_track_uri && session.current_track_uri !== uri) {
+    if (session.current_track_uri && (session.current_track_uri !== uri || restartedSameTrack)) {
       db.prepare("UPDATE music_requests SET status = 'played', played_at = ? WHERE session_id = ? AND status = 'playing'")
         .run(now, session.id);
     }

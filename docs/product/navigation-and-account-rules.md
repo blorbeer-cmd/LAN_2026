@@ -80,6 +80,16 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Routen, Rolle
   unread. The sticky footer holds neutral bulk actions in equal
   columns across the full width: „Alle gelesen“ and „Alle löschen“ (whose confirmation stays red),
   preceded by „Aufräumen“ only while at least one obsolete entry is present.
+- **Creator** — An entry announcing something a person created (Durchsage, Abstimmung,
+  Sammelbestellung, Captain-Draft, Turnier, Event-Einladung, Eventplanung, Event-Umfrage) names
+  that account as „von <Name>“ right after its title: in the highlight below the topbar, in the
+  notification center, on the Kiosk banner and in the device notification's title. In the
+  highlight the name has its own slot, so a long event or entry title is truncated before the
+  name; a name wider than the whole line wraps inside the text area and never covers the dismiss
+  button. The name is resolved from the account when read, so a rename shows up and an erased
+  account's entries keep their text without a creator. System notifications (reminders, bets,
+  match readiness) and entries whose text already names the person (Arcade-Lobby, Mitbring-
+  Anfrage, Aufgabe, Übernommen) carry no separate creator.
 
 ## Eventauswahl
 
@@ -266,10 +276,10 @@ trailing action. Orga uses the reserved second row for its tabs only on phone an
   readable without opening the entry, and one square copy icon (named „<Titel> kopieren“) in the
   fixed right column. From `--bp-lg` the dialog widens to `--info-board-panel-width` and lists the
   rows in two columns, left column first. A row opens the entry's detail dialog with the full text
-  and clickable links, its last change and „Kopieren“; group admins and owners additionally get
-  „Bearbeiten“ and a muted „Löschen“ text button whose confirmation stays red. Only group admins
-  and owners see the small primary „Eintrag anlegen“ at the right of the dialog header, matching
-  the server, which accepts writes from those roles only. As pure reference material the dialog
+  and clickable links, its last change, „Kopieren“, „Bearbeiten“ and a muted „Löschen“ text button
+  whose confirmation stays red. Every group member maintains the entries: all see the small primary
+  „Eintrag anlegen“ at the right of the dialog header, matching the server, which accepts writes
+  from every member (deleting after the usual password confirmation). As pure reference material the dialog
   has no close button; Escape and a tap outside close it. The entry form stacks „Titel“ and a
   one-line „Inhalt“ that grows with its text above equally wide „Abbrechen“ and „Anlegen“. An open
   dialog refreshes itself on `info:changed` instead of stacking a second copy. Its nested forms and

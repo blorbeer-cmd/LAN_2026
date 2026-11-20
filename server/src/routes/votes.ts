@@ -135,12 +135,16 @@ interface RoundMeta {
   anonymous: boolean; // nobody ever sees who voted how
   hideLiveResults: boolean; // no per-game result while the round runs
   createdBy: string | null; // who started it; NULL for rounds older than migration 117
+  // Display name of the starter; NULL for legacy rounds and once the account
+  // is deleted (vote_rounds.created_by has no FK, a stale id matches nobody).
+  createdByName: string | null;
 }
 
 const DEFAULT_ROUND_META: RoundMeta = {
   eventId: null,
   sourceRound: null,
   createdBy: null,
+  createdByName: null,
   title: null,
   info: null,
   selectedGameIds: null,
@@ -154,9 +158,11 @@ function getRoundMeta(groupId: string, round: number): RoundMeta {
   if (round < 1) return { ...DEFAULT_ROUND_META };
   const row = db
     .prepare(
-      `SELECT event_id AS eventId, source_round AS sourceRound, title, info, selected_game_ids AS selectedGameIdsJson,
-              anonymous, hide_live_results AS hideLiveResults, created_by AS createdBy
-       FROM vote_rounds WHERE group_id = ? AND round = ?`,
+      `SELECT vr.event_id AS eventId, vr.source_round AS sourceRound, vr.title, vr.info,
+              vr.selected_game_ids AS selectedGameIdsJson, vr.anonymous, vr.hide_live_results AS hideLiveResults,
+              vr.created_by AS createdBy, p.name AS createdByName
+       FROM vote_rounds vr LEFT JOIN players p ON p.id = vr.created_by
+       WHERE vr.group_id = ? AND vr.round = ?`,
     )
     .get(groupId, round) as
     | {
@@ -168,6 +174,7 @@ function getRoundMeta(groupId: string, round: number): RoundMeta {
         anonymous: number;
         hideLiveResults: number;
         createdBy: string | null;
+        createdByName: string | null;
       }
     | undefined;
   if (!row) return { ...DEFAULT_ROUND_META };
@@ -180,6 +187,7 @@ function getRoundMeta(groupId: string, round: number): RoundMeta {
     anonymous: row.anonymous === 1,
     hideLiveResults: row.hideLiveResults === 1,
     createdBy: row.createdBy,
+    createdByName: row.createdBy ? row.createdByName : null,
   };
 }
 
@@ -596,7 +604,11 @@ votesRouter.get('/mine', ...withQueryPlayerIdentity, (req, res) => {
 // Body: { mode?, title?, info?, gameIds?, anonymous?, hideLiveResults? }
 // - mode: 'points' (default, the normal voting mode) or 'single' — 'single'
 //   is only meant for a runoff between tied winners (see /close), it's not
-//   offered as a choice when starting a fresh round.
+//   offered as a choice when starting a fresh round. Every member may start
+//   a runoff, but a plain member only for a closed round of the same event
+//   that ended in a tie (sourceRound required); the server then re-asks
+//   exactly that round's winners with that round's anonymous and
+//   hideLiveResults, ignoring any gameIds or privacy options sent along.
 // - title/info: optional free text shown to voters.
 // - gameIds: optional preselection of which games this round covers; omit
 //   for "every game in the catalog".
@@ -609,9 +621,6 @@ votesRouter.post('/start', requireGroupRole('member'), (req, res) => {
   const { mode, title, info, gameIds, anonymous, hideLiveResults } = req.body ?? {};
   if (mode !== undefined && mode !== 'single' && mode !== 'points') {
     return res.status(400).json({ error: 'mode muss "single" oder "points" sein.' });
-  }
-  if (mode === 'single' && req.groupMembership?.role === 'member') {
-    return res.status(403).json({ error: 'Stichwahlen können nur von Community-Admins gestartet werden.' });
   }
   const nextMode: VoteMode = mode === 'single' ? 'single' : 'points';
   if (anonymous !== undefined && typeof anonymous !== 'boolean') {
@@ -631,10 +640,17 @@ votesRouter.post('/start', requireGroupRole('member'), (req, res) => {
   }
 
   let selectedGameIds: string[] | null = null;
+  let requestedGameIds: unknown = gameIds;
+  let roundAnonymous = anonymous === true;
+  let roundHideLiveResults = hideLiveResults !== false;
   const runoffWinners = new Set<string>();
   let sourceRoundToStore: number | null = null;
   if (mode === 'single') {
     const sourceRound = req.body?.sourceRound;
+    const memberRunoff = req.groupMembership?.role === 'member';
+    if (memberRunoff && sourceRound === undefined) {
+      return res.status(400).json({ error: 'Eine Stichwahl braucht eine abgeschlossene Abstimmung mit Gleichstand.' });
+    }
     if (sourceRound !== undefined) {
       if (!isIntInRange(sourceRound, 1, Number.MAX_SAFE_INTEGER)) {
         return res.status(400).json({ error: 'sourceRound muss eine positive Ganzzahl sein.' });
@@ -656,12 +672,24 @@ votesRouter.post('/start', requireGroupRole('member'), (req, res) => {
     ).get(groupId, eventId, sourceRoundToStore)) {
       return res.status(409).json({ error: 'Für diese Abstimmung läuft bereits eine Stichwahl.' });
     }
+    if (memberRunoff) {
+      if (runoffWinners.size < 2) {
+        return res.status(409).json({ error: 'Diese Abstimmung endete nicht mit einem Gleichstand.' });
+      }
+      requestedGameIds = [...runoffWinners];
+      // A runoff decides its source round, so it keeps that round's privacy:
+      // an anonymous round must not get named ballots, a hidden interim
+      // result must not turn visible.
+      const sourceMeta = getRoundMeta(groupId, sourceRoundToStore!);
+      roundAnonymous = sourceMeta.anonymous;
+      roundHideLiveResults = sourceMeta.hideLiveResults;
+    }
   }
-  if (gameIds !== undefined) {
-    if (!Array.isArray(gameIds) || gameIds.length === 0) {
+  if (requestedGameIds !== undefined) {
+    if (!Array.isArray(requestedGameIds) || requestedGameIds.length === 0) {
       return res.status(400).json({ error: 'Mindestens ein Spiel muss ausgewählt sein.' });
     }
-    const uniqueIds = [...new Set(gameIds)];
+    const uniqueIds = [...new Set(requestedGameIds)];
     for (const id of uniqueIds) {
       if (typeof id !== 'string' || !id) return res.status(400).json({ error: 'Ungültige gameId.' });
       const game = db.prepare('SELECT id, status FROM games WHERE id = ? AND group_id = ?').get(id, req.group!.id) as
@@ -698,8 +726,8 @@ votesRouter.post('/start', requireGroupRole('member'), (req, res) => {
       cleanTitle,
       cleanInfo,
       selectedGameIds ? JSON.stringify(selectedGameIds) : null,
-      anonymous === true ? 1 : 0,
-      hideLiveResults === false ? 0 : 1,
+      roundAnonymous ? 1 : 0,
+      roundHideLiveResults ? 1 : 0,
       sourceRoundToStore,
       req.player?.id ?? null,
     );
@@ -719,6 +747,7 @@ votesRouter.post('/start', requireGroupRole('member'), (req, res) => {
           ? 'Stichwahl: jetzt für einen der Gewinner abstimmen.'
           : 'Was zocken wir als Nächstes? Spiele mit Punkten bewerten.',
       url: '/#votes',
+      actorId: req.player?.id,
     },
     'all',
     { key: `vote:${nextRound}` },
@@ -968,6 +997,7 @@ interface VoteRoundRow {
   selectedGameIdsJson: string | null;
   anonymous: number;
   hideLiveResults: number;
+  createdByName: string | null;
 }
 
 function roundOptions(row: VoteRoundRow): Pick<RoundMeta, 'anonymous' | 'hideLiveResults'> {
@@ -994,9 +1024,10 @@ votesRouter.get('/history', (req, res) => {
               vr.started_at AS startedAt, vr.closed_at AS closedAt, vr.mode AS mode,
               vr.winner_game_ids AS winnerGameIdsJson, vr.title AS title, vr.info AS info,
               vr.selected_game_ids AS selectedGameIdsJson, vr.anonymous AS anonymous,
-              vr.hide_live_results AS hideLiveResults
+              vr.hide_live_results AS hideLiveResults, p.name AS createdByName
        FROM vote_rounds vr
        JOIN events e ON e.group_id = vr.group_id AND e.id = vr.event_id
+       LEFT JOIN players p ON p.id = vr.created_by
        WHERE vr.group_id = ? AND vr.closed_at IS NOT NULL AND vr.event_id = ?
          AND EXISTS (
            SELECT 1 FROM votes v JOIN games g ON g.id = v.game_id
@@ -1028,6 +1059,7 @@ votesRouter.get('/history', (req, res) => {
       mode: r.mode,
       title: r.title,
       info: r.info,
+      createdByName: r.createdByName,
       ...roundOptions(r),
       totalVotes,
       totalVoters,
@@ -1063,9 +1095,10 @@ votesRouter.get('/history/:round', (req, res) => {
               vr.started_at AS startedAt, vr.closed_at AS closedAt, vr.mode AS mode,
               vr.winner_game_ids AS winnerGameIdsJson, vr.title AS title, vr.info AS info,
               vr.selected_game_ids AS selectedGameIdsJson, vr.anonymous AS anonymous,
-              vr.hide_live_results AS hideLiveResults
+              vr.hide_live_results AS hideLiveResults, p.name AS createdByName
        FROM vote_rounds vr
        JOIN events e ON e.group_id = vr.group_id AND e.id = vr.event_id
+       LEFT JOIN players p ON p.id = vr.created_by
        WHERE vr.group_id = ? AND vr.round = ? AND vr.event_id = ?`,
     )
     .get(req.group!.id, round, scope.eventId) as VoteRoundRow | undefined;
@@ -1091,6 +1124,7 @@ votesRouter.get('/history/:round', (req, res) => {
     mode: row.mode,
     title: row.title,
     info: row.info,
+    createdByName: row.createdByName,
     ...roundOptions(row),
     results,
     totalVotes,

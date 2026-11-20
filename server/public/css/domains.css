@@ -2753,17 +2753,10 @@ input.food-order-price-input {
   gap: var(--space-2);
 }
 
-/* Server details of an open Match: one full-width chip per value, so a long
-   address never runs under its copy action (card and "i" dialog alike). */
-.matchmaking-draw-server {
-  flex-direction: column;
-}
-.matchmaking-draw-server .tournament-lobby-credential {
-  flex-basis: auto;
-}
-.matchmaking-draw-server code {
-  min-width: 0;
-  overflow-wrap: anywhere;
+/* Keep the copy action beside its field on narrow dialogs. */
+.matchmaking-draw-server-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
 }
 
 /* Active lobbies: flat hairline rows inside one card. The credentials sit

@@ -119,7 +119,8 @@ Die Spielberechnung übernimmt die Platzregel des Zielkonzepts
   chips; the drafted teams are introduced by the parallel heading „Captains“. Decorative draft icons
   and the redundant local-turn hint are omitted. The live draft offers a compact neutral
   „Abbrechen“ beside its „Live“ badge in the card header; the confirmation dialog still names the
-  destructive „Draft abbrechen“.
+  destructive „Draft abbrechen“. Every member may start and cancel a draft; a confirmation only
+  cancels the draft it was opened for, never a draft started meanwhile.
   Every player row in both setup flows, the live draft and the drawn teams shows the shared activity
   icon followed by the selected game's `0–5` skill value; in the rating-balanced draw a missing
   self-rating shows the matchmaking fallback in parentheses, so the visible value matches the one
@@ -143,7 +144,8 @@ Die Spielberechnung übernimmt die Platzregel des Zielkonzepts
   from the current lineup with the same rule, so a player move renames affected teams immediately.
   The winning team carries the green „Win“ chip and an accessible group label, the losing teams
   are muted and a drawn result shows „Remis“. Card actions sit in the card header: an open draw
-  offers a neutral „i“ (only with stored server details) and server action, a neutral „+“ for a single result and, rightmost, „Turnier erstellen“ (the primary
+  offers „i“ for server details, a neutral „+“ for a single result and, rightmost,
+  „Turnier erstellen“ (the primary
   gradient on the fresh draw, neutral in the open section); a recorded draw offers a pencil before „Rematch“;
   every open or recorded game card offers admins and owners a trash action with confirmation; regular members see no delete controls, including on the tournament detail page. Removing a recorded draw removes its linked result from the ranking. A tournament tile offers „Turnier“ and, for admins and owners, a trash action using the existing tournament delete behavior; already recorded tournament matches remain in the ranking, and the confirmation explains this. Its expanded state shows tournament teams,
   players and available standings or match totals. A participating player's game title is bold in a collapsed Match tile; only their name is bold in expanded teams. Open draws show every player's skill. Completed tournament headers show the winning team with „Win“ and the tournament name; team details use the same compact place numbers as Match teams in the team-name line, including the finalist's second place, with an explicit place label in the title and accessible name. The number replaces the extra Win chip inside the team card; table points stay beside the team name. With a played third-place match, the semifinal losers carry places 3 and 4 the same way. Knockout exits without a distinct place appear in the context line below the players. The result pencil precedes „Rematch“; tournament actions
@@ -193,14 +195,12 @@ Die Spielberechnung übernimmt die Platzregel des Zielkonzepts
   wins and the other receives `409`. All devices update after the commit.
   Successful seat-neighbor grouping stays silent; a note appears only when requested seat neighbors
   still had to be placed in opposing teams.
-  The server action („Server und Passwort“) opens one compact dialog with the optional fields
-  „Server“ (at most 100 characters) and „Passwort“ (at most 60 characters) and a right-aligned
-  „Speichern“; clearing both removes them. Every event participant may set them while the draw is
-  open. Stored values appear above the teams of the open draw as the same code chips with a copy
-  action as a tournament's active lobbies, update on every device in real time and are no longer
-  shown or editable once the draw has a result or became a tournament (`409`). While details are
-  stored, a neutral „i“ action left of the server action opens them in a compact dialog with the
-  same copy chips, so they are reachable without expanding a collapsed open game.
+  An open draw has one „i“ action („Server und Passwort“) in its header, available even when
+  the draw is collapsed and before any values are saved. Every event participant can open it
+  to view, copy and edit the optional „Server“ (at most 100 characters) and „Passwort“ (at most
+  60 characters). „Speichern“ shares the values with the other participants. Clearing a field
+  removes its value. The action is available until the draw has a result or becomes a tournament
+  (the API then returns `409`).
 - **Player skill display** — `skillDisplay.js` renders the shared activity icon plus the selected
   game's skill value. Teams and Tournaments reuse it in participant selection, drawn-team previews,
   live drafts and tournament detail teams; history shows the team sum (current for tournaments and old drafts without a snapshot). The icon's tooltip and accessible label
@@ -238,8 +238,19 @@ Die Spielberechnung übernimmt die Platzregel des Zielkonzepts
   `--bp-sm` it collapses to a square „+“ with the same accessible name so it still fits beside the
   three tabs. The „Spiel vorschlagen“ form exposes the same game metadata that can later be edited: title,
   platform and its link, YouTube gameplay link, genres, additional info and the seat-neighbor
-  default. Process-name mappings remain an admin-only management action because they control
-  automatic game detection on participant computers.
+  default. Every group member manages the catalog from the game's detail dialog: editing,
+  process-name mappings (they control automatic game detection on participant computers),
+  „In Katalog übernehmen“/„Zurück zu Vorschlägen“ and „Spiel löschen“ after the usual password
+  confirmation. The view creates every new game as a suggestion; anyone takes it into the
+  catalog with „In Katalog übernehmen“ (the API also accepts a direct catalog entry). Deleting
+  a game that already has skill or preference ratings, play time, votes, drafts, draws, matches
+  or tournaments would erase those records. A game on the ballot of a running vote would vanish
+  from it. Only community admins can delete those games. While any event's points standings are
+  open, only community admins can demote or delete catalog games because removing a required
+  rating can permanently award the Skill bonus. While a vote over the whole catalog (a round
+  without an explicit game selection) runs, only community admins add, promote or demote catalog
+  games, because that would change ballots voters may already have filled in; suggestions stay
+  open to everyone.
   Below the tabs, the sort buttons and the filter controls share one compact
   `.tournament-section-panel` — the same bordered/accent-rail pattern the Tournament create form
   uses to separate sibling control groups, but one panel instead of two so the
@@ -415,7 +426,7 @@ Die Spielberechnung übernimmt die Platzregel des Zielkonzepts
   An open round and every closed result use the same presentation and answer controls as a 0–5
   Umfrage, a runoff those of an „Einzelauswahl“ (see „Umfragen“ in [Organisation](organisation-and-event-rules.md)),
   minus the poll-only parts: no „Neue Runde“ and no „Wieder öffnen“. Each open round is
-  one `.event-poll-card` whose header names the round, the participation („X/Y abgegeben“, updated
+  one `.event-poll-card` whose header names the round, its starter, the participation („X/Y abgegeben“, updated
   through the existing realtime refresh) and the viewer's own state („Abgegeben“ or „Deine Stimme
   fehlt“); admins get a compact „Beenden“ and, directly beside it, a red „Abbrechen“; the member
   who started the round also gets „Beenden“ (not „Abbrechen“) for that round — no
@@ -457,7 +468,7 @@ Die Spielberechnung übernimmt die Platzregel des Zielkonzepts
   The passive „Win“ label follows the text height in headers and result rows; it does not increase
   the title's gap to metadata.
   Its header names the
-  round, date, participation and winner and offers „Stimmen ansehen“ for named ballots and, on a tie, a
+  round, starter, date, participation and winner and offers „Stimmen ansehen“ for named ballots and, on a tie, a
   compact „Stichwahl starten“ as long as no runoff for that round is already open. A runoff stores
   the exact round it resolves, so simultaneous Votes cannot change its decline counts or player
   selection. „Match generieren“ opens Match in „Auslosung“
@@ -472,8 +483,10 @@ Die Spielberechnung übernimmt die Platzregel des Zielkonzepts
   anonymous tied round shows no „Vorrunde“ count. While a
   Captain Draft runs in the event, Match shows only that live draft, so „Match generieren“ does
   not open Match: it reads the current draft state and shows an error toast naming the draft's game
-  („Gerade läuft ein Captain Draft für <Spiel>. …“); the draft is never cancelled from Vote. Its closed header has the same compact height as the neighboring
-  closed cards and no hover fill. Opened, it lists every game of the round sorted by score, each with
+  („Gerade läuft ein Captain Draft für <Spiel>. …“); the draft is never cancelled from Vote. Its closed header has no hover fill. From `--bp-xl` it has the same
+  compact height as the neighboring closed cards: the meta facts shorten with an ellipsis (full
+  text as tooltip) while the winner keeps up to half the line. Narrower layouts wrap the meta
+  line below the title instead of cutting it down. Opened, it lists every game of the round sorted by score, each with
   its result bar, „N Pkt. · X/Y spielen mit“ (voters who gave at least one point, out of everyone
   who voted) and the avatars of those voters; winners carry the green „Win“ chip, tied winners
   each carry it. The complete name/metadata block, bar/count block, voter avatars and answer
@@ -485,7 +498,12 @@ Die Spielberechnung übernimmt die Platzregel des Zielkonzepts
   stack — opens the Umfrage vote table: numbered legend with each game's summary, one row per
   voter with their points (a 0 shown as „Spielt nicht“) or their runoff pick.
   An anonymous round offers no „Stimmen ansehen“ and no avatars; its counts stay visible. Results
-  read „N Pkt. · X/Y spielen mit“, in a runoff „N Stimmen“. „Letzter Vote“ always shows the
+  read „N Pkt. · X/Y spielen mit“, in a runoff „N Stimmen“. The starter is the signed-in account
+  that started the round, taken from the session on the server, never from the request. It is
+  shown as the plain display name in the compact meta line of the open round, „Letzter Vote“
+  and every history card. Rounds from before starters were stored, and rounds whose starter
+  deleted the account, show no name; an anonymous round still names its starter, since that
+  reveals nobody's ballot. „Letzter Vote“ always shows the
   most recently ended round, even if another Vote is open or a lower numbered round ends later.
   History lists only the rounds before the
   latest one as separate collapsible cards. Each retains its compact history row as a header
@@ -518,8 +536,9 @@ Die Spielberechnung übernimmt die Platzregel des Zielkonzepts
   distribution and who voted how stay hidden from everyone while the round is open, only the
   participation shows; without it the running result and, unless anonymous, the voters are visible
   to the event's participants. After closing, the result is visible to them and, unless the round
-  is anonymous, who voted how. Any member may start a round; only community admins start a
-  runoff.
+  is anonymous, who voted how. Any member may start a round and, on a tie, the runoff. A
+  member's runoff must name a closed round of the same event that ended in a tie, and the server
+  re-asks exactly that round's winners with that round's anonymity and interim visibility.
   A cancelled round is deleted together with its votes and the next round may reuse its number, so
   the client tells rounds apart by number and start time and never carries a cancelled round's
   ballot over.
