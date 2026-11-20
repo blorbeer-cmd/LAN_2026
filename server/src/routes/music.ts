@@ -79,6 +79,8 @@ interface PublicPlaylist {
 interface PublicPlaybackContext extends PublicPlaylist {
   remainingTrackCount: number;
   nextTrack: PublicTrack | null;
+  // Next songs of Spotify's queue; null when the controller only reports the next one.
+  upcomingTracks: PublicTrack[] | null;
   addedByName: string | null;
 }
 
@@ -250,7 +252,10 @@ function playbackContext(session: MusicSessionRow): PublicPlaybackContext | null
       ? Math.max(0, Math.min(playlist.trackCount, Number(stored?.remainingTrackCount)))
       : fallback;
     const addedByName = typeof stored?.addedByName === 'string' ? stored.addedByName.slice(0, 300) : null;
-    return { ...playlist, remainingTrackCount, nextTrack: validTrack(stored?.nextTrack), addedByName };
+    const upcomingTracks = Array.isArray(stored?.upcomingTracks)
+      ? stored.upcomingTracks.map(validTrack).filter((track): track is PublicTrack => Boolean(track))
+      : null;
+    return { ...playlist, remainingTrackCount, nextTrack: validTrack(stored?.nextTrack), upcomingTracks, addedByName };
   } catch {
     return null;
   }
@@ -635,18 +640,14 @@ musicRouter.post('/requests', ...withBodyPlayerIdentity, asyncRoute(async (req, 
   const track = validTrack(await issueMusicControllerCommand(req.group!.id, 'track', { trackId }));
   if (!track) return res.status(404).json({ error: 'Spotify-Titel nicht gefunden.' });
   const requestId = nanoid();
-  try {
-    db.prepare(
-      `INSERT INTO music_requests
-       (id, session_id, track_uri, track_id, track_name, artist_name, album_name, image_url, duration_ms,
-        requested_by, requested_by_name_snapshot, status, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'sending', ?)`,
-    ).run(requestId, session.id, track.uri, track.id, track.name, track.artist, track.album || null, track.imageUrl,
-      track.durationMs, player.id, player.name, nextRequestCreatedAt(session.id));
-  } catch (error) {
-    if (error instanceof Error && error.message.includes('UNIQUE')) return res.status(409).json({ error: 'Dieser Titel steht bereits in der Warteschlange.' });
-    throw error;
-  }
+  // The same song may wait several times (migration 138).
+  db.prepare(
+    `INSERT INTO music_requests
+     (id, session_id, track_uri, track_id, track_name, artist_name, album_name, image_url, duration_ms,
+      requested_by, requested_by_name_snapshot, status, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'sending', ?)`,
+  ).run(requestId, session.id, track.uri, track.id, track.name, track.artist, track.album || null, track.imageUrl,
+    track.durationMs, player.id, player.name, nextRequestCreatedAt(session.id));
   try {
     if (!session.current_track_uri && !playbackContext(session)) {
       await issueMusicControllerCommand(req.group!.id, 'playUris', { deviceId: session.device_id, uris: [track.uri] });
@@ -688,7 +689,11 @@ musicRouter.delete('/requests/:requestId', ...withBodyPlayerIdentity, asyncRoute
     if (stored && validPlaylist(stored)) {
       const skipUris = Array.isArray(stored.skipUris) ? stored.skipUris.filter((uri) => typeof uri === 'string') : [];
       stored.skipUris = [...new Set([...skipUris, row.track_uri])].slice(-50);
-      if ((stored.nextTrack as { uri?: unknown } | null)?.uri === row.track_uri) stored.nextTrack = null;
+      if (Array.isArray(stored.upcomingTracks)) {
+        const index = stored.upcomingTracks.findIndex((track) => (track as { uri?: unknown } | null)?.uri === row.track_uri);
+        if (index !== -1) stored.upcomingTracks.splice(index, 1);
+        stored.nextTrack = stored.upcomingTracks[0] ?? null;
+      } else if ((stored.nextTrack as { uri?: unknown } | null)?.uri === row.track_uri) stored.nextTrack = null;
       db.prepare('UPDATE music_sessions SET playback_context_json = ? WHERE id = ?').run(JSON.stringify(stored), session.id);
     }
     return true;

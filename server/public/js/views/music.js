@@ -344,42 +344,40 @@ function requestQueueHtml(session) {
   const queued = queuedRequests(session);
   const playlist = session.playbackContext;
   const playlistMode = Boolean(playlist);
-  const nextTrack = playlist?.nextTrack || null;
-  const nextRequest = nextTrack
-    ? queued.find((entry) => entry.trackUri === nextTrack.uri) || null
-    : null;
-  const remainingRequests = nextRequest ? queued.filter((entry) => entry.id !== nextRequest.id) : queued;
+  // During a playlist the list follows Spotify's own queue: up to five next
+  // songs (older controllers report only the next one). Each one is matched
+  // to a waiting request at most once, so a song wished twice shows twice.
+  const upcoming = Array.isArray(playlist?.upcomingTracks)
+    ? playlist.upcomingTracks
+    : playlist?.nextTrack ? [playlist.nextTrack] : [];
+  const unmatched = [...queued];
+  let playlistTracksShown = 0;
+  const entries = upcoming.map((track) => {
+    const index = unmatched.findIndex((entry) => entry.trackUri === track.uri);
+    const request = index === -1 ? null : unmatched.splice(index, 1)[0];
+    if (!request) playlistTracksShown += 1;
+    return { track, request };
+  });
+  unmatched.forEach((request) => entries.push({ track: request, request }));
   const remainingPlaylistTracks = Number.isSafeInteger(playlist?.remainingTrackCount)
     ? Math.max(0, playlist.remainingTrackCount)
     : null;
-  const playlistTracksAfterNext = remainingPlaylistTracks !== null && nextTrack && !nextRequest
-    ? Math.max(0, remainingPlaylistTracks - 1)
-    : remainingPlaylistTracks;
+  const playlistTracksAfterShown = remainingPlaylistTracks !== null
+    ? Math.max(0, remainingPlaylistTracks - playlistTracksShown)
+    : null;
   const sortable = Boolean(getMyId()) && !playlistMode && queued.length > 1;
-  const rows = [];
-  if (nextTrack) {
-    rows.push(queueRowHtml({
-      position: 1,
-      imageUrl: nextTrack.imageUrl,
-      name: nextTrack.name,
-      artist: nextTrack.artist,
-      who: nextRequest ? personHtml(nextRequest.requestedByName, nextRequest.requestedBy) : 'Playlist',
-      durationMs: nextTrack.durationMs,
-      requestId: nextRequest?.id ?? null,
-    }));
-  }
-  remainingRequests.forEach((entry, index) => rows.push(queueRowHtml({
-    position: index + (nextTrack ? 2 : 1),
-    imageUrl: entry.imageUrl,
-    name: entry.name,
-    artist: entry.artist,
-    who: personHtml(entry.requestedByName, entry.requestedBy),
-    durationMs: entry.durationMs,
-    requestId: entry.id,
-    draggable: sortable,
-  })));
-  if (playlistTracksAfterNext) {
-    rows.push(`<div class="music-queue-row music-queue-more" role="row"><span role="cell"></span><span class="music-meta" role="cell">${playlistTracksAfterNext} ${playlistTracksAfterNext === 1 ? 'weiterer Titel' : 'weitere Titel'} aus der Playlist</span></div>`);
+  const rows = entries.map(({ track, request }, index) => queueRowHtml({
+    position: index + 1,
+    imageUrl: track.imageUrl,
+    name: track.name,
+    artist: track.artist,
+    who: request ? personHtml(request.requestedByName, request.requestedBy) : 'Playlist',
+    durationMs: track.durationMs,
+    requestId: request?.id ?? null,
+    draggable: sortable && Boolean(request),
+  }));
+  if (playlistTracksAfterShown) {
+    rows.push(`<div class="music-queue-row music-queue-more" role="row"><span role="cell"></span><span class="music-meta" role="cell">${playlistTracksAfterShown} ${playlistTracksAfterShown === 1 ? 'weiterer Titel' : 'weitere Titel'} aus der Playlist</span></div>`);
   }
   return `
     <section class="card stack grouped-page-section" aria-labelledby="music-queue-title">

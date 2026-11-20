@@ -260,6 +260,28 @@ test('local controller pairs without sending Spotify credentials to Respawn', as
   const skipped = await request(app).post('/api/music/skip').send({ playerId: bob.id });
   assert.equal(skipped.status, 200);
 
+  // The same song may wait twice. When it starts again from the beginning,
+  // the second copy takes over instead of the finished one staying "playing".
+  const firstCopy = await request(app).post('/api/music/requests').send({ playerId: bob.id, trackId: tracks.CCCCCCCCCCCCCCCCCCCCCC.id });
+  const secondCopy = await request(app).post('/api/music/requests').send({ playerId: alice.id, trackId: tracks.CCCCCCCCCCCCCCCCCCCCCC.id });
+  assert.deepEqual([firstCopy.status, secondCopy.status], [201, 201], 'a song can be requested twice');
+  const statusOf = async () => Object.fromEntries(
+    ((await request(app).get('/api/music/status')).body.session.requests as Array<{ id: string; status: string }>)
+      .map((entry) => [entry.id, entry.status]),
+  );
+  const copyHeartbeat = (progressMs: number) => request(app)
+    .post('/api/music/controller/heartbeat')
+    .set('x-music-controller-token', controllerToken)
+    .send({ playback: { track: tracks.CCCCCCCCCCCCCCCCCCCCCC, deviceId: 'speaker-1', context: null, isPlaying: true, progressMs } });
+  await copyHeartbeat(150_000);
+  assert.deepEqual(await statusOf(), { [firstCopy.body.requestId]: 'playing', [secondCopy.body.requestId]: 'queued' });
+  await copyHeartbeat(150_500);
+  assert.deepEqual(await statusOf(), { [firstCopy.body.requestId]: 'playing', [secondCopy.body.requestId]: 'queued' },
+    'regular progress of the same song does not start the second copy');
+  await copyHeartbeat(1_000);
+  assert.deepEqual(await statusOf(), { [secondCopy.body.requestId]: 'playing' },
+    'the song starting again plays the second copy and finishes the first');
+
   const playedPlaylist = await request(app)
     .post(`/api/music/playlists/${playlist.id}/play`)
     .send({ playerId: bob.id });
@@ -277,6 +299,7 @@ test('local controller pairs without sending Spotify credentials to Respawn', as
         deviceId: 'speaker-1',
         context: { type: 'playlist', uri: playlist.uri },
         nextTrack: tracks.BBBBBBBBBBBBBBBBBBBBBB,
+        upcomingTracks: [tracks.BBBBBBBBBBBBBBBBBBBBBB, tracks.CCCCCCCCCCCCCCCCCCCCCC],
         isPlaying: true,
         progressMs: 1_500,
       },
@@ -287,7 +310,8 @@ test('local controller pairs without sending Spotify credentials to Respawn', as
     addedByName: 'Music Bob',
     remainingTrackCount: 41,
     nextTrack: tracks.BBBBBBBBBBBBBBBBBBBBBB,
-  });
+    upcomingTracks: [tracks.BBBBBBBBBBBBBBBBBBBBBB, tracks.CCCCCCCCCCCCCCCCCCCCCC],
+  }, 'the next songs of the playlist are listed');
   assert.equal(live.body.session.currentTrack.name, 'LAN Anthem');
   assert.equal(live.body.session.requests.length, 0, 'starting a playlist replaces the prior shared queue');
 
@@ -323,6 +347,24 @@ test('local controller pairs without sending Spotify credentials to Respawn', as
   assert.equal(playlistRequestRemoval.status, 204, 'a request can be removed while a playlist runs');
   live = await request(app).get('/api/music/status').set('x-test-player-id', alice.id);
   assert.equal(live.body.session.requests.length, 0);
+  await request(app)
+    .post('/api/music/controller/heartbeat')
+    .set('x-music-controller-token', controllerToken)
+    .send({
+      playback: {
+        track: tracks.BBBBBBBBBBBBBBBBBBBBBB,
+        deviceId: 'speaker-1',
+        context: { type: 'playlist', uri: playlist.uri },
+        nextTrack: tracks.CCCCCCCCCCCCCCCCCCCCCC,
+        upcomingTracks: [tracks.CCCCCCCCCCCCCCCCCCCCCC, tracks.AAAAAAAAAAAAAAAAAAAAAA],
+        isPlaying: true,
+        progressMs: 4_000,
+      },
+    });
+  live = await request(app).get('/api/music/status').set('x-test-player-id', alice.id);
+  assert.deepEqual(live.body.session.playbackContext.upcomingTracks, [tracks.AAAAAAAAAAAAAAAAAAAAAA],
+    'a removed request still in Spotify\'s queue is not shown as coming next');
+  assert.deepEqual(live.body.session.playbackContext.nextTrack, tracks.AAAAAAAAAAAAAAAAAAAAAA);
   const nextsBeforeRemovedRequest = controllerCommands.filter((command) => command.type === 'next').length;
   await request(app)
     .post('/api/music/controller/heartbeat')

@@ -125,8 +125,13 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu TV-Kiosk, Jam
   table with one fixed „Hinzufügen“ or „Abspielen“ column. A playlist
   result starts its complete Spotify playback context and replaces the
   current playback plus pending requests after explicit confirmation. While that context is active,
-  „Als Nächstes“ reads Spotify's live queue and names the actual next track. It then shows the
-  remaining playlist-track count separately from additional song requests.
+  „Als Nächstes“ reads Spotify's live queue and lists the next five songs in Spotify's order,
+  playlist songs and requests alike (a controller package downloaded before this change reports
+  only the next song until it is downloaded again). Below them it shows how many further playlist
+  songs remain. A request removed during the playlist is left out of that list.
+  The same song may be requested several times; each copy is its own request with its own
+  requester and position. When a song ends and the identical song starts again from the
+  beginning while a copy still waits, that copy becomes the playing request.
   Those requests follow Spotify's append-only queue in request order; reordering stays hidden
   because Spotify exposes no reorder for its live queue. „Entfernen“ in a request's detail dialog
   still works: the request leaves the queue immediately, and because Spotify cannot drop it from

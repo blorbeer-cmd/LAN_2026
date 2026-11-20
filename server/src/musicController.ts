@@ -11,6 +11,13 @@ export const musicControllerRouter = Router();
 // LAN. Avoid presenting that recoverable delay as a dead controller.
 const ONLINE_MS = 30_000;
 const COMMAND_TIMEOUT_MS = 15_000;
+// A same-song restart must be clearly earlier than the expected position:
+// heartbeats arrive every few seconds and Spotify reports progress coarsely.
+const SAME_TRACK_RESTART_MS = 10_000;
+// Spotify reports up to 20 queued songs; a few spare entries keep five
+// visible after hiding removed requests.
+const UPCOMING_TRACKS_REPORTED = 10;
+const UPCOMING_TRACKS_SHOWN = 5;
 export const MUSIC_CONTROLLER_RETENTION_MS = 24 * 60 * 60 * 1000;
 const MUSIC_CONTROLLER_EXPIRY_SWEEP_MS = 6 * 60 * 60 * 1000;
 
@@ -268,9 +275,13 @@ function replaceForeignPlayback(groupId: string, type: 'pause' | 'next' | 'playU
 
 function syncSessionPlayback(groupId: string, playback: unknown, now: number): void {
   const session = db.prepare(
-    "SELECT id, device_id, current_track_uri, playback_context_json FROM music_sessions WHERE group_id = ? AND status = 'active'",
+    `SELECT id, device_id, current_track_uri, playback_context_json, playback_progress_ms, playback_updated_at,
+            playback_is_playing FROM music_sessions WHERE group_id = ? AND status = 'active'`,
   ).get(groupId) as
-    | { id: string; device_id: string; current_track_uri: string | null; playback_context_json: string | null }
+    | {
+        id: string; device_id: string; current_track_uri: string | null; playback_context_json: string | null;
+        playback_progress_ms: number; playback_updated_at: number | null; playback_is_playing: number;
+      }
     | undefined;
   if (!session) return;
   const value = playback && typeof playback === 'object' ? playback as Record<string, unknown> : null;
@@ -278,10 +289,25 @@ function syncSessionPlayback(groupId: string, playback: unknown, now: number): v
   const track = value?.track && typeof value.track === 'object' ? value.track as Record<string, unknown> : null;
   const uri = typeof track?.uri === 'string' ? track.uri : null;
   const context = value?.context && typeof value.context === 'object' ? value.context as Record<string, unknown> : null;
+  const reportedProgress = Number.isSafeInteger(value?.progressMs) ? Number(value?.progressMs) : 0;
+  // The same song may be requested twice in a row. Its second copy starts
+  // with the same URI, so a jump back to the start of a song that was well
+  // underway, while another copy still waits, counts as the next request.
+  const expectedProgress = session.playback_progress_ms +
+    (session.playback_is_playing && session.playback_updated_at ? Math.max(0, now - session.playback_updated_at) : 0);
+  const restartedSameTrack = Boolean(uri) && uri === session.current_track_uri &&
+    reportedProgress + SAME_TRACK_RESTART_MS < expectedProgress &&
+    Boolean(db.prepare(
+      "SELECT 1 FROM music_requests WHERE session_id = ? AND track_uri = ? AND status IN ('sending', 'queued') LIMIT 1",
+    ).get(session.id, uri));
+  // The copy already playing keeps matching; after a restart the oldest
+  // waiting copy takes over.
   const matchingRequest = uri
     ? db.prepare(
-        "SELECT id FROM music_requests WHERE session_id = ? AND track_uri = ? AND status IN ('sending', 'queued', 'playing') ORDER BY created_at LIMIT 1",
-      ).get(session.id, uri) as { id: string } | undefined
+        `SELECT id FROM music_requests WHERE session_id = ? AND track_uri = ?
+           AND status IN ('sending', 'queued', 'playing') AND (? = 0 OR status != 'playing')
+         ORDER BY CASE status WHEN 'playing' THEN 0 ELSE 1 END, created_at LIMIT 1`,
+      ).get(session.id, uri, restartedSameTrack ? 1 : 0) as { id: string } | undefined
     : undefined;
   let playbackContextJson = session.playback_context_json;
   // A playlist removed from the queue keeps a marker until Spotify has left
@@ -317,9 +343,25 @@ function syncSessionPlayback(groupId: string, playback: unknown, now: number): v
         if (uri && !matchingRequest && uri !== observedTrackUri) remainingTrackCount = Math.max(0, remainingTrackCount - 1);
         stored.remainingTrackCount = remainingTrackCount;
         stored.observedTrackUri = uri && !matchingRequest ? uri : observedTrackUri;
-        stored.nextTrack = value?.nextTrack && typeof value.nextTrack === 'object'
-          ? value.nextTrack
-          : null;
+        // Requests removed during the playlist may still sit in Spotify's
+        // queue; unless another copy is still wanted they are hidden here
+        // too, so the preview shows what will actually be heard.
+        const skipUris = new Set((Array.isArray(stored.skipUris) ? stored.skipUris : [])
+          .filter((entry): entry is string => typeof entry === 'string')
+          .filter((entry) => !db.prepare(
+            "SELECT 1 FROM music_requests WHERE session_id = ? AND track_uri = ? AND status IN ('sending', 'queued') LIMIT 1",
+          ).get(session.id, entry)));
+        const visible = (entry: unknown): entry is Record<string, unknown> =>
+          Boolean(entry) && typeof entry === 'object' && !skipUris.has(String((entry as Record<string, unknown>).uri));
+        // Newer controllers report the next songs of Spotify's queue; older
+        // ones only the next one.
+        if (Array.isArray(value?.upcomingTracks)) {
+          stored.upcomingTracks = value.upcomingTracks.slice(0, UPCOMING_TRACKS_REPORTED).filter(visible).slice(0, UPCOMING_TRACKS_SHOWN);
+          stored.nextTrack = (stored.upcomingTracks as unknown[])[0] ?? null;
+        } else {
+          delete stored.upcomingTracks;
+          stored.nextTrack = visible(value?.nextTrack) ? value?.nextTrack : null;
+        }
         playbackContextJson = JSON.stringify(stored);
       }
     } catch {
@@ -348,7 +390,7 @@ function syncSessionPlayback(groupId: string, playback: unknown, now: number): v
     }
   }
   db.transaction(() => {
-    if (session.current_track_uri && session.current_track_uri !== uri) {
+    if (session.current_track_uri && (session.current_track_uri !== uri || restartedSameTrack)) {
       db.prepare("UPDATE music_requests SET status = 'played', played_at = ? WHERE session_id = ? AND status = 'playing'")
         .run(now, session.id);
     }

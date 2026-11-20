@@ -6146,6 +6146,13 @@ registerMigration({ version: 137, name: 'replace betting rounds after lineup cha
       WHERE refund_cause IS NOT 'replaced';`);
 } });
 
+registerMigration({ version: 138, name: 'allow the same Jam track to be requested more than once', up: () => {
+  // A song may wait in the queue several times. The heartbeat still looks
+  // requests up by track, so a plain index replaces the unique one.
+  db.exec(`DROP INDEX IF EXISTS idx_music_requests_active_track;
+    CREATE INDEX IF NOT EXISTS idx_music_requests_session_track ON music_requests(session_id, track_uri, status);`);
+} });
+
 runRegisteredMigrations();
 
 // The active default-group role is the source of truth for instance admin
