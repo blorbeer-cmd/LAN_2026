@@ -85,7 +85,8 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Routen, Rolle
   that account as „von <Name>“ right after its title: in the highlight below the topbar, in the
   notification center, on the Kiosk banner and in the device notification's title. In the
   highlight the name has its own slot, so a long event or entry title is truncated before the
-  name. The name is resolved from the account when read, so a rename shows up and an erased
+  name; a name wider than the whole line wraps inside the text area and never covers the dismiss
+  button. The name is resolved from the account when read, so a rename shows up and an erased
   account's entries keep their text without a creator. System notifications (reminders, bets,
   match readiness) and entries whose text already names the person (Arcade-Lobby, Mitbring-
   Anfrage, Aufgabe, Übernommen) carry no separate creator.

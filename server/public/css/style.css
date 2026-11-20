@@ -409,7 +409,6 @@ textarea {
 .notification-highlight-heading {
   display: flex;
   align-items: baseline;
-  gap: var(--space-1);
   min-width: 0;
 }
 .notification-highlight-heading strong,
@@ -418,10 +417,13 @@ textarea {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* The creator never shrinks: a long title truncates instead of the name. */
+/* A long title truncates before the creator's name; a name wider than the
+   whole line wraps inside the text area instead of overflowing it. */
 .notification-highlight-actor {
   flex: 0 0 auto;
-  white-space: nowrap;
+  max-width: 100%;
+  padding-left: var(--space-1);
+  overflow-wrap: anywhere;
 }
 .notification-highlight-body {
   min-width: 0;

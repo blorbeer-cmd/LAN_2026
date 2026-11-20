@@ -265,11 +265,33 @@ flowTest('Durchsage: notification center can navigate, mark read and remove with
   await page.click('.nav-btn[data-view="home"]');
   const highlight = page.locator('#notification-highlight:has-text("Essen ist da!")');
   await highlight.waitFor();
-  // The creator has its own slot after the title and is never the part that
-  // gets truncated.
+  // The creator has its own slot after the title: the title is truncated
+  // first, and even a name wider than a phone line wraps inside the text area
+  // instead of running under the dismiss button or scrolling the page.
   const actor = highlight.locator('.notification-highlight-actor');
-  assert.match(await actor.innerText(), /^von \S/);
-  assert.ok(await actor.evaluate((el) => el.scrollWidth <= el.clientWidth), 'creator name must not be clipped');
+  const actorText = await actor.innerText();
+  assert.match(actorText, /^von \S/);
+  const viewport = page.viewportSize()!;
+  await page.setViewportSize({ width: 320, height: viewport.height });
+  const geometry = await highlight.evaluate((el) => {
+    const actorEl = el.querySelector('.notification-highlight-actor')!;
+    const original = actorEl.textContent;
+    actorEl.textContent = `von ${'W'.repeat(60)}`;
+    const rect = (selector: string) => el.querySelector(selector)!.getBoundingClientRect();
+    const result = {
+      actorRight: rect('.notification-highlight-actor').right,
+      textRight: rect('.notification-highlight-text').right,
+      dismissLeft: rect('.notification-highlight-dismiss').left,
+      pageOverflows: document.documentElement.scrollWidth > window.innerWidth,
+    };
+    actorEl.textContent = original;
+    return result;
+  });
+  await page.setViewportSize(viewport);
+  assert.ok(geometry.actorRight <= geometry.textRight, `long creator name overflows: ${JSON.stringify(geometry)}`);
+  assert.ok(geometry.actorRight <= geometry.dismissLeft, `long creator name covers the dismiss button: ${JSON.stringify(geometry)}`);
+  assert.equal(geometry.pageOverflows, false);
+  assert.equal(await actor.innerText(), actorText);
   await highlight.locator('[data-notification-highlight-navigate]').click();
   await page.waitForSelector('#broadcast-message');
   await page.waitForSelector('#notification-highlight', { state: 'hidden' });
