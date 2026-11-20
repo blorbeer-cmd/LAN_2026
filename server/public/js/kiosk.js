@@ -6,7 +6,7 @@
 
 import { api, clearKioskToken, getKioskToken, setKioskMode, setKioskToken } from './api.js';
 import { connectSocket } from './socket.js';
-import { escapeHtml, stateLabel, avatarHtml } from './format.js';
+import { escapeHtml } from './format.js';
 import { installIconReplacement, icon } from './icons.js';
 import { bannerContentHtml } from './pushFeed.js';
 import { drawArcadeStreamCanvas } from './arcade/shared/arcadeStreamRenderer.js';
@@ -14,6 +14,7 @@ import { installDomainIcons } from './domainIcons.js';
 import { snakeArenaLegendHtml } from './arcade/shared/snakeArenaLegend.js';
 import { emptyStateHtml } from './emptyState.js';
 import { kioskMusicQueueHtml, kioskMusicQueueKey } from './kioskMusic.js';
+import { kioskLiveActiveHtml, kioskLiveRowHtml } from './kioskLive.js';
 import { createKioskResultsPanel } from './kioskResults.js';
 import {
   connectLocalSpotifyPlayer,
@@ -272,8 +273,8 @@ function renderKioskLogin() {
 // the current page, because every agent report triggers live:changed and
 // re-settling on each of them made the card flicker and jump to page one.
 const LIVE_MAX_COLUMNS = 4;
-// Avatar, name and status dot at the TV text size; the dot instead of a
-// text badge is what lets a fourth column fit.
+// Avatar, name (with the running game below it) and status dot at the TV
+// text size; the dot instead of a text badge is what lets a fourth column fit.
 const LIVE_MIN_COLUMN_WIDTH = 200;
 const LIVE_MIN_PAGE_SIZE = 6;
 const LIVE_ROTATE_INTERVAL_MS = 6_000;
@@ -286,16 +287,12 @@ let liveRotationTimer = null;
 // settled for, the rows they show, and the HTML last painted into the card.
 let liveLayoutKey = '';
 let liveRowsHtml = '';
+let liveActiveHtml = '';
 let livePaintedHtml = '';
 
 function stopLiveRotation() {
   if (liveRotationTimer !== null) clearInterval(liveRotationTimer);
   liveRotationTimer = null;
-}
-
-function liveRowHtml(p) {
-  const label = escapeHtml(stateLabel(p.state));
-  return `<div class="kiosk-live-row is-${escapeHtml(p.state)}">${avatarHtml(p, 32)}<span class="player-name">${escapeHtml(p.name)}</span><span class="kiosk-live-status is-${escapeHtml(p.state)}" role="img" aria-label="${label}" title="${label}"></span></div>`;
 }
 
 // A fresh innerHTML's scrollHeight/clientHeight can still reflect a layout
@@ -324,8 +321,10 @@ function liveDotsHtml(totalPages, pageIndex) {
 // so a fit-check that measured only the grid (without dots) could settle on a
 // page size that then overflows once the dots are appended for real, clipping
 // the last row against the card's own overflow instead of paging it away.
-function livePageHtml(items, totalPages, pageIndex) {
-  return `<div class="kiosk-live-grid">${items.map(liveRowHtml).join('')}</div>${liveDotsHtml(totalPages, pageIndex)}`;
+// The "Gerade aktiv" strip leads every page for the same reason: it takes
+// height from the roster, so the fit check has to see it too.
+function livePageHtml(activeHtml, rowsHtml, totalPages = 1, pageIndex = 0) {
+  return `${activeHtml}<div class="kiosk-live-grid">${rowsHtml}</div>${liveDotsHtml(totalPages, pageIndex)}`;
 }
 
 // Decides liveColumns and livePageSize for the current liveAllPlayers; does
@@ -344,7 +343,7 @@ let liveSettleToken = 0;
 // All candidates are measured in an invisible probe that covers the card
 // body exactly (see .kiosk-live-probe), so the visible roster stays in place
 // while the layout is decided instead of flashing through every candidate.
-async function settleLiveLayout(players) {
+async function settleLiveLayout(players, activeHtml) {
   const myToken = ++liveSettleToken;
   const container = document.getElementById('kiosk-live');
   const probe = document.createElement('div');
@@ -352,7 +351,7 @@ async function settleLiveLayout(players) {
   probe.setAttribute('aria-hidden', 'true');
   container.append(probe);
   try {
-    const layout = await measureLiveLayout(container, probe, players, myToken);
+    const layout = await measureLiveLayout(container, probe, players, activeHtml, myToken);
     if (!layout) return false;
     liveColumns = layout.columns;
     livePageSize = layout.pageSize;
@@ -362,9 +361,9 @@ async function settleLiveLayout(players) {
   }
 }
 
-async function measureLiveLayout(container, probe, players, myToken) {
+async function measureLiveLayout(container, probe, players, activeHtml, myToken) {
   const total = players.length;
-  const rowsHtml = players.map(liveRowHtml).join('');
+  const rowsHtml = players.map(kioskLiveRowHtml).join('');
   // More columns only helps if each one still has room for an avatar, a
   // name and a status badge without the name getting squeezed to nothing
   // (seen in practice on the narrow end of the supported widths). Cap the
@@ -374,7 +373,7 @@ async function measureLiveLayout(container, probe, players, myToken) {
 
   for (let columns = 1; columns <= maxColumns; columns += 1) {
     probe.style.setProperty('--live-columns', String(columns));
-    probe.innerHTML = `<div class="kiosk-live-grid">${rowsHtml}</div>`;
+    probe.innerHTML = livePageHtml(activeHtml, rowsHtml);
     await nextFrame();
     if (myToken !== liveSettleToken) return null;
     if (liveFits(probe)) return { columns, pageSize: null };
@@ -383,7 +382,7 @@ async function measureLiveLayout(container, probe, players, myToken) {
   let pageSize = Math.max(LIVE_MIN_PAGE_SIZE, total - 3);
   for (;;) {
     const totalPages = Math.max(1, Math.ceil(total / pageSize));
-    probe.innerHTML = livePageHtml(players.slice(0, pageSize), totalPages, 0);
+    probe.innerHTML = livePageHtml(activeHtml, players.slice(0, pageSize).map(kioskLiveRowHtml).join(''), totalPages, 0);
     await nextFrame();
     if (myToken !== liveSettleToken) return null;
     if (liveFits(probe) || pageSize <= 1) break;
@@ -409,14 +408,14 @@ function renderLivePageContent() {
   const container = document.getElementById('kiosk-live');
   container.style.setProperty('--live-columns', String(liveColumns));
   if (livePageSize === null) {
-    paintLive(container, `<div class="kiosk-live-grid">${liveRowsHtml}</div>`);
+    paintLive(container, livePageHtml(liveActiveHtml, liveRowsHtml));
     stopLiveRotation();
     return;
   }
   const totalPages = Math.max(1, Math.ceil(liveAllPlayers.length / livePageSize));
   if (livePageIndex >= totalPages) livePageIndex = 0;
   const items = liveAllPlayers.slice(livePageIndex * livePageSize, livePageIndex * livePageSize + livePageSize);
-  paintLive(container, livePageHtml(items, totalPages, livePageIndex));
+  paintLive(container, livePageHtml(liveActiveHtml, items.map(kioskLiveRowHtml).join(''), totalPages, livePageIndex));
   if (totalPages > 1) {
     if (liveRotationTimer === null) {
       liveRotationTimer = setInterval(() => {
@@ -449,18 +448,23 @@ async function renderLive(players) {
     liveAllPlayers = [];
     liveLayoutKey = '';
     liveRowsHtml = '';
+    liveActiveHtml = '';
     livePaintedHtml = '';
     updateHtml('kiosk-live', emptyStateHtml('Noch keine Spieler.', { className: 'kiosk-empty-state' }));
     return;
   }
   const sorted = sortLivePlayers(players);
-  const rowsHtml = sorted.map(liveRowHtml).join('');
-  const layoutKey = `${sorted.length}|${container.clientWidth}x${container.clientHeight}`;
+  const rowsHtml = sorted.map(kioskLiveRowHtml).join('');
+  const activeHtml = kioskLiveActiveHtml(sorted);
+  // Whether the one-line "Gerade aktiv" strip shows belongs to the key: it
+  // takes a line of height and with it rows that fit below. Its content
+  // never changes that height, so a new player count needs no re-settle.
+  const layoutKey = `${sorted.length}|${container.clientWidth}x${container.clientHeight}|${activeHtml ? 'active' : ''}`;
   // Agent reports and the offline sweep re-send an unchanged board many
   // times a minute; those must not touch the card at all.
   if (layoutKey === liveLayoutKey && rowsHtml === liveRowsHtml) return;
   if (layoutKey !== liveLayoutKey) {
-    const settled = await settleLiveLayout(sorted);
+    const settled = await settleLiveLayout(sorted, activeHtml);
     if (!settled) return; // superseded by a fresher call; that one will paint
     liveLayoutKey = layoutKey;
   } else {
@@ -470,6 +474,7 @@ async function renderLive(players) {
   }
   liveAllPlayers = sorted;
   liveRowsHtml = rowsHtml;
+  liveActiveHtml = activeHtml;
   renderLivePageContent();
 }
 

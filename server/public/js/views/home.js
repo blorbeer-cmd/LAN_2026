@@ -13,6 +13,7 @@ import { api } from '../api.js';
 import { state } from '../state.js';
 import { escapeHtml, formatDateTime, stateLabel, avatarHtml, gameChipsHtml } from '../format.js';
 import { getMyId } from '../whoami.js';
+import { activeGameGroups } from '../liveActivity.js';
 import { showToast } from '../toast.js';
 import { icon } from '../icons.js';
 import { renderSeatingPlan } from './seating.js';
@@ -580,31 +581,17 @@ function wireMyTodos(container, ctx) {
 // running right now and how many/who — the player names sit in a tooltip so
 // the chip row stays compact even with a long roster on one game.
 function renderActiveGroups(players) {
-  const byGame = new Map();
-  for (const p of players) {
-    if (p.state !== 'playing') continue;
-    for (const g of p.games) {
-      const entry = byGame.get(g.game_id) ?? { id: g.game_id, name: g.game_name, icon: g.game_icon, players: [] };
-      entry.players.push(p.name);
-      byGame.set(g.game_id, entry);
-    }
-  }
-  if (byGame.size === 0) return '';
-
-  const groups = [...byGame.values()]
-    .sort((a, b) => b.players.length - a.players.length)
-    .map((g) => {
-      const count = g.players.length;
-      const namesList = g.players.slice().sort((a, b) => a.localeCompare(b, 'de')).join(', ');
-      return `
-      <div class="chip" title="${escapeHtml(namesList)}"><strong>${escapeHtml(g.name)}</strong> <span class="muted">· ${count} Spieler</span></div>`;
-    })
+  const groups = activeGameGroups(players);
+  if (groups.length === 0) return '';
+  const chips = groups
+    .map((g) => `
+      <div class="chip" title="${escapeHtml(g.players.join(', '))}"><strong>${escapeHtml(g.name)}</strong> <span class="muted">· ${g.players.length} Spieler</span></div>`)
     .join('');
 
   return `
     <div class="home-page-subsection stack">
       <h3>Gerade aktiv</h3>
-      <div class="chip-list">${groups}</div>
+      <div class="chip-list">${chips}</div>
     </div>
   `;
 }

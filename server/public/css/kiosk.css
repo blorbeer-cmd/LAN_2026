@@ -654,8 +654,66 @@
   background: var(--bg-elevated-2);
   border-radius: var(--radius-sm);
 }
-.kiosk-live-row .player-name {
+/* Name above the running game (or, without one, the state), so every row
+   keeps the same two-line height whatever its participant is doing. */
+.kiosk-live-text {
+  display: flex;
   flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+.kiosk-live-detail {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: var(--kiosk-font-meta);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.kiosk-live-row.is-playing .kiosk-live-detail {
+  color: var(--state-playing);
+}
+/* "Gerade aktiv" above the roster, as on Home: one pill per running game.
+   It stays one line so it never pushes roster rows onto another page; with
+   many games their names shorten instead (each row names its game in full
+   width anyway). Passive TV labels in the chip look at the TV meta size,
+   not the interactive .chip control. */
+.kiosk-live-active {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  overflow: hidden;
+  font-size: var(--kiosk-font-meta);
+}
+.kiosk-live-active-label {
+  flex-shrink: 0;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.kiosk-live-game {
+  display: inline-flex;
+  flex: 0 1 auto;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  padding: var(--space-1) var(--space-3);
+  background: var(--bg-elevated-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  white-space: nowrap;
+}
+.kiosk-live-game strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.kiosk-live-active-count {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: var(--space-1);
 }
 /* The state is a dot instead of a text badge, which leaves room for a
    fourth column at the larger TV text size. Each state also differs in
