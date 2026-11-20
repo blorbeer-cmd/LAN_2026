@@ -1,5 +1,6 @@
-import { withBettingAccounting, assertCompetitionEditable, retireRerolledDraw, publishBettingChanges, type BettingRound } from '../betting';
+import { withBettingAccounting, assertCompetitionEditable, assertMatchEditable, retireRerolledDraw, publishBettingChanges, type BettingRound } from '../betting';
 import { syncCompetitionPoints } from '../orgaPoints';
+import { PointsError } from '../pointsAccess';
 // Matchmaking endpoint (FR-16..18): draws balanced teams for a game from a
 // set of present players, using their skill ratings. Stateless — every call
 // is a fresh draw, so "re-roll" is just calling it again. The result is
@@ -628,7 +629,17 @@ matchmakingRouter.patch('/draws/:id/move', (req, res) => {
     );
   });
 
-  const updated = db
+  const draw = loadDrawView(row.id);
+  broadcast(Events.matchmakingDrawsChanged, draw, {
+    groupId: req.group!.id,
+    eventId: deliveryEventId(row.event_id),
+  });
+  res.json(draw);
+});
+
+// The client-facing shape of one draw, including a linked result.
+function loadDrawView(drawId: string) {
+  const row = db
     .prepare(
       `SELECT md.id AS id, md.game_id AS gameId, g.name AS gameName, g.icon AS gameIcon,
               md.teams AS teamsJson, md.seat_conflicts AS seatConflicts,
@@ -638,12 +649,90 @@ matchmakingRouter.patch('/draws/:id/move', (req, res) => {
        FROM matchmaking_draws md JOIN games g ON g.id = md.game_id
        LEFT JOIN tournaments t ON t.id = md.tournament_id WHERE md.id = ?`
     )
-    .get(row.id) as DrawRow;
+    .get(drawId) as DrawRow;
+  const draw = parseDrawRow(row);
+  attachMatchResults([draw]);
+  return draw;
+}
 
-  const draw = parseDrawRow(updated);
-  broadcast(Events.matchmakingDrawsChanged, draw, {
-    groupId: req.group!.id,
-    eventId: deliveryEventId(row.event_id),
+type DrawTeamSnapshot = {
+  players: Array<{ id: string; name: string; rating: number | null; seatConflict?: boolean; seatConflictNames?: string[] }>;
+  totalRating: number;
+  skillSnapshot?: boolean;
+};
+
+// DELETE /api/matchmaking/draws/:id/players/:playerId - removes one player
+// from a drawn lineup entirely (left the LAN, does not want to play).
+// - Open draw: a team that loses its last player is dropped as long as two
+//   teams remain; the betting reconcile then treats it like any lineup change.
+// - Recorded result: the player leaves the draw and the match result together,
+//   so they lose this match's game points (including the participation point
+//   of a last place). Every team keeps its place, so nobody else's points
+//   change; a team's last player cannot be removed because that would change
+//   the placements. Settled tips block the edit like a result correction.
+// - Tournament draws stay frozen: their teams live in the tournament.
+// Check and write run in one immediate transaction: of two parallel requests
+// for the same lineup exactly one wins, the other sees the new state (409).
+matchmakingRouter.delete('/draws/:id/players/:playerId', (req, res) => {
+  const { playerId } = req.params;
+  if (!/^[A-Za-z0-9_-]{1,64}$/.test(playerId)) {
+    return res.status(400).json({ error: 'playerId ist ungültig.' });
+  }
+  const groupId = req.group!.id;
+  const existing = db.prepare('SELECT id, event_id FROM matchmaking_draws WHERE id = ? AND group_id = ?')
+    .get(req.params.id, groupId) as { id: string; event_id: string } | undefined;
+  if (!existing) return res.status(404).json({ error: 'Auslosung nicht gefunden.' });
+  if (!requireGroupEventAccess(req, res, existing.event_id)) return;
+
+  const recorded = withBettingAccounting(existing.event_id, () => {
+    const row = db.prepare('SELECT teams, match_id, tournament_id, seat_pairs_considered, source FROM matchmaking_draws WHERE id = ?')
+      .get(existing.id) as { teams: string; match_id: string | null; tournament_id: string | null; seat_pairs_considered: number; source: string | null } | undefined;
+    if (!row) throw new PointsError('Auslosung nicht gefunden.', 404);
+    if (row.tournament_id) {
+      throw new PointsError('Aus dieser Auslosung wurde bereits ein Turnier erstellt. Turnierteams lassen sich hier nicht ändern.');
+    }
+    const teams = JSON.parse(row.teams) as DrawTeamSnapshot[];
+    const teamIndex = teams.findIndex((t) => t.players.some((p) => p.id === playerId));
+    if (teamIndex === -1) throw new PointsError('Dieser Spieler ist nicht mehr in der Auslosung.');
+    const team = teams[teamIndex];
+
+    if (row.match_id) {
+      assertMatchEditable(groupId, row.match_id);
+      if (team.players.length <= 1) {
+        throw new PointsError('Der letzte Spieler eines Teams mit Ergebnis kann nicht entfernt werden. Bitte das Ergebnis bearbeiten oder das Spiel löschen.');
+      }
+      const match = db.prepare('SELECT result FROM matches WHERE id = ?').get(row.match_id) as { result: string } | undefined;
+      const result = match ? (JSON.parse(match.result) as { teams: Array<{ playerIds: string[] }> }) : null;
+      const resultTeam = result?.teams.find((t) => t.playerIds.includes(playerId));
+      if (!result || !resultTeam || resultTeam.playerIds.length <= 1) {
+        throw new PointsError('Das Ergebnis passt nicht mehr zu dieser Auslosung. Bitte neu laden.');
+      }
+      resultTeam.playerIds = resultTeam.playerIds.filter((id) => id !== playerId);
+      db.prepare('UPDATE matches SET result = ?, updated_at = ?, result_revision = result_revision + 1 WHERE id = ?')
+        .run(JSON.stringify(result), Date.now(), row.match_id);
+      team.players = team.players.filter((p) => p.id !== playerId);
+    } else if (team.players.length <= 1) {
+      if (teams.length <= 2) {
+        throw new PointsError('Ein Match braucht mindestens zwei Teams. Entferne stattdessen die ganze Auslosung oder verschiebe zuerst einen Spieler.');
+      }
+      teams.splice(teamIndex, 1);
+    } else {
+      team.players = team.players.filter((p) => p.id !== playerId);
+    }
+    if (teams[teamIndex] === team) {
+      // Same rule as a move: older drafts without a snapshot keep no total.
+      team.totalRating = row.source === 'draft' && !team.skillSnapshot ? 0 : totalRatingOf(team.players);
+    }
+    const seatConflicts = row.seat_pairs_considered > 0 ? applySeatConflicts(groupId, existing.event_id, teams) : 0;
+    db.prepare('UPDATE matchmaking_draws SET teams = ?, seat_conflicts = ? WHERE id = ?')
+      .run(JSON.stringify(teams), seatConflicts, existing.id);
+    if (row.match_id) syncCompetitionPoints(groupId, existing.event_id);
+    return Boolean(row.match_id);
   });
+
+  const draw = loadDrawView(existing.id);
+  const scope = { groupId, eventId: deliveryEventId(existing.event_id) };
+  broadcast(Events.matchmakingDrawsChanged, draw, scope);
+  if (recorded) broadcast(Events.leaderboardChanged, null, scope);
   res.json(draw);
 });

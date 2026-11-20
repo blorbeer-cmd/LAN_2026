@@ -18,7 +18,7 @@ import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
 import { playerSkillHtml, teamSkillHtml } from '../skillDisplay.js';
 import { searchSelectHtml, wireSearchSelect } from '../searchSelect.js';
 import { emptyStateHtml } from '../emptyState.js';
-import { teamMoveControlHtml } from '../tournamentTeamDraft.js';
+import { teamMoveControlHtml, REMOVE_FROM_TEAMS_VALUE } from '../tournamentTeamDraft.js';
 import { filterRosterPicker, pruneRosterSelection, rosterPickerHtml, wireRosterPicker } from '../rosterPicker.js';
 import { resultFormHtml, wireResultForm } from '../resultDialog.js';
 import { withStepUp } from '../reauth.js';
@@ -294,6 +294,32 @@ function playerNamesHtml(players) {
     ? `<strong>${escapeHtml(player.name)}</strong>` : escapeHtml(player.name)).join(', ');
 }
 
+// Removing a player is offered wherever the server can accept it: an open
+// draw keeps at least two teams, a recorded result keeps every team (its
+// place decides everyone else's points). Tournament lineups stay frozen.
+function canRemoveDrawPlayer(draw, team) {
+  if (draw.tournamentId) return false;
+  return team.players.length > 1 || (!draw.matchId && draw.teams.length > 2);
+}
+
+// Draggable row of one drawn player. Dropping it on another team moves it;
+// dragging it out of the lineup removes it (after confirmation). Touch gets
+// the same choices in the native team picker, keyboards use arrows/Entf.
+function drawPlayerRowHtml(draw, team, teamIndex, player, { teamNames, movable, content }) {
+  const removable = canRemoveDrawPlayer(draw, team);
+  const hint = [movable ? 'auf ein anderes Team ziehen zum Verschieben' : '', removable ? 'aus den Teams ziehen zum Entfernen' : '']
+    .filter(Boolean).join(', ');
+  return `<div class="team-player-move-row"><button type="button" class="team-player tournament-drag-player" draggable="true" data-move-draw="${draw.id}" data-move-player="${player.id}" data-team-index="${teamIndex}"${removable ? ' data-removable="true"' : ''} aria-label="${escapeHtml(player.name)}${movable ? ' verschieben' : ''}${removable ? `${movable ? ' oder' : ''} entfernen` : ''}" title="${escapeHtml(hint.charAt(0).toUpperCase() + hint.slice(1))}">
+      ${content}
+    </button>${teamMoveControlHtml({
+      teamNames: movable ? teamNames : [teamNames[teamIndex]],
+      currentIndex: movable ? teamIndex : 0,
+      playerName: player.name,
+      removable,
+      attributes: `data-move-draw-select="${draw.id}" data-move-player="${player.id}"`,
+    })}</div>`;
+}
+
 function drawIncludesMe(draw) {
   return draw.teams.some((team) => includesMe(team.players));
 }
@@ -341,21 +367,15 @@ function renderDrawCard(draw, { editable: editableInput, showGame = false, prima
         ${t.players
           .map(
             (p) => `
-          ${editable ? `<div class="team-player-move-row"><button type="button" class="team-player tournament-drag-player" draggable="true" data-move-draw="${draw.id}" data-move-player="${p.id}" data-team-index="${i}" aria-label="${escapeHtml(p.name)} verschieben">` : '<div class="team-player">'}
-            ${avatarHtml(p, 18)}
+          ${(() => {
+            const content = `${avatarHtml(p, 18)}
             <span class="team-player-name" style="flex:1;">${p.id === getMyId() ? `<strong>${escapeHtml(p.name)}</strong>` : escapeHtml(p.name)}</span>
             ${seatConflictIconHtml(p)}
-            ${playerSkillHtml(p, draw.gameId, skillOptions)}
-          ${
-            editable
-              ? `</button>${teamMoveControlHtml({
-                  teamNames,
-                  currentIndex: i,
-                  playerName: p.name,
-                  attributes: `data-move-draw-select="${draw.id}" data-move-player="${p.id}"`,
-                })}</div>`
-              : '</div>'
-          }`
+            ${playerSkillHtml(p, draw.gameId, skillOptions)}`;
+            return editable
+              ? drawPlayerRowHtml(draw, t, i, p, { teamNames, movable: true, content })
+              : `<div class="team-player">${content}</div>`;
+          })()}`
           )
           .join('')}
       </div>`;
@@ -385,7 +405,7 @@ function renderDrawCard(draw, { editable: editableInput, showGame = false, prima
       <span class="muted">${draw.teams.length} Teams</span>${draw.source === 'draft' ? '<span class="badge">Captain Draft</span>' : ''}${inTournament ? '' : competitionBettingSummaryHtml('draw', draw.id)}`;
     const cardActions = `${actions}${inTournament ? '' : competitionBettingHtml('draw', draw.id, pointsContext)}${isGroupAdmin() ? `<button type="button" class="tournament-fixture-action" data-delete-draw="${draw.id}" aria-label="Auslosung löschen" title="Auslosung löschen">${icon('trash')}</button>` : ''}`;
     return historyItemHtml(`o-${draw.id}`, draw.gameName, meta, cardActions,
-      `<div class="tournament-team-preview-grid">${teamsHtml}</div>${seatingNote}`, 'matchmaking-open-draw-item', drawIncludesMe(draw));
+      `<div class="tournament-team-preview-grid" data-draw-teams="${draw.id}">${teamsHtml}</div>${seatingNote}`, 'matchmaking-open-draw-item', drawIncludesMe(draw));
   }
 
   return `
@@ -400,7 +420,7 @@ function renderDrawCard(draw, { editable: editableInput, showGame = false, prima
         </div>
         ${actions ? `<div class="matchmaking-draw-actions">${actions}${inTournament ? '' : competitionBettingHtml('draw', draw.id, pointsContext, { keyPrefix: 'betting-fresh' })}</div>` : ''}
       </div>
-      <div class="tournament-team-preview-grid">${teamsHtml}</div>
+      <div class="tournament-team-preview-grid" data-draw-teams="${draw.id}">${teamsHtml}</div>
       ${seatingNote}
       ${inTournament ? '' : bettingHiddenHintHtml()}
     </div>`;
@@ -564,6 +584,73 @@ function openDrawTournamentDialog(draw) {
   });
 }
 
+function applyUpdatedDraw(updated) {
+  if (state.lastMatchmaking?.id === updated.id) state.lastMatchmaking = updated;
+  if (historyCache) {
+    const idx = historyCache.findIndex((draw) => draw.id === updated.id);
+    if (idx !== -1) historyCache[idx] = updated;
+  }
+  const openIndex = openDrawsCache.findIndex((draw) => draw.id === updated.id);
+  if (openIndex !== -1) openDrawsCache[openIndex] = updated;
+}
+
+// Drag-out removal is page-wide: a player dragged out of its own lineup and
+// dropped anywhere else in the view is removed after confirmation. The
+// document listeners are registered once and read the draw being dragged.
+let draggedDrawPlayer = null;
+let drawRemovalCtx = null;
+let dragOutWired = false;
+
+async function removeDrawPlayer(drawId, playerId) {
+  const ctx = drawRemovalCtx;
+  const draw = findDrawById(drawId);
+  const team = draw?.teams.find((entry) => entry.players.some((player) => player.id === playerId));
+  const player = team?.players.find((entry) => entry.id === playerId);
+  if (!player || !canRemoveDrawPlayer(draw, team)) return;
+  const consequence = draw.matchId
+    ? `Das Ergebnis bleibt bestehen, aber ${player.name} erhält dafür keine Punkte mehr.`
+    : team.players.length === 1 ? 'Das Team fällt dann weg.' : '';
+  const confirmed = await confirmDialog(`${player.name} aus diesem Match entfernen? ${consequence}`.trim(), {
+    title: 'Spieler entfernen', confirmText: 'Entfernen', danger: true,
+  });
+  if (!confirmed) {
+    // Resets a touch picker that still shows "Aus dem Match entfernen".
+    ctx?.rerender();
+    return;
+  }
+  try {
+    applyUpdatedDraw(await api.matchmaking.removeDrawPlayer(draw.id, player.id));
+    ctx?.rerender();
+    showToast(`${player.name} entfernt.`);
+  } catch (err) {
+    showToast(err.message, { error: true });
+    ctx?.rerender();
+  }
+}
+
+function isDragOutTarget(event) {
+  if (!draggedDrawPlayer?.removable || !(event.target instanceof Element)) return false;
+  if (!event.target.closest('#view-container')) return false;
+  return !event.target.closest(`[data-draw-teams="${CSS.escape(draggedDrawPlayer.drawId)}"]`);
+}
+
+function wireDragOutRemoval() {
+  if (dragOutWired) return;
+  dragOutWired = true;
+  document.addEventListener('dragover', (event) => {
+    if (!isDragOutTarget(event)) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'move';
+  });
+  document.addEventListener('drop', (event) => {
+    if (!isDragOutTarget(event)) return;
+    event.preventDefault();
+    const { drawId, playerId } = draggedDrawPlayer;
+    draggedDrawPlayer = null;
+    removeDrawPlayer(drawId, playerId);
+  });
+}
+
 function wireDrawCards(container, ctx) {
   container.querySelectorAll('[data-delete-draw]').forEach((btn) => btn.addEventListener('click', async () => {
     const draw = findDrawById(btn.dataset.deleteDraw);
@@ -621,16 +708,12 @@ function wireDrawCards(container, ctx) {
       }));
     });
   });
+  drawRemovalCtx = ctx;
+  wireDragOutRemoval();
+
   async function moveDrawPlayer(drawId, playerId, toTeamIndex) {
     try {
-      const updated = await api.matchmaking.moveDrawPlayer(drawId, playerId, toTeamIndex);
-      if (state.lastMatchmaking?.id === drawId) state.lastMatchmaking = updated;
-      if (historyCache) {
-        const idx = historyCache.findIndex((draw) => draw.id === drawId);
-        if (idx !== -1) historyCache[idx] = updated;
-      }
-      const openIndex = openDrawsCache.findIndex((draw) => draw.id === drawId);
-      if (openIndex !== -1) openDrawsCache[openIndex] = updated;
+      applyUpdatedDraw(await api.matchmaking.moveDrawPlayer(drawId, playerId, toTeamIndex));
       ctx.rerender();
     } catch (err) {
       showToast(err.message, { error: true });
@@ -640,7 +723,8 @@ function wireDrawCards(container, ctx) {
 
   container.querySelectorAll('[data-move-draw-select]').forEach((select) => {
     select.addEventListener('change', () => {
-      moveDrawPlayer(select.dataset.moveDrawSelect, select.dataset.movePlayer, Number(select.value));
+      if (select.value === REMOVE_FROM_TEAMS_VALUE) removeDrawPlayer(select.dataset.moveDrawSelect, select.dataset.movePlayer);
+      else moveDrawPlayer(select.dataset.moveDrawSelect, select.dataset.movePlayer, Number(select.value));
     });
   });
 
@@ -650,21 +734,28 @@ function wireDrawCards(container, ctx) {
       element.classList.remove('is-drag-target', 'is-dragging');
     });
     draggedPlayer = null;
+    draggedDrawPlayer = null;
   };
 
   container.querySelectorAll('[data-move-draw]').forEach((playerRow) => {
     playerRow.addEventListener('dragstart', (event) => {
       draggedPlayer = { drawId: playerRow.dataset.moveDraw, playerId: playerRow.dataset.movePlayer };
+      draggedDrawPlayer = { ...draggedPlayer, removable: playerRow.dataset.removable === 'true' };
       playerRow.classList.add('is-dragging');
       event.dataTransfer.effectAllowed = 'move';
       event.dataTransfer.setData('text/plain', JSON.stringify(draggedPlayer));
     });
     playerRow.addEventListener('dragend', clearDragState);
     playerRow.addEventListener('keydown', (event) => {
+      if ((event.key === 'Delete' || event.key === 'Backspace') && playerRow.dataset.removable === 'true') {
+        event.preventDefault();
+        removeDrawPlayer(playerRow.dataset.moveDraw, playerRow.dataset.movePlayer);
+        return;
+      }
       if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
       event.preventDefault();
       const draw = findDrawById(playerRow.dataset.moveDraw);
-      if (!draw) return;
+      if (!draw || draw.matchId) return;
       const currentIndex = Number(playerRow.dataset.teamIndex);
       const direction = event.key === 'ArrowLeft' ? -1 : 1;
       const toTeamIndex = (currentIndex + direction + draw.teams.length) % draw.teams.length;
@@ -820,13 +911,20 @@ function historyMatchHtml(draw) {
           : { balanced: false, current: true })}
         ${team.score != null ? `<span class="matchmaking-history-team-score${won ? ' is-win' : ''}">${team.score}</span>` : ''}
       </div>
-      <div class="muted matchmaking-history-players">${playerNamesHtml(team.players)}</div>
+      ${canRemoveDrawPlayer(draw, team)
+        ? `<div class="matchmaking-history-players matchmaking-history-player-rows">${team.players.map((player) =>
+          drawPlayerRowHtml(draw, team, index, player, {
+            teamNames: draw.teams.map((entry, entryIndex) => defaultDrawTeamName(draw, entry, entryIndex)),
+            movable: false,
+            content: `<span class="team-player-name">${player.id === getMyId() ? `<strong>${escapeHtml(player.name)}</strong>` : escapeHtml(player.name)}</span>`,
+          })).join('')}</div>`
+        : `<div class="muted matchmaking-history-players">${playerNamesHtml(team.players)}</div>`}
     </div>`;
   }).join('');
   const seating = draw.seatConflicts > 0
     ? `<div class="muted">${icon('armchair')} ${draw.seatConflicts} von ${draw.seatPairsConsidered} Sitznachbarschaft(en) mussten trotzdem gegeneinander antreten.</div>` : '';
   return historyItemHtml(draw.id, draw.gameName, meta, `${actions}${competitionBettingHtml('draw', draw.id, pointsContext)}`,
-    `<div class="matchmaking-history-teams">${teams}</div>${seating}`, '', drawIncludesMe(draw));
+    `<div class="matchmaking-history-teams" data-draw-teams="${draw.id}">${teams}</div>${seating}`, '', drawIncludesMe(draw));
 }
 
 function historyTournamentDetailHtml(tournament) {
