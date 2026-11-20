@@ -29,7 +29,7 @@ export function categoryPointsHtml(data, { columns = 2 } = {}) {
       .sort((a, b) => a.categories[key].rank - b.categories[key].rank || a.name.localeCompare(b.name, 'de'));
     const ranking = leaders.length ? rankedListHtml(leaders.map((row) => ({
       rank: row.categories[key].rank, title: e(row.name),
-      meta: `${e(row.categories[key].raw)} Punkte`, value: `${e(row.categories[key].placePoints)} P.`,
+      meta: `Wertung für Gesamtranking: ${e(row.categories[key].placePoints)} P.`, value: `${e(row.categories[key].raw)} P.`,
     })), { ranked: true, columns, label: `${label}-Rangliste` }) : emptyStateHtml('Noch keine Platzierung.');
     const participation = data.bettingParticipation;
     const needsMinimum = key === 'betting' && score?.rank == null && participation && !participation.hasMinimum;

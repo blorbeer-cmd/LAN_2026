@@ -63,6 +63,8 @@ test('category views keep each full history when searching and escape journal co
   assert.match(html, /Gesamt 4 P. · Platz 2/);
   assert.match(html, /Kein Platz · 0 Platzpunkte/);
   assert.match(html, /Platz 1 · 4 Platzpunkte/);
+  assert.match(html, /ranked-list-meta[^>]*>Wertung für Gesamtranking: 4 P\.</);
+  assert.match(html, /ranked-list-value[^>]*>6 P\.</);
   assert.match(html, /aria-label="Orga-Rangliste"/);
   assert.match(html, /aria-label="Spielen-Rangliste"/);
   assert.match(html, /aria-label="Wetten-Rangliste"/);
