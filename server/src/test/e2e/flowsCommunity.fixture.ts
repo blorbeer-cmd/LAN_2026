@@ -634,6 +634,224 @@ flowTest('Kiosk: centers tournament content and shows only the latest feature pu
   }));
   assert.equal(liveMutations, 0, 'an unchanged live board must not repaint the Live-Status card');
   await setOwnNote(null);
+  await page.waitForFunction(() => !document.querySelector('#kiosk-live .kiosk-live-status.is-paused'));
+
+  // Running games: the board is rewritten in the route so the test controls
+  // which games run without a Windows agent.
+  type KioskLivePlayer = { player_id: string; name: string; state: string; games: unknown[]; activity_tracked?: boolean };
+  let liveBoardEdit: ((board: KioskLivePlayer[]) => KioskLivePlayer[]) | null = null;
+  const playing = (player: KioskLivePlayer, id: string, name: string, gameName: string): KioskLivePlayer => ({
+    ...player,
+    player_id: id,
+    name,
+    state: 'playing',
+    activity_tracked: false,
+    games: [{ game_id: `game-${gameName}`, game_name: gameName, game_icon: null, since: Date.now(), foreground: true }],
+  });
+  // While closed, further live requests wait in the route: a socket signal
+  // from the server's own sweep must not repaint the card mid-check.
+  let liveRequestGate: Promise<void> | null = null;
+  let openLiveRequestGate = () => {};
+  const closeLiveRequests = () => {
+    liveRequestGate = new Promise((resolve) => { openLiveRequestGate = resolve; });
+  };
+  const openLiveRequests = () => {
+    liveRequestGate = null;
+    openLiveRequestGate();
+  };
+  const liveBoardRoute = async (route: import('playwright').Route) => {
+    if (liveRequestGate) await liveRequestGate;
+    const response = await route.fetch();
+    const board = (await response.json()) as KioskLivePlayer[];
+    await route.fulfill({ response, json: liveBoardEdit ? liveBoardEdit(board) : board });
+  };
+  await page.route('**/api/live', liveBoardRoute);
+  try {
+    // A board that is already on screen again must cancel a settle still
+    // measuring an in-between board: holding animation frames parks the
+    // settle for the short game board mid-measurement while the board
+    // returns to the one the card shows. Counting the live bodies the page
+    // has read orders the release after the kiosk handled that return: it
+    // renders synchronously once apiFetch has the body.
+    await page.evaluate(() => {
+      const kiosk = window as unknown as { holdKioskFrames: () => void; releaseKioskFrames: () => void; kioskLiveBodies: number };
+      kiosk.kioskLiveBodies = 0;
+      const originalText = Response.prototype.text;
+      Response.prototype.text = async function text(this: Response) {
+        const body = await originalText.call(this);
+        if (new URL(this.url).pathname === '/api/live') kiosk.kioskLiveBodies += 1;
+        return body;
+      };
+      const held: FrameRequestCallback[] = [];
+      const original = window.requestAnimationFrame.bind(window);
+      kiosk.releaseKioskFrames = () => {
+        window.requestAnimationFrame = original;
+        held.splice(0).forEach((callback) => original(callback));
+      };
+      kiosk.holdKioskFrames = () => {
+        window.requestAnimationFrame = (callback) => {
+          held.push(callback);
+          return 0;
+        };
+      };
+    });
+    const holdKioskFrames = () => page.evaluate(() => (window as unknown as { holdKioskFrames: () => void }).holdKioskFrames());
+    const releaseKioskFrames = () => page.evaluate(() => (window as unknown as { releaseKioskFrames: () => void }).releaseKioskFrames());
+    const kioskLiveProbes = (count: number) => page.waitForFunction(
+      (expected) => document.querySelectorAll('#kiosk-live .kiosk-live-probe').length >= expected,
+      count,
+      { polling: 50 },
+    );
+    // Interval polling: the default frame-based polling would wait on the held frames.
+    const kioskReadLiveBodies = (count: number) => page.waitForFunction(
+      (expected) => (window as unknown as { kioskLiveBodies: number }).kioskLiveBodies >= expected,
+      count,
+      { polling: 50 },
+    );
+    await holdKioskFrames();
+    liveBoardEdit = (board) => board.map((player, index) => (index === 0 ? playing(player, player.player_id, player.name, 'Kiosk-Zwischenspiel') : player));
+    await setOwnNote(null);
+    await kioskReadLiveBodies(1);
+    await page.waitForSelector('#kiosk-live .kiosk-live-probe', { state: 'attached' });
+    liveBoardEdit = null;
+    await setOwnNote(null);
+    await kioskReadLiveBodies(2);
+    closeLiveRequests();
+    await releaseKioskFrames();
+    // The probe leaves once the parked settle has finished; a stale paint
+    // would follow in the same task, before the next poll reads the card.
+    await page.waitForFunction(() => !document.querySelector('#kiosk-live .kiosk-live-probe'));
+    assert.equal(await page.locator('#kiosk-live >> text=Kiosk-Zwischenspiel').count(), 0, 'a game that already ended again must not be painted');
+    assert.equal(await page.locator('#kiosk-live > .kiosk-live-active').count(), 0);
+    openLiveRequests();
+
+    // A resize while a newer board is still being measured re-settles that
+    // newer board, never the older one still on screen. Each resize starts a
+    // settle of its own (one more parked probe), which orders the release
+    // after both resize re-settles.
+    const kioskViewport = page.viewportSize()!;
+    await holdKioskFrames();
+    liveBoardEdit = (board) => board.map((player, index) => (index === 0 ? playing(player, player.player_id, player.name, 'Kiosk-Neues-Spiel') : player));
+    await setOwnNote(null);
+    await kioskReadLiveBodies(3);
+    closeLiveRequests();
+    await kioskLiveProbes(1);
+    await page.setViewportSize({ width: kioskViewport.width - 120, height: kioskViewport.height });
+    await kioskLiveProbes(2);
+    await page.setViewportSize(kioskViewport);
+    await kioskLiveProbes(3);
+    await releaseKioskFrames();
+    await page.waitForFunction(() => !document.querySelector('#kiosk-live .kiosk-live-probe'));
+    assert.equal(
+      await page.locator('#kiosk-live > .kiosk-live-grid .kiosk-live-detail >> text=Kiosk-Neues-Spiel').count(),
+      1,
+      'a resize must re-settle the newest board, not the one that was on screen',
+    );
+    openLiveRequests();
+
+    // Many games on the 1280 px screen: the one-line strip keeps whole
+    // name/count pairs and sums up the rest instead of shrinking every name.
+    liveBoardEdit = (board) => Array.from({ length: 8 }, (_, index) =>
+      playing(board[0], `kiosk-game-player-${index}`, `Spieler ${index + 1}`, `Kiosk-Spiel mit langem Namen ${index + 1}`));
+    await setOwnNote(null);
+    await page.waitForSelector('#kiosk-live > .kiosk-live-grid .kiosk-live-detail >> text=Kiosk-Spiel mit langem Namen 1');
+    await page.waitForSelector('#kiosk-live > .kiosk-live-active .kiosk-live-more:not([hidden])');
+    const strip = await page.locator('#kiosk-live > .kiosk-live-active').evaluate((element) => ({
+      overflow: element.scrollWidth - element.clientWidth,
+      more: element.querySelector('.kiosk-live-more')!.textContent,
+      names: Array.from(element.querySelectorAll('.kiosk-live-game:not([hidden]) strong'), (name) => name.getBoundingClientRect().width),
+      // Each shown pill holds its whole count and ends before the next one
+      // starts, so no count is cut off or covered by a neighbour.
+      counts: Array.from(element.querySelectorAll('.kiosk-live-game:not([hidden])')).map((pill, index, pills) => {
+        const box = pill.getBoundingClientRect();
+        const count = pill.querySelector('.kiosk-live-active-count')?.getBoundingClientRect() ?? box;
+        const next = pills[index + 1]?.getBoundingClientRect();
+        return count.right <= box.right + 0.5
+          && box.right <= element.getBoundingClientRect().right + 0.5
+          && (!next || box.right <= next.left + 0.5);
+      }),
+    }));
+    assert.ok(strip.overflow <= 1, `the strip stays on one line inside the card: ${JSON.stringify(strip)}`);
+    assert.match(strip.more ?? '', /^\+\d+$/);
+    assert.match(
+      (await page.locator('#kiosk-live > .kiosk-live-active .kiosk-live-more').getAttribute('aria-label')) ?? '',
+      /^(1 weiteres Spiel|\d+ weitere Spiele)$/,
+    );
+    assert.ok(strip.names.length >= 1 && strip.names.every((width) => width >= 30), `every shown game keeps a readable name: ${JSON.stringify(strip)}`);
+    assert.ok(strip.counts.every(Boolean), `no shown player count is cut off: ${JSON.stringify(strip)}`);
+    assert.equal(Number(/\d+/.exec(strip.more ?? '')?.[0]) + strip.names.length, 8, 'shown and summed-up games add up to all running games');
+
+    // The strip follows a change of groups even when every row reads the
+    // same: two games "Portal" and "Portal 2" become one game whose name
+    // holds a comma.
+    const withGames = (player: KioskLivePlayer, names: string[]): KioskLivePlayer => ({
+      ...playing(player, player.player_id, player.name, names[0]),
+      games: names.map((name) => ({ game_id: `game-${name}`, game_name: name, game_icon: null, since: Date.now(), foreground: true })),
+    });
+    liveBoardEdit = (board) => [withGames(board[0], ['Portal', 'Portal 2'])];
+    await setOwnNote(null);
+    await page.waitForFunction(() => document.querySelectorAll('#kiosk-live > .kiosk-live-active .kiosk-live-game:not(.kiosk-live-more)').length === 2);
+    liveBoardEdit = (board) => [withGames(board[0], ['Portal, Portal 2'])];
+    await setOwnNote(null);
+    await page.waitForFunction(() => {
+      const names = Array.from(document.querySelectorAll('#kiosk-live > .kiosk-live-active .kiosk-live-game:not(.kiosk-live-more) strong'), (name) => name.textContent);
+      return names.length === 1 && names[0] === 'Portal, Portal 2';
+    });
+
+    // A largest game that fits on its own keeps its whole name, even when a
+    // smaller group would need the "+N" pill next to it.
+    const longGame = 'Die Siedler – Aufstieg eines Königreichs';
+    liveBoardEdit = (board) => [
+      playing(board[0], 'kiosk-long-player-1', 'Spieler Siedler 1', longGame),
+      playing(board[0], 'kiosk-long-player-2', 'Spieler Siedler 2', longGame),
+      playing(board[0], 'kiosk-small-player', 'Spieler Factorio', 'Factorio'),
+    ];
+    await setOwnNote(null);
+    await page.waitForSelector('#kiosk-live > .kiosk-live-grid >> text=Spieler Factorio');
+    const longName = await page.locator('#kiosk-live > .kiosk-live-active').evaluate((element) => {
+      const name = element.querySelector('.kiosk-live-game strong')!;
+      return { overflow: element.scrollWidth - element.clientWidth, cut: name.scrollWidth - name.clientWidth, text: name.textContent };
+    });
+    assert.ok(longName.overflow <= 1, `the strip stays on one line: ${JSON.stringify(longName)}`);
+    assert.equal(longName.text, longGame);
+    assert.ok(longName.cut <= 0, `a largest game that fits on its own is not shortened: ${JSON.stringify(longName)}`);
+
+    // A single game whose name alone is wider than the strip shortens only
+    // its name, never to nothing, also beside a smaller group; its count
+    // stays whole inside the card.
+    const overlongGame = `Kiosk-Spiel ${'mit sehr langem Namen '.repeat(6)}`.trim();
+    liveBoardEdit = (board) => [
+      playing(board[0], 'kiosk-overlong-player', 'Spieler Lang', overlongGame),
+      playing(board[0], 'kiosk-overlong-player-2', 'Spieler Lang 2', overlongGame),
+      playing(board[0], 'kiosk-overlong-small', 'Spieler Klein', 'Factorio'),
+    ];
+    await setOwnNote(null);
+    // The previous strip was squeezed as well; wait for the new board first.
+    await page.waitForSelector('#kiosk-live > .kiosk-live-grid >> text=Spieler Lang');
+    await page.waitForSelector('#kiosk-live > .kiosk-live-active .kiosk-live-game.is-squeezed');
+    const squeezed = await page.locator('#kiosk-live > .kiosk-live-active').evaluate((element) => {
+      const right = element.getBoundingClientRect().right;
+      const name = element.querySelector('.kiosk-live-game strong')!;
+      return {
+        overflow: element.scrollWidth - element.clientWidth,
+        name: name.getBoundingClientRect().width,
+        minimum: parseFloat(getComputedStyle(name).fontSize) * 3,
+        countInside: element.querySelector('.kiosk-live-active-count')!.getBoundingClientRect().right <= right + 0.5,
+      };
+    });
+    assert.deepEqual(
+      { fits: squeezed.overflow <= 1, readableName: squeezed.name >= squeezed.minimum, countInside: squeezed.countInside },
+      { fits: true, readableName: true, countInside: true },
+      JSON.stringify(squeezed),
+    );
+  } finally {
+    openLiveRequests();
+    await page.unroute('**/api/live', liveBoardRoute);
+    await page.evaluate(() => (window as unknown as { releaseKioskFrames?: () => void }).releaseKioskFrames?.());
+    await page.setViewportSize({ width: 1280, height: 720 });
+  }
+  await setOwnNote(null);
+  await page.waitForFunction(() => !document.querySelector('#kiosk-live > .kiosk-live-active'));
   // The newsticker opens with a few generated lines: one lead headline with
   // its kicker, all of them fitted inside the tile.
   await page.waitForSelector('#kiosk-newsticker .kiosk-news-item.is-first .kiosk-news-kicker >> text=Eilmeldung');
