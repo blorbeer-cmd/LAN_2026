@@ -22,9 +22,10 @@ kommen bereits escaped vom Aufrufer.
 
 ## 4. Varianten
 
-Erfasstes Match mit Ergebnis und Stift/Rematch, Turnier mit direktem Detail-Link und
-nachladbaren Teamdetails; „Ohne Ergebnis“ als separater Abschnitt mit bearbeitbaren Auslosungen
-und laufenden Turnieren. Jede Kartenart besitzt einen Papierkorb mit Bestätigung.
+Erfasstes Match mit Ergebnis, dessen „Aktion“-Menü „Ergebnis bearbeiten“ und „Rematch“ bündelt,
+Turnier mit direktem Detail-Link und nachladbaren Teamdetails; „Ohne Ergebnis“ als separater
+Abschnitt mit bearbeitbaren Auslosungen und laufenden Turnieren. Jede Kartenart bietet Admins ein
+Löschen mit Bestätigung; bei Matchkarten ist es ein roter Eintrag im „Aktion“-Menü.
 Jede Auslosung in diesem Abschnitt ist selbst eine einklappbare Kachel mit Aktionen im Kopf.
 Wettaktionen stehen im Kopf, außerhalb des Aufklappbuttons. Das gilt auch für Turnierkacheln;
 deren Tippdialog bündelt Turniersieger und bereits angelegte Spieltipps.
@@ -98,7 +99,8 @@ Turnier, Ladefehler und leerer Filter.
 Der Pfeil-Button verwendet `aria-expanded` und `aria-controls`, ist über die Tastatur bedienbar
 und zeigt Fokus sichtbar. Sein Ziel ist mindestens `--tap-target-size` hoch. Filterchips verwenden `aria-pressed` und sind mit Enter/Space erreichbar; das Filterpanel nutzt den
 vorhandenen Popover-Modus, damit es auf Telefonen nicht vom View-Container abgeschnitten wird. Aktionsknöpfe haben
-einen eigenen Namen und Fokus; der Stift heißt „Ergebnis bearbeiten“.
+einen eigenen Namen und Fokus; allgemeine Matchaktionen stehen als beschriftete Einträge im
+„Aktion“-Menü, dessen zugänglicher Name mit „Aktion“ beginnt und den Spielnamen nennt.
 
 ## 9. Repräsentative Aufrufer
 

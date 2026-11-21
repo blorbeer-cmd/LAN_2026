@@ -141,11 +141,6 @@ export const components = [
         "reason": "Concrete button-small caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
       },
       {
-        "file": "public/js/views/matchmaking.js",
-        "source": "class=\"btn btn-sm${primaryTournament ? ' btn-primary' : ''}\"",
-        "reason": "Concrete button-small caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
-      },
-      {
         "file": "public/js/feedback.js",
         "source": "class=\"btn btn-sm${selectedSentiment === s.value ? ' is-selected' : ''}\"",
         "reason": "Concrete button-small caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."

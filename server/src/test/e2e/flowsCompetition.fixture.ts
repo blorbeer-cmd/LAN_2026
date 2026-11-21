@@ -23,6 +23,7 @@ import {
 import { openMoreViewEntry, openMatchHistoryFilters, selectMatchHistoryFilter } from './navHelpers';
 import { TRACKING_CONSENT_TEXT_VERSION } from '../../privacyPolicy';
 import { assertPaintedPollResultCentered } from './pollResultGeometry';
+import { clickActionMenuEntry, openActionMenuOf } from './actionMenuHelpers';
 
 registerFlowFixture('competition');
 
@@ -1157,8 +1158,9 @@ flowTest('matchmaking Historie marks a recorded draw as Unentschieden', async ()
   const viewport = page.viewportSize()!;
   try {
     await page.setViewportSize({ width: 1024, height: viewport.height });
-    const serverInfo = openDraw.getByRole('button', { name: /Server und Passwort/ });
-    assert.equal(await serverInfo.count(), 1);
+    const serverInfo = openDraw.locator('[data-draw-server-info]');
+    assert.equal(await serverInfo.innerText(), 'Server und Passwort');
+    await openActionMenuOf(serverInfo);
     await serverInfo.press('Enter');
     const serverDialog = page.getByRole('dialog', { name: 'Server und Passwort' });
     const address = serverDialog.getByLabel('Server', { exact: true });
@@ -1171,7 +1173,7 @@ flowTest('matchmaking Historie marks a recorded draw as Unentschieden', async ()
     await serverDialog.waitFor({ state: 'hidden' });
 
     await page.setViewportSize({ width: 390, height: viewport.height });
-    await serverInfo.click();
+    await clickActionMenuEntry(serverInfo);
     assert.equal(await address.inputValue(), '10.0.0.5:27015');
     assert.equal(await password.inputValue(), 'zocken123');
     assert.equal(await serverDialog.getByRole('button', { name: 'Passwort kopieren' }).isEnabled(), true);
@@ -1183,7 +1185,7 @@ flowTest('matchmaking Historie marks a recorded draw as Unentschieden', async ()
   }
   await drawToggle.click();
   assert.doesNotMatch(await openDraw.innerText(), /10\.0\.0\.5|zocken123/);
-  await page.click('#match-history-open [data-record-draw]');
+  await clickActionMenuEntry(page.locator('#match-history-open [data-record-draw]').first());
 
   const panelHeight = await page.locator('.modal .result-mode-panels').evaluate((element) => element.getBoundingClientRect().height);
   const pickHeights = await page.locator('.modal .tournament-result-pick').evaluateAll((picks) =>
@@ -1214,10 +1216,13 @@ flowTest('matchmaking Historie marks a recorded draw as Unentschieden', async ()
   assert.equal(await recordedMatch.locator('.matchmaking-history-teams').evaluate((element) =>
     getComputedStyle(element).gridTemplateColumns.split(' ').length), 4);
   await page.setViewportSize({ width: 390, height: 844 });
-  const historyActions = await page.locator('.matchmaking-history-item:has([data-edit-draw-result]) .matchmaking-draw-actions').first()
-    .locator('button').evaluateAll((buttons) => buttons.map((button) =>
-      button.hasAttribute('data-edit-draw-result') ? 'edit' : button.hasAttribute('data-delete-draw') ? 'delete' : button.textContent?.trim()));
-  assert.deepEqual(historyActions, ['edit', 'Rematch', 'delete']);
+  const historyMenu = page.locator('.matchmaking-history-item:has([data-edit-draw-result]) .matchmaking-draw-actions').first()
+    .locator(':scope > .action-menu');
+  assert.equal((await historyMenu.locator(':scope > summary').innerText()).trim(), 'Aktion',
+    'general match actions share one menu beside the betting controls');
+  const historyActions = await historyMenu.locator('.action-menu-panel button').evaluateAll((buttons) =>
+    buttons.map((button) => button.textContent?.trim()));
+  assert.deepEqual(historyActions, ['Ergebnis bearbeiten', 'Rematch', 'Match löschen']);
 });
 
 flowTest('matchmaking Historie derives the winner and keeps open games and sections after saving a result', async (t) => {
@@ -1263,14 +1268,14 @@ flowTest('matchmaking Historie derives the winner and keeps open games and secti
   await selectMatchHistoryFilter(page, 'matches');
   assert.equal(await openTile.evaluate((element: HTMLDetailsElement) => element.open), true,
     'a restored open section survives disappearing temporarily during a refresh');
-  await page.locator(`#match-history-open [data-record-draw="${draw.id}"]`).click();
+  await clickActionMenuEntry(page.locator(`#match-history-open [data-record-draw="${draw.id}"]`));
 
   await page.click('[data-result-mode="score"]');
   await page.fill('#draw-result-score-0', '3');
   assert.equal(await page.inputValue('#draw-result-score-1'), '');
   await page.click('.modal [data-result-save]');
 
-  await page.locator(`[data-edit-draw-result="${draw.id}"]`).waitFor();
+  await page.locator(`[data-edit-draw-result="${draw.id}"]`).waitFor({ state: 'attached' });
   await page.waitForLoadState('networkidle');
   assert.equal(await page.locator('.history-details').evaluate((element: HTMLDetailsElement) => element.open), true,
     'saving leaves the history section open');
@@ -1287,7 +1292,7 @@ flowTest('matchmaking Historie derives the winner and keeps open games and secti
   assert.equal(await loserTeam.locator('.lb-rank').innerText(), '2');
   assert.equal(await loserTeam.locator('.matchmaking-history-team-score').innerText(), '0');
   await openTile.locator(':scope > summary').click();
-  await page.locator(`[data-edit-draw-result="${draw.id}"]`).click();
+  await clickActionMenuEntry(page.locator(`[data-edit-draw-result="${draw.id}"]`));
   await page.fill('#draw-result-score-0', '4');
   await page.click('.modal [data-result-save]');
   await page.locator('.modal-backdrop').waitFor({ state: 'detached' });
@@ -1302,7 +1307,7 @@ flowTest('matchmaking Historie derives the winner and keeps open games and secti
   assert.equal(await page.getAttribute('[data-history-filter="tournaments"]', 'aria-pressed'), 'true');
   assert.equal(await page.locator('.matchmaking-history-team').count(), 0);
   await selectMatchHistoryFilter(page, 'matches');
-  await page.waitForSelector('.matchmaking-history-item [data-edit-draw-result]');
+  await page.waitForSelector('.matchmaking-history-item [data-edit-draw-result]', { state: 'attached' });
   assert.equal(await page.getAttribute('[data-history-filter="matches"]', 'aria-pressed'), 'true');
 });
 
@@ -1590,7 +1595,7 @@ flowTest('an open game can be deleted from its own card after confirmation', asy
     await openSection.locator('summary').click();
   }
   const deleteButton = openSection.locator(`[data-delete-draw="${draw.id}"]`);
-  await deleteButton.click();
+  await clickActionMenuEntry(deleteButton);
   await page.getByRole('alertdialog', { name: 'Spiel löschen' }).getByRole('button', { name: 'Löschen' }).click();
   if (await page.locator('#reauth-form').isVisible()) {
     await page.fill('#reauth-password', alice.password);

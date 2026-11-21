@@ -206,13 +206,20 @@ function canManageRound(round) {
   return isGroupAdmin() || round.outcomes.some((outcome) => outcome.playerIds.includes(getMyId()));
 }
 
-// Card actions: the tip button keeps its state label ("Jetzt tippen", "Tipp
-// ändern", "Tippdetails"); starting a match is its own compact button so a
-// stray tap next to "Jetzt tippen" cannot close the tips for everyone.
-function bettingControlsHtml(round, { tournamentId = null, keyPrefix = 'betting' } = {}) {
+// "Spiel starten" closes the tips for everyone, so it never sits in the
+// betting menu next to "Jetzt tippen". Match cards list it among their general
+// actions; it only exists for an open single-match market.
+function startActionHtml(round, { tournamentId = null } = {}) {
   const closed = Boolean(currentData()?.settings.closed_at);
-  const start = !tournamentId && !closed && round.status === 'open' && round.sourceType !== 'tournament' && canManageRound(round)
+  return !tournamentId && !closed && round.status === 'open' && round.sourceType !== 'tournament' && canManageRound(round)
     ? `<button type="button" class="btn btn-sm" data-lock-round="${e(round.id)}">Spiel starten</button>` : '';
+}
+
+// Card actions: the tip button keeps its state label ("Jetzt tippen", "Tipp
+// ändern", "Tippdetails"); everything else about the market shares its menu.
+function bettingControlsHtml(round, { tournamentId = null, keyPrefix = 'betting', separateStart = false } = {}) {
+  const closed = Boolean(currentData()?.settings.closed_at);
+  const start = startActionHtml(round, { tournamentId });
   const actions = [
     `<button type="button" class="btn btn-sm" data-tip-round="${e(round.id)}"${tournamentId ? ` data-tip-tournament="${e(tournamentId)}"` : ''}>${tournamentId ? 'Tipps ansehen' : round.status === 'open' && !closed ? (round.mine ? 'Tipp ändern' : 'Jetzt tippen') : 'Tippdetails'}</button>`,
     // A fixture anchors a tournament without an outright market only for opening
@@ -223,7 +230,7 @@ function bettingControlsHtml(round, { tournamentId = null, keyPrefix = 'betting'
   // Permission-dependent reports live in tip details, so a hidden report never
   // creates a menu with just one visible action.
   const visibleActions = actions.filter(Boolean);
-  return `<div class="points-betting-controls" data-betting-controls="${e(round.id)}">${start}
+  return `<div class="points-betting-controls" data-betting-controls="${e(round.id)}">${separateStart ? '' : start}
     ${actionMenuHtml(visibleActions, `Wetten: ${tipContext(round, { includeTeams: true })}`, { key: `${keyPrefix}-${round.id}`, summary: 'Wetten', floating: true })}</div>`;
 }
 
@@ -267,6 +274,14 @@ export function competitionBettingHtml(type, id, ctx, options = {}) {
   ensurePoints(ctx);
   const round = bettingRound(type, id);
   return round ? bettingControlsHtml(round, { ...options, ...(type === 'tournament' ? { tournamentId: id } : {}) }) : '';
+}
+
+// The "Spiel starten" entry for a caller that renders the betting controls
+// with `separateStart` and lists the start among its own card actions.
+export function competitionStartActionHtml(type, id, ctx) {
+  ensurePoints(ctx);
+  const round = bettingRound(type, id);
+  return round ? startActionHtml(round, type === 'tournament' ? { tournamentId: id } : {}) : '';
 }
 
 // While LAN points are hidden no market opens. Admins and the event's creator,

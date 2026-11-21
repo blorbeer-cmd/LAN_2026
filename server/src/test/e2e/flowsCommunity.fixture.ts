@@ -438,7 +438,7 @@ flowTest('Captain-Draft: pick captains, run the live draft to completion', async
   await openMatchmakingHistory();
   const openTile = page.locator('.matchmaking-open-draws');
   if ((await openTile.getAttribute('open')) === null) await openTile.locator('summary').click();
-  await page.waitForSelector('#match-history-open [data-record-draw]');
+  await page.waitForSelector('#match-history-open [data-record-draw]', { state: 'attached' });
 });
 
 flowTest('the device back button steps back through in-app views instead of leaving the tool', async () => {

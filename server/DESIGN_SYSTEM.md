@@ -328,8 +328,9 @@ they are next changed, and new work follows them right away.
 11. **Present results the same way everywhere.** A winner carries the green „Win“ chip (or a green
     winning score), the losers are muted and a draw reads „Remis“; gold frames or result badges are
     not used. Each result row or card has one fixed trailing action slot: „+“ for an open result,
-    a pencil for a recorded one. The „+“ itself stays neutral; on a fresh Match draw the
-    highlighted next step is the rightmost „Turnier erstellen“ in the primary gradient. Recording and editing open one compact dialog: choose a winner or enter point totals, then use the compact, right-aligned „Speichern“ action in either mode. Standings are real tables
+    a pencil for a recorded one. Match cards carry too many actions for single buttons: their
+    general actions, including recording or editing the result, share one „Aktion“ menu, while
+    betting keeps its separate „Wetten“ menu beside it. Recording and editing open one compact dialog: choose a winner or enter point totals, then use the compact, right-aligned „Speichern“ action in either mode. Standings are real tables
     with column headers, not packed strings.
 12. **Make selection lists quick to scan.** Selection lists are sorted alphabetically unless the
     order itself carries meaning (rankings, results). A list offers one bulk toggle that selects
@@ -726,8 +727,8 @@ nothing and produce a misleading success.
   right of the text they explain; display-only views carry no info tooltips.
 - [ ] Primary actions are compact header buttons, submits are right-aligned, and no button or red
   action spans the full card width without a documented reason.
-- [ ] Results use the „Win“ chip, muted losers and one trailing „+“/pencil slot with the shared
-  compact result dialog.
+- [ ] Results use the „Win“ chip, muted losers and one trailing „+“/pencil slot (Match cards: an
+  „Aktion“ menu entry) with the shared compact result dialog.
 - [ ] Selection lists are alphabetical, offer one bulk toggle and a visible named search field,
   and touch layouts have an alternative to drag and drop.
 - [ ] No accent rail or accent frame is used as decoration.

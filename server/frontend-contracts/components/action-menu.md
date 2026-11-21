@@ -46,7 +46,7 @@ Eintragsgröße erzeugen.
 | Standardtrigger | `summary.btn.btn-sm` | umgesetzt | sichtbarer Text „Aktion“ plus Chevron |
 | Standardpanel | `.action-menu-panel` | umgesetzt | vertikale Liste sekundärer/destruktiver Buttons |
 | Eintrag mit Zusatzcontrol | `.action-menu-row` | umgesetzt | bestehende Zeile, zum Beispiel Aktion plus Infohilfe |
-| Schwebendes Wettmenü | `floating: true`, `.action-menu-panel[popover]` | umgesetzt | natives manuelles Popover hält Wettoptionen über scrollenden Karten und benachbarten Inhalten erreichbar |
+| Schwebendes Menü | `floating: true`, `.action-menu-panel[popover]` | umgesetzt | natives manuelles Popover hält Wett- und Matchaktionen über scrollenden Karten und benachbarten Inhalten erreichbar |
 | Ohne Aktionen | `actionMenuHtml([], label)` | umgesetzt | rendert kein leeres Menü |
 | Direkte Einträge | `actionMenuHtml(actions, label, { inlineMax })` | umgesetzt | bis `inlineMax` Einträge (Standard 1) stehen als normale Buttons im Kopf, ohne Trigger |
 | Benannter Trigger | `actionMenuHtml(actions, label, { summary })` | umgesetzt | bündelt Einträge einer einzigen Aktionsart unter ihrem Namen, etwa „Kalender“ (Google, Outlook, Download) oder „Absagen“ (Absagen, Mit Ausrede absagen) auf Eventkarten |
@@ -128,6 +128,8 @@ Registry-Bezüge: `action-menu-trigger`, `action-menu-entry`, `button`, `button-
   (`inlineMax: 0`, immer als Menü) sowie die benannten Trigger „Absagen“ und, über
   `eventPresentation.js`, „Kalender“
 - `public/js/views/foodOrders.js` für Bestellkarten mit stabilem `key`
+- `public/js/views/matchmaking.js` für Matchkarten: schwebendes „Aktion“ mit Server und Passwort,
+  Ergebnis, Turnier, Rematch, „Spiel starten“ und Löschen, getrennt vom Menü „Wetten“
 
 ## 10. Prüfungen und Abnahmebeispiele
 
@@ -149,9 +151,9 @@ Trigger folgt der 32-px-Standardgeometrie, Einträge sind ausdrückliche 44-px-S
 Button-IDs liefern Bedeutungs- und Textgeometrie. `.action-menu-row` ist eine interne
 Zusammensetzung, keine weitere Größenvariante. Es gibt keine befristete ActionMenu-Ausnahme.
 
-### Schwebende Wettmenüs
+### Schwebende Menüs
 
-`floating: true` nutzt bei mehreren Einträgen ein natives manuelles Popover in der obersten
+Wettmenüs und das „Aktion“-Menü der Matchkarten sind schwebend. `floating: true` nutzt bei mehreren Einträgen ein natives manuelles Popover in der obersten
 Browserebene. Ein einzelner Eintrag bleibt ein direkter Button. Der Helper positioniert das
 Panel am Trigger, innerhalb des Viewports und bei Platzmangel darüber; die maximale Höhe
 bleibt viewportgebunden. Innere Zeilen und Tastaturpfade bleiben unverändert. Schließen blendet
