@@ -26,16 +26,20 @@ export function webUrlHref(value) {
   }
 }
 
-const TEXT_URL_PATTERN = /\b(?:https?:\/\/|www\.)[^\s<>"']+/gi;
+// Double quotes (straight and typographic) never belong to an address; an
+// apostrophe may (".../o'connor"), so it only counts as a quote at the end.
+const TEXT_URL_PATTERN = /\b(?:https?:\/\/|www\.)[^\s<>"“”„‟«»‹›]+/gi;
 const CLOSING_BRACKETS = { ')': '(', ']': '[', '}': '{' };
+const TRAILING_TEXT = '.,;:!?\'‘’‚';
 
-// Sentence punctuation directly after a URL ("… unter https://x.de.") stays
-// text, as does a closing bracket the URL itself never opened.
+// Sentence punctuation or a closing single quote directly after a URL
+// ("… unter https://x.de.") stays text, as does a closing bracket the URL
+// itself never opened.
 function trimUrlEnd(candidate) {
   let end = candidate.length;
   while (end > 0) {
     const last = candidate[end - 1];
-    if ('.,;:!?'.includes(last)) {
+    if (TRAILING_TEXT.includes(last)) {
       end -= 1;
       continue;
     }

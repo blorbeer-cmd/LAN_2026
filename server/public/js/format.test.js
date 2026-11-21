@@ -127,6 +127,16 @@ test('linkifyHtml links web addresses in escaped user text and leaves trailing p
   assert.match(linkifyHtml('https://de.wikipedia.org/wiki/LAN_(Netz)'), /href="https:\/\/de\.wikipedia\.org\/wiki\/LAN_\(Netz\)"/);
 });
 
+test('linkifyHtml keeps surrounding quotes as text and an apostrophe inside the address', () => {
+  assert.equal(
+    linkifyHtml('Anmeldung: „https://lan.example/join“, Profil: https://lan.example/players/o\'connor'),
+    'Anmeldung: „<a class="text-link" href="https://lan.example/join" target="_blank" rel="noopener noreferrer">https://lan.example/join</a>“, '
+      + 'Profil: <a class="text-link" href="https://lan.example/players/o&#39;connor" target="_blank" rel="noopener noreferrer">https://lan.example/players/o&#39;connor</a>',
+  );
+  assert.match(linkifyHtml('Siehe ‚https://lan.example/a‘ und \'www.lan.example\'.'),
+    /‚<a [^>]*href="https:\/\/lan\.example\/a"[^>]*>https:\/\/lan\.example\/a<\/a>‘ und &#39;<a [^>]*href="https:\/\/www\.lan\.example\/"[^>]*>www\.lan\.example<\/a>&#39;\.$/);
+});
+
 test('linkifyHtml never builds a link from another scheme or a quote-breaking address', () => {
   assert.equal(linkifyHtml('javascript:alert(1) steam://connect/1.2.3.4'), 'javascript:alert(1) steam://connect/1.2.3.4');
   assert.equal(linkifyHtml('Essen kommen!'), 'Essen kommen!');
