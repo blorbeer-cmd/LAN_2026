@@ -25,6 +25,21 @@ const SCOPES = [
 const WEB_PLAYBACK_SCOPES = ['streaming', 'user-read-email', 'user-read-private'];
 const DEFAULT_RESPAWN_URL = 'https://lan.dbehnke.dev';
 const REQUEST_TIMEOUT_MS = Math.max(100, Number(process.env.JAM_CONTROLLER_REQUEST_TIMEOUT_MS || 10_000));
+const SPOTIFY_API_BASE_URL = String(
+  process.env.JAM_CONTROLLER_SPOTIFY_API_BASE_URL || 'https://api.spotify.com/v1',
+).replace(/\/+$/, '');
+const SPOTIFY_STATUS_GRACE_MS = Math.max(
+  0,
+  Number(process.env.JAM_CONTROLLER_SPOTIFY_STATUS_GRACE_MS || 30_000),
+);
+const SPOTIFY_QUEUE_REFRESH_MS = Math.max(
+  100,
+  Number(process.env.JAM_CONTROLLER_SPOTIFY_QUEUE_REFRESH_MS || 12_000),
+);
+const HEARTBEAT_INTERVAL_MS = Math.max(
+  100,
+  Number(process.env.JAM_CONTROLLER_HEARTBEAT_INTERVAL_MS || 3_000),
+);
 const LOCAL_FORM_TOKEN = crypto.randomBytes(24).toString('base64url');
 
 let state = { ...loadBootstrap(), ...loadState() };
@@ -32,8 +47,15 @@ let oauthPending = null;
 let scheduledPlayback = null;
 let polling = false;
 let heartbeating = false;
+let queueRefreshing = false;
 let localPageOpened = false;
 let serverReady = false;
+let lastSpotifyPlaybackAt = 0;
+let lastSpotifyQueueAttemptAt = 0;
+let lastSpotifyQueueContextUri = null;
+let lastSpotifyQueueTrackUri = null;
+let spotifyRetryAt = 0;
+let spotifyQueueCache = { contextUri: null, currentTrackUri: null, tracks: [] };
 let runtime = {
   needsPairing: false,
   respawn: state.controllerToken ? 'connecting' : 'setup',
@@ -483,9 +505,12 @@ async function spotifyToken() {
 }
 
 async function spotify(pathname, options = {}) {
+  if (Date.now() < spotifyRetryAt) {
+    throw new Error('Spotify begrenzt Anfragen gerade. Der Controller wartet vor dem nächsten Versuch.');
+  }
   for (let attempt = 0; attempt < 2; attempt += 1) {
     const token = await spotifyToken();
-    const response = await fetchWithTimeout(`https://api.spotify.com/v1${pathname}`, {
+    const response = await fetchWithTimeout(`${SPOTIFY_API_BASE_URL}${pathname}`, {
       ...options, headers: { Authorization: `Bearer ${token}`, ...(options.headers || {}) },
     });
     if (response.status === 204) return null;
@@ -497,7 +522,21 @@ async function spotify(pathname, options = {}) {
       continue;
     }
     if (response.status === 401) throw new SpotifyAuthorizationError('Spotify benötigt eine neue Anmeldung.');
+    if (response.status === 429) {
+      const retryAfter = response.headers.get('retry-after');
+      const seconds = Number(retryAfter);
+      const retryAfterMs = Number.isFinite(seconds)
+        ? seconds * 1000
+        : Math.max(0, Date.parse(retryAfter || '') - Date.now());
+      spotifyRetryAt = Date.now() + Math.max(1_000, retryAfterMs || 5_000);
+      throw new Error('Spotify begrenzt Anfragen gerade. Der Controller versucht es automatisch erneut.');
+    }
+    if (response.status >= 500 && attempt === 0) {
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      continue;
+    }
     if (!response.ok) throw new Error(data?.error?.message || `Spotify antwortet mit ${response.status}.`);
+    spotifyRetryAt = 0;
     return data;
   }
   throw new SpotifyAuthorizationError('Spotify benötigt eine neue Anmeldung.');
@@ -639,51 +678,70 @@ async function pollCommands() {
   finally { polling = false; }
 }
 
-async function sendHeartbeat() {
-  if (heartbeating || !state.controllerToken || runtime.needsPairing) return;
-  heartbeating = true;
-  const controllerToken = state.controllerToken;
-  let playbackAvailable = false;
-  let publicPlayback = null;
-  try {
-    const playback = await spotify('/me/player');
-    playbackAvailable = true;
-    let nextTrack = null;
-    let upcomingTracks;
-    if (playback?.context?.type === 'playlist') {
-      try {
-        const queue = await spotify('/me/player/queue');
-        nextTrack = publicTrack(queue?.queue?.[0]);
-        // Respawn shows the next few songs of a running playlist.
-        upcomingTracks = (queue?.queue || []).slice(0, 10).map(publicTrack).filter(Boolean);
-      } catch (error) {
-        console.error('[Jam] Spotify-Warteschlange:', error.message);
-      }
-    }
-    publicPlayback = playback ? {
-      track: publicTrack(playback.item), deviceId: playback.device?.id || null,
-      context: playback.context ? { type: playback.context.type || null, uri: playback.context.uri || null } : null,
-      nextTrack,
-      ...(upcomingTracks ? { upcomingTracks } : {}),
-      isPlaying: Boolean(playback.is_playing), progressMs: Number(playback.progress_ms || 0),
-    } : null;
-    runtime.spotify = 'connected';
-    runtime.spotifyMessage = null;
-  } catch (error) {
-    if (error instanceof SpotifyAuthorizationError) {
-      markSpotifyAuthorizationRequired(error.message);
-    } else {
-      runtime.spotify = 'unavailable';
-      runtime.spotifyMessage = 'Spotify ist vorübergehend nicht erreichbar. Es wird automatisch erneut versucht.';
-      console.error('[Jam] Spotify-Status:', error.message);
-    }
+function prepareSpotifyQueueCache(playback) {
+  const contextUri = playback?.context?.type === 'playlist' ? playback.context.uri || null : null;
+  const currentTrackUri = playback?.item?.uri || null;
+  if (!contextUri) {
+    spotifyQueueCache = { contextUri: null, currentTrackUri: null, tracks: [] };
+    return;
   }
+  if (spotifyQueueCache.contextUri !== contextUri || spotifyQueueCache.currentTrackUri !== currentTrackUri) {
+    spotifyQueueCache = { contextUri, currentTrackUri, tracks: [] };
+  }
+}
+
+function publicSpotifyPlayback(playback) {
+  const playlistContext = playback?.context?.type === 'playlist';
+  const contextUri = playlistContext ? playback.context.uri || null : null;
+  const upcomingTracks = contextUri && spotifyQueueCache.contextUri === contextUri
+    ? spotifyQueueCache.tracks
+    : [];
+  return playback ? {
+    track: publicTrack(playback.item), deviceId: playback.device?.id || null,
+    context: playback.context ? { type: playback.context.type || null, uri: playback.context.uri || null } : null,
+    nextTrack: upcomingTracks[0] || null,
+    ...(playlistContext ? { upcomingTracks } : {}),
+    isPlaying: Boolean(playback.is_playing), progressMs: Number(playback.progress_ms || 0),
+  } : null;
+}
+
+async function refreshSpotifyQueue(playback) {
+  const contextUri = playback?.context?.type === 'playlist' ? playback.context.uri || null : null;
+  if (!contextUri || queueRefreshing) return;
+  const currentTrackUri = playback?.item?.uri || null;
+  const now = Date.now();
+  const playbackChanged = lastSpotifyQueueContextUri !== contextUri
+    || lastSpotifyQueueTrackUri !== currentTrackUri;
+  if (!playbackChanged && now - lastSpotifyQueueAttemptAt < SPOTIFY_QUEUE_REFRESH_MS) return;
+
+  queueRefreshing = true;
+  lastSpotifyQueueAttemptAt = now;
+  lastSpotifyQueueContextUri = contextUri;
+  lastSpotifyQueueTrackUri = currentTrackUri;
+  try {
+    const queue = await spotify('/me/player/queue');
+    if (spotifyQueueCache.contextUri === contextUri
+      && spotifyQueueCache.currentTrackUri === currentTrackUri) {
+      spotifyQueueCache = {
+        contextUri,
+        currentTrackUri,
+        tracks: (queue?.queue || []).slice(0, 10).map(publicTrack).filter(Boolean),
+      };
+    }
+  } catch (error) {
+    console.error('[Jam] Spotify-Warteschlange:', error.message);
+  } finally {
+    queueRefreshing = false;
+  }
+}
+
+async function postControllerHeartbeat(controllerToken, playbackAvailable, playback) {
   try {
     const heartbeat = {
       spotifyDisplayName: state.spotifyDisplayName,
       connectionStatus: { spotify: runtime.spotify, message: runtime.spotifyMessage },
     };
-    if (playbackAvailable) heartbeat.playback = publicPlayback;
+    if (playbackAvailable) heartbeat.playback = publicSpotifyPlayback(playback);
     await respawnFetch('/api/music/controller/heartbeat', { method: 'POST', body: JSON.stringify(heartbeat) });
     runtime.needsPairing = false;
     runtime.respawn = 'connected';
@@ -700,7 +758,41 @@ async function sendHeartbeat() {
     }
     console.error('[Jam] Heartbeat:', error.message);
   }
-  finally { heartbeating = false; }
+}
+
+async function sendHeartbeat() {
+  if (heartbeating || !state.controllerToken || runtime.needsPairing) return;
+  heartbeating = true;
+  const controllerToken = state.controllerToken;
+  try {
+    let playbackAvailable = false;
+    let publicPlayback = null;
+    try {
+      const playback = await spotify('/me/player');
+      playbackAvailable = true;
+      lastSpotifyPlaybackAt = Date.now();
+      prepareSpotifyQueueCache(playback);
+      publicPlayback = playback;
+      runtime.spotify = 'connected';
+      runtime.spotifyMessage = null;
+    } catch (error) {
+      if (error instanceof SpotifyAuthorizationError) {
+        markSpotifyAuthorizationRequired(error.message);
+      } else {
+        const withinGracePeriod = lastSpotifyPlaybackAt > 0
+          && Date.now() - lastSpotifyPlaybackAt <= SPOTIFY_STATUS_GRACE_MS;
+        if (!withinGracePeriod) {
+          runtime.spotify = 'unavailable';
+          runtime.spotifyMessage = 'Spotify ist vorübergehend nicht erreichbar. Es wird automatisch erneut versucht.';
+        }
+        console.error('[Jam] Spotify-Status:', error.message);
+      }
+    }
+    await postControllerHeartbeat(controllerToken, playbackAvailable, publicPlayback);
+    if (playbackAvailable && publicPlayback) void refreshSpotifyQueue(publicPlayback);
+  } finally {
+    heartbeating = false;
+  }
 }
 
 const server = http.createServer(async (req, res) => {
@@ -836,5 +928,5 @@ function openSetupPageOnce() {
 }
 
 setInterval(pollCommands, 500).unref();
-setInterval(sendHeartbeat, 3_000).unref();
+setInterval(sendHeartbeat, HEARTBEAT_INTERVAL_MS).unref();
 if (state.controllerToken) void sendHeartbeat();

@@ -174,10 +174,12 @@ Die Spielberechnung übernimmt die Platzregel des Zielkonzepts
   A drawn lineup moves players by drag and drop on desktop; touch and phone layouts additionally
   show a native team picker per player row. There is no tap-to-select highlight of other teams.
   Anyone who may move players can also remove one without an extra symbol: on desktop by
-  dragging the player out of the lineup and dropping them anywhere else on the page, on touch
+  dragging the player onto the fixed „Hier ablegen zum Entfernen“ target that appears at the
+  bottom edge while dragging, as in the Jam queue (it highlights on hover; a drop anywhere else
+  removes nothing), on touch
   via „Aus dem Match entfernen“ in the same team picker, by keyboard with Entf/Rücktaste on the
   focused row. A dialog names the player and the consequence before anything changes; the row's
-  tooltip names both drag gestures. In a recorded result the rows can only be dragged out (no
+  tooltip names both drag gestures. In a recorded result the rows can only be dragged to that target (no
   moves) and the picker offers only the removal.
   Removal takes the player out of the lineup entirely
   (`DELETE /api/matchmaking/draws/:id/players/:playerId`):

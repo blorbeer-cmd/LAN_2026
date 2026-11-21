@@ -220,3 +220,161 @@ test('Jam controller blocks foreign browser origins from its scoped Web Playback
   assert.equal(tokenResponse.headers.get('cache-control'), 'no-store');
   assert.deepEqual(await tokenResponse.json(), { accessToken: 'short-lived-browser-token' });
 });
+
+test('Jam controller reports playback before a slow queue and reconnects after Spotify outages', async (t) => {
+  const storeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'respawn-jam-heartbeat-'));
+  const heartbeats = [];
+  const commandResults = [];
+  let nextCommand = null;
+  let playerRequests = 0;
+  let trackRequests = 0;
+  let heartbeatCountAtQueueStart = null;
+  const respawn = http.createServer((req, res) => {
+    const chunks = [];
+    req.on('data', (chunk) => chunks.push(chunk));
+    req.on('end', () => {
+      if (req.url === '/api/music/controller/heartbeat' && req.method === 'POST') {
+        heartbeats.push(JSON.parse(Buffer.concat(chunks).toString('utf8')));
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: true }));
+        return;
+      }
+      if (req.url === '/api/music/controller/commands' && req.method === 'GET') {
+        const command = nextCommand;
+        nextCommand = null;
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ command }));
+        return;
+      }
+      if (req.url === '/api/music/controller/commands/command-1/result' && req.method === 'POST') {
+        commandResults.push(JSON.parse(Buffer.concat(chunks).toString('utf8')));
+        res.writeHead(204).end();
+        return;
+      }
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ command: null }));
+    });
+  });
+  const spotify = http.createServer((req, res) => {
+    if (req.url === '/v1/me/player/queue') {
+      heartbeatCountAtQueueStart = heartbeats.length;
+      setTimeout(() => {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ queue: [] }));
+      }, 400);
+      return;
+    }
+    if (req.url === '/v1/me/player') {
+      playerRequests += 1;
+      if (playerRequests > 1 && playerRequests < 8) {
+        res.writeHead(503, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: { message: 'temporarily unavailable' } }));
+        return;
+      }
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        item: {
+          id: 'track-1',
+          uri: 'spotify:track:track-1',
+          name: 'Test title',
+          duration_ms: 180_000,
+          artists: [{ name: 'Test artist' }],
+          album: { name: 'Test album', images: [] },
+        },
+        device: { id: 'device-1' },
+        context: { type: 'playlist', uri: 'spotify:playlist:playlist-1' },
+        is_playing: true,
+        progress_ms: 12_000,
+      }));
+      return;
+    }
+    if (req.url === '/v1/tracks/0123456789012345678901') {
+      trackRequests += 1;
+      if (trackRequests === 1) {
+        res.writeHead(503, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: { message: 'temporary command failure' } }));
+        return;
+      }
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        id: '0123456789012345678901',
+        uri: 'spotify:track:0123456789012345678901',
+        name: 'Recovered title',
+        duration_ms: 180_000,
+        artists: [{ name: 'Recovered artist' }],
+        album: { name: 'Recovered album', images: [] },
+      }));
+      return;
+    }
+    res.writeHead(404).end();
+  });
+  const respawnPort = await listen(respawn);
+  const spotifyPort = await listen(spotify);
+  const probe = http.createServer();
+  const controllerPort = await listen(probe);
+  await new Promise((resolve) => probe.close(resolve));
+
+  fs.writeFileSync(path.join(storeDir, 'jam-controller.json'), JSON.stringify({
+    respawnBaseUrl: `http://127.0.0.1:${respawnPort}`,
+    label: 'LAN-Musik-PC',
+    clientId: 'spotify-client',
+    controllerId: 'controller-1',
+    controllerToken: 'controller-token',
+    groupId: 'group-1',
+    spotifyDisplayName: 'LAN DJ',
+    accessTokenSpotify: 'spotify-token',
+    refreshToken: 'refresh-token',
+    expiresAt: Date.now() + 10 * 60_000,
+  }));
+
+  const controller = spawn(process.execPath, [SCRIPT], {
+    env: {
+      ...process.env,
+      JAM_CONTROLLER_PORT: String(controllerPort),
+      JAM_CONTROLLER_STORE_DIR: storeDir,
+      JAM_CONTROLLER_REQUEST_TIMEOUT_MS: '1000',
+      JAM_CONTROLLER_SPOTIFY_API_BASE_URL: `http://127.0.0.1:${spotifyPort}/v1`,
+      JAM_CONTROLLER_SPOTIFY_STATUS_GRACE_MS: '700',
+      JAM_CONTROLLER_HEARTBEAT_INTERVAL_MS: '100',
+      JAM_CONTROLLER_NO_OPEN: '1',
+    },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+
+  t.after(async () => {
+    controller.kill('SIGTERM');
+    await Promise.all([
+      new Promise((resolve) => respawn.close(resolve)),
+      new Promise((resolve) => spotify.close(resolve)),
+    ]);
+    fs.rmSync(storeDir, { recursive: true, force: true });
+  });
+
+  await waitFor(() => heartbeatCountAtQueueStart !== null);
+  assert.equal(heartbeatCountAtQueueStart, 1,
+    'the current playback heartbeat must not wait for Spotify queue enrichment');
+  assert.equal(heartbeats[0].connectionStatus.spotify, 'connected');
+  assert.equal(heartbeats[0].playback.track.uri, 'spotify:track:track-1');
+
+  await waitFor(() => heartbeats.find((heartbeat, index) => index > 0
+    && heartbeat.connectionStatus.spotify === 'connected'
+    && !Object.hasOwn(heartbeat, 'playback')));
+  const unavailable = await waitFor(() => {
+    const index = heartbeats.findIndex((heartbeat) => heartbeat.connectionStatus.spotify === 'unavailable');
+    return index >= 0 ? index : null;
+  });
+  await waitFor(() => heartbeats.slice(unavailable + 1).find(
+    (heartbeat) => heartbeat.connectionStatus.spotify === 'connected'
+      && heartbeat.playback?.track?.uri === 'spotify:track:track-1',
+  ));
+
+  nextCommand = {
+    id: 'command-1',
+    type: 'track',
+    payload: { trackId: '0123456789012345678901' },
+  };
+  await waitFor(() => commandResults[0]);
+  assert.equal(trackRequests, 2, 'a direct Spotify 503 should be retried once');
+  assert.equal(commandResults[0].ok, true);
+  assert.equal(commandResults[0].data.uri, 'spotify:track:0123456789012345678901');
+});
