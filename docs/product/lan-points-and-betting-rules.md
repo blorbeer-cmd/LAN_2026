@@ -96,6 +96,31 @@ Turniersieger-Märkte bieten ihn nicht; ältere Märkte behalten ihre ursprüngl
 Eine neue Runde verbraucht keinen Kontingentplatz. Auch ein gespeichertes altes `maxRounds=0`
 deaktiviert keine neuen Wetten mehr. Sichtbarkeit und Festschreibung behalten ihre Wirkung.
 
+### Platzierungswetten bei Matches mit vielen Teams
+
+Freie Matches, bei denen Wetten erlaubt sind, bieten neben dem Siegertipp automatisch zusätzliche
+Märkte (Migration 141, Spalte `market`):
+
+- **Podium (Top 3)** ab fünf Teams: Man wählt ein Team und gewinnt, wenn es auf Platz 1, 2 oder 3
+  landet. Ein geteilter dritter Platz zählt mit, sodass mehrere Ausgänge zugleich gewinnen können.
+- **Rote Laterne (Letzter)** ab drei Teams: Man wählt ein Team und gewinnt, wenn es Letzter wird.
+  Ein geteilter letzter Platz zählt für alle Betroffenen.
+
+Turnierspiele und Turniersieger-Märkte erhalten keine Platzierungswetten. Die Platzierungsmärkte
+bieten kein „Unentschieden“. Für jeden Markt gelten eigenständig ein Tipp pro Person, die
+Einsatzgrenze von 20 Punkten und die Gewinnbegrenzung. Alle Märkte eines Matches öffnen und schließen
+gemeinsam: „Spiel starten“ schließt Sieger-, Podium- und Laterne-Tipps zugleich, Wiederöffnen öffnet
+alle Märkte, deren eigene Regeln es zulassen. Ein Platzierungsmarkt entsteht nur neben einem noch
+offenen Siegermarkt und übernimmt dessen Frist. Fällt ein Match unter die Mindestzahl an Teams,
+wird der betroffene Markt erstattet. Die Öffnungsmitteilung nennt alle Märkte eines Matches in
+einer Nachricht („Sieger, Podium und Rote Laterne“). Der Tippdialog wechselt über die Auswahl
+„Wette“ zwischen den Märkten; „Speichern & weiter“ führt zum nächsten offenen Markt.
+
+Platzierungswetten brauchen die Platzierung aller Teams. Sobald ein Platzierungsmarkt Tipps hat,
+fragt der Ergebnisdialog des Matches daher nur den Punktestand ab. Wird über die API nur ein Sieger
+eingetragen, wird der Platzierungsmarkt mit dem Grund „Keine vollständige Platzierung eingetragen“
+vollständig erstattet; eine spätere Ergebniskorrektur mit Platzierung rechnet ihn regulär ab.
+
 Pro Person und Runde gibt es einen Tipp. Bis zum Schließen lassen sich Auswahl und Einsatz
 ändern oder der Tipp zurücknehmen. Annahme und Journalreservierung erfolgen gemeinsam;
 parallele Einsätze können verfügbare Mittel nicht mehrfach verbrauchen. Bei negativem
@@ -193,6 +218,8 @@ wenn eine Teilbuchung scheitert.
 
 Ein nicht am Markt wählbares Remis, fehlende Tipps auf das eingetretene Ergebnis, Einsätze
 auf nur einen Ausgang und ein abgebrochener Wettbewerb führen zur vollständigen Erstattung.
+Bei Platzierungsmärkten bilden alle gewinnenden Ausgänge gemeinsam die Gewinnerseite; erstattet
+wird, wenn alle Tipps auf der Gewinner- oder alle auf der Verliererseite liegen.
 Ein angebotenes Remis kann dagegen regulär gewinnen und wird genauso abgerechnet wie ein Sieger-Tipp.
 Bei freien Matches gilt dieselbe Ergebnisinterpretation wie für Spielpunkte: vollständige
 Teamränge haben Vorrang vor einem separaten Siegerfeld, ein geteilter erster Rang gilt als Remis.

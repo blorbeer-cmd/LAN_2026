@@ -6179,6 +6179,20 @@ registerMigration({ version: 140, name: 'store optional server details on open m
     db.exec('ALTER TABLE matchmaking_draws ADD COLUMN server_password TEXT');
 } });
 
+registerMigration({ version: 141, name: 'offer podium and last-place markets beside the winner market', up: () => {
+  // A free-for-all Match can carry several markets at once: the winner, the
+  // podium (top three) and the last place. Every existing round is a winner
+  // market, so uniqueness now covers the market kind as well.
+  const columns = db.prepare('PRAGMA table_info(betting_rounds)').all() as Array<{ name: string }>;
+  if (!columns.some((column) => column.name === 'market')) {
+    db.exec(`ALTER TABLE betting_rounds ADD COLUMN market TEXT NOT NULL DEFAULT 'winner'
+      CHECK(market IN ('winner','podium','last'))`);
+  }
+  db.exec(`DROP INDEX IF EXISTS betting_rounds_current_source;
+    CREATE UNIQUE INDEX IF NOT EXISTS betting_rounds_current_market ON betting_rounds(event_id,source_type,source_id,market)
+      WHERE refund_cause IS NOT 'replaced';`);
+} });
+
 runRegisteredMigrations();
 
 // The active default-group role is the source of truth for instance admin

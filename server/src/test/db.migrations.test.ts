@@ -18,7 +18,7 @@ import Database from 'better-sqlite3';
 import { EVENT_FEATURE_KEYS } from '../eventFeatureCatalog';
 
 const DB_JS_PATH = path.join(__dirname, '..', 'db.js');
-const EXPECTED_MIGRATION_VERSIONS = Array.from({ length: 140 }, (_, index) => index + 1);
+const EXPECTED_MIGRATION_VERSIONS = Array.from({ length: 141 }, (_, index) => index + 1);
 const BOOTSTRAP_ADMINS_JS_PATH = path.join(__dirname, '..', 'bootstrapAdmins.js');
 
 test('points migrations leave legacy LANs hidden and preserve background balances across replay', () => {
@@ -268,6 +268,55 @@ test('migration 137 keeps rounds and tips, rolls back on failure and limits uniq
   const replayed = new Database(dbFile);
   assert.deepEqual(replayed.prepare('SELECT * FROM betting_rounds ORDER BY id').all(), replacedRounds);
   assert.deepEqual(replayed.prepare('SELECT * FROM betting_tips ORDER BY id').all(), tips);
+  replayed.close();
+  fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
+});
+
+test('migration 141 keeps rounds as winner markets, rolls back on failure and allows one round per market kind', () => {
+  const dbFile = makeTempDbPath('betting-market-kinds');
+  runMigrations(dbFile);
+  const fixture = new Database(dbFile);
+  // Pre-141 shape: no market column, one current round per source.
+  fixture.exec(`DROP INDEX betting_rounds_current_market;
+    ALTER TABLE betting_rounds DROP COLUMN market;
+    CREATE UNIQUE INDEX betting_rounds_current_source ON betting_rounds(event_id,source_type,source_id)
+      WHERE refund_cause IS NOT 'replaced';
+    DELETE FROM schema_migrations WHERE version=141;
+    INSERT INTO events(id,name,starts_at,group_id,status,event_type_key) VALUES('market-live','Live LAN',1,'default-group','published','lan');
+    INSERT INTO betting_rounds(id,group_id,event_id,source_type,source_id,title,outcomes,status,closes_at,created_at) VALUES
+      ('market-open','default-group','market-live','draw','draw-a','Open','[]','open',0,1);
+    INSERT INTO betting_tips(id,round_id,player_id,outcome_id,stake,day,created_at,updated_at) VALUES
+      ('market-tip','market-open',NULL,'0',5,'2026-11-04',1,1);
+    CREATE TABLE betting_rounds_current_market (blocker INTEGER);`);
+  const rounds = fixture.prepare('SELECT * FROM betting_rounds ORDER BY id').all();
+  const tips = fixture.prepare('SELECT * FROM betting_tips ORDER BY id').all();
+  fixture.close();
+  assert.throws(() => runMigrations(dbFile), /already/);
+  const failed = new Database(dbFile);
+  assert.ok(!(failed.pragma('table_info(betting_rounds)') as Array<{ name: string }>).some((column) => column.name === 'market'));
+  assert.equal(failed.prepare('SELECT 1 FROM schema_migrations WHERE version=141').get(), undefined);
+  assert.deepEqual(failed.prepare('SELECT * FROM betting_tips ORDER BY id').all(), tips);
+  failed.exec('DROP TABLE betting_rounds_current_market');
+  failed.close();
+  runMigrations(dbFile);
+  const migrated = new Database(dbFile);
+  assert.deepEqual(migrated.prepare('SELECT * FROM betting_rounds ORDER BY id').all(),
+    rounds.map((round) => ({ ...(round as object), market: 'winner' })));
+  assert.deepEqual(migrated.prepare('SELECT * FROM betting_tips ORDER BY id').all(), tips);
+  const insert = migrated.prepare(`INSERT INTO betting_rounds(id,group_id,event_id,source_type,source_id,title,outcomes,status,closes_at,created_at,market)
+    VALUES(?,'default-group','market-live','draw','draw-a','Extra','[]','open',0,2,?)`);
+  insert.run('market-podium', 'podium');
+  insert.run('market-last', 'last');
+  assert.throws(() => insert.run('market-duplicate', 'podium'), /UNIQUE constraint/);
+  assert.throws(() => insert.run('market-unknown', 'exact'), /CHECK constraint/);
+  migrated.exec('DELETE FROM schema_migrations WHERE version=141');
+  const marketRounds = migrated.prepare('SELECT * FROM betting_rounds ORDER BY id').all();
+  migrated.close();
+  runMigrations(dbFile);
+  runMigrations(dbFile);
+  const replayed = new Database(dbFile);
+  assert.deepEqual(replayed.prepare('SELECT * FROM betting_rounds ORDER BY id').all(), marketRounds);
+  assert.deepEqual(replayed.prepare('PRAGMA foreign_key_check').all(), []);
   replayed.close();
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
 });

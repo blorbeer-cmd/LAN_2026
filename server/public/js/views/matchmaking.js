@@ -1,5 +1,5 @@
 import { historyItemHtml as sharedHistoryItemHtml } from '../historyItem.js';
-import { competitionBettingHtml, competitionStartActionHtml, competitionBettingSummaryHtml, competitionMatchesTipFilter, wireCompetitionBetting, competitionCorrection, bettingHiddenHintHtml } from './points.js';
+import { competitionBettingHtml, competitionStartActionHtml, competitionBettingSummaryHtml, competitionMatchesTipFilter, wireCompetitionBetting, competitionCorrection, competitionNeedsPlacements, bettingHiddenHintHtml } from './points.js';
 let pointsContext = null;
 // Matchmaking view (FR-16..18): pick a game + present players, draw balanced
 // teams. Results are stored in shared state (updated live via the
@@ -514,13 +514,16 @@ function openDrawResultDialog(draw, ctx) {
   const hasValues = recorded && draw.teams.some((team) => team.score != null);
   const teams = draw.teams.map((team, index) => ({ name: defaultDrawTeamName(draw, team, index), players: team.players.map((player) => player.name) }));
   const correction = competitionCorrection('draw', draw.id);
+  // Podium and last-place tips need every team's place, which only point totals give.
+  const placements = competitionNeedsPlacements('draw', draw.id);
+  const mode = placements || hasValues ? 'score' : 'winner';
   const { close, el } = openModal('Ergebnis', `
-    <div class="muted result-dialog-subtitle">${escapeHtml(draw.gameName)} · ${draw.teams.length} Teams</div>
+    <div class="muted result-dialog-subtitle">${escapeHtml(draw.gameName)} · ${draw.teams.length} Teams${placements ? ' · Punktestand für Podium und Rote Laterne' : ''}</div>
     ${recorded ? correction.html : ''}
-    ${resultFormHtml({ teams, prefix: 'draw-result', mode: hasValues ? 'score' : 'winner', winnerIndex: recorded && !hasValues ? draw.winnerTeamIndex ?? (draw.isDraw ? -1 : undefined) : undefined, scores: draw.teams.map((team) => team.score) })}`);
+    ${resultFormHtml({ teams, prefix: 'draw-result', mode, fixedMode: placements, winnerIndex: recorded && !hasValues ? draw.winnerTeamIndex ?? (draw.isDraw ? -1 : undefined) : undefined, scores: draw.teams.map((team) => team.score) })}`);
   wireResultForm(el, {
     teams,
-    mode: hasValues ? 'score' : 'winner',
+    mode,
     onSave: async ({ mode, scores, ranks, winnerIndex }) => {
       const payloadTeams = draw.teams.map((team, index) => ({
         playerIds: team.players.map((player) => player.id),

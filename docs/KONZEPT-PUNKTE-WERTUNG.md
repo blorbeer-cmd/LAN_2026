@@ -172,6 +172,17 @@ Pool zum Tippschluss; die beschlossene Gewinnbegrenzung bleibt unverändert.
 „Unentschieden“ ist als Tipp wählbar, wenn Spiel und Format es zulassen. Bei Turnier-K.-o.-
 Spielen und Turniersieger-Märkten wird diese Option nicht angeboten.
 
+**Entschieden W7 – Platzierungswetten bei freien Matches:** Neben dem Siegertipp gibt es bei
+freien Matches ab fünf Teams den Markt **Podium** (gewählte Person beziehungsweise gewähltes Team
+landet unter den ersten drei) und ab drei Teams die **Rote Laterne** (wird Letzter). Gleichstand an
+der Grenze zählt mit; es können mehrere Ausgänge zugleich gewinnen. Abgerechnet wird mit derselben
+Gewinnbegrenzung, wobei alle gewinnenden Ausgänge gemeinsam die Gewinnerseite bilden. Platzierungs-
+märkte brauchen eine vollständige Platzierung; bei Tipps fragt der Ergebnisdialog deshalb den
+Punktestand ab, ein reines Siegerergebnis erstattet den Markt. Abgelehnt wurden exakte Top-3-
+Reihenfolgen und komplette Ranglisten-Tipps, weil sie bei rund 15 Teilnehmenden fast immer erstattet
+würden beziehungsweise eine neue Auszahlungsregel bräuchten. Details:
+[Produktregeln](product/lan-points-and-betting-rules.md#platzierungswetten-bei-matches-mit-vielen-teams).
+
 ### 4.2 Vollständige Rückerstattung
 
 Der gesamte Markt wird erstattet, wenn:

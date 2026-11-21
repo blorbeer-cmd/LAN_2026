@@ -26,13 +26,16 @@ function allocate(amount: number, tips: PoolTip[]): Map<string, number> {
   return new Map(shares.map((share, index) => [share.tip.id, share.whole + (index < remainder ? 1 : 0)]));
 }
 
+// `winner` names the single winning outcome, or for placement markets
+// (podium, last place) every outcome that wins together.
 export function distributePool(
-  tips: PoolTip[], winner: string | null, policy: BettingPayoutPolicy = 'stake_cap_v1',
+  tips: PoolTip[], winner: string | readonly string[] | null, policy: BettingPayoutPolicy = 'stake_cap_v1',
 ): Map<string, number> {
   const payouts = new Map(tips.map((tip) => [tip.id, tip.stake]));
-  const winners = tips.filter((tip) => tip.outcomeId === winner);
-  const losers = tips.filter((tip) => tip.outcomeId !== winner);
-  if (!winner || !winners.length || !losers.length) return payouts;
+  const winning = new Set(winner === null ? [] : typeof winner === 'string' ? [winner] : winner);
+  const winners = tips.filter((tip) => winning.has(tip.outcomeId));
+  const losers = tips.filter((tip) => !winning.has(tip.outcomeId));
+  if (!winners.length || !losers.length) return payouts;
   const winningStakes = winners.reduce((sum, tip) => sum + tip.stake, 0);
   const losingStakes = losers.reduce((sum, tip) => sum + tip.stake, 0);
   if (policy === 'pool_v1') {
