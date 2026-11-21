@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  browserPlaybackReport,
   connectLocalSpotifyPlayer,
   localSpotifyPlaybackStatus,
   localSpotifySessionNeedsRecovery,
@@ -123,7 +124,15 @@ test('local Spotify player registers the browser device with a loopback token', 
 
   globalThis.window = { Spotify: { Player: FakeSpotifyPlayer } };
   globalThis.document = {};
-  globalThis.fetch = async (url) => {
+  const stateReports = [];
+  let reportArrived;
+  const reportPromise = new Promise((resolve) => { reportArrived = resolve; });
+  globalThis.fetch = async (url, options) => {
+    if (url === 'http://127.0.0.1:43821/web-player/state') {
+      stateReports.push({ options, body: JSON.parse(options.body) });
+      reportArrived();
+      return { ok: true, status: 204 };
+    }
     assert.equal(url, 'http://127.0.0.1:43821/web-player/token');
     return { ok: true, json: async () => ({ accessToken: 'browser-access-token' }) };
   };
@@ -138,6 +147,53 @@ test('local Spotify player registers the browser device with a loopback token', 
   assert.equal(instance.options.enableMediaSession, true);
   assert.equal(instance.activated, true);
   assert.equal(suppliedToken, 'browser-access-token');
+
+  // Several SDK events for one change reach the local controller as one report.
+  const playerStateChanged = instance.listeners.get('player_state_changed');
+  playerStateChanged({ paused: true, position: 0, track_window: { current_track: { uri: 'spotify:track:old' } } });
+  playerStateChanged(null);
+  await reportPromise;
+  assert.equal(stateReports.length, 1);
+  assert.equal(stateReports[0].options.method, 'POST');
+  assert.deepEqual(stateReports[0].body, { deviceId: 'browser-device-1', state: null });
+});
+
+test('browser playback reports carry only what Respawn shows and the current position', () => {
+  const sdkState = {
+    paused: false,
+    position: 61_000,
+    duration: 200_000,
+    context: { uri: 'spotify:playlist:0123456789012345678901', metadata: { name: 'LAN' } },
+    track_window: {
+      current_track: {
+        uri: 'spotify:track:0123456789012345678901',
+        name: 'Title',
+        duration_ms: 200_000,
+        artists: [{ name: 'A', uri: 'spotify:artist:x' }, { name: 'B' }],
+        album: { name: 'Album', images: [{ url: 'https://i.scdn.co/image/1' }, { url: 'https://i.scdn.co/image/2' }] },
+      },
+      next_tracks: [{ uri: 'spotify:track:next' }],
+    },
+  };
+  assert.deepEqual(browserPlaybackReport('device-1', sdkState, 10_500, 10_000), {
+    deviceId: 'device-1',
+    state: {
+      track: {
+        uri: 'spotify:track:0123456789012345678901',
+        name: 'Title',
+        artists: ['A', 'B'],
+        album: 'Album',
+        imageUrl: 'https://i.scdn.co/image/1',
+        durationMs: 200_000,
+      },
+      contextUri: 'spotify:playlist:0123456789012345678901',
+      isPlaying: true,
+      progressMs: 61_500,
+    },
+  });
+  const paused = browserPlaybackReport('device-1', { ...sdkState, paused: true }, 10_500, 10_000);
+  assert.equal(paused.state.progressMs, 61_000, 'a paused song does not advance while the report waits');
+  assert.deepEqual(browserPlaybackReport('device-1', null), { deviceId: 'device-1', state: null });
 });
 
 test('local Spotify playback waits for renewed browser scopes', async () => {

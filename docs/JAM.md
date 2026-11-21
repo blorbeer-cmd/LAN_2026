@@ -87,6 +87,39 @@ Musik-PCs an TV oder Soundbar weiter.
   **Spotify-Anmeldung erneuern** wählen. Controller-Paket und Respawn-Kopplung bleiben dabei
   unverändert. Der ursprüngliche Jam-Tab und der Kiosk prüfen die Freigabe danach automatisch erneut;
   ein manueller Reload ist nicht nötig.
+- Spotify zählt die Anfragen aller Spotify-Apps im Development Mode eines Developer-Kontos gegen
+  ein gemeinsames Kontingent ([Spotify, 23.07.2026](https://developer.spotify.com/blog/2026-07-23-web-api-quota-updates)).
+  Eine genaue Grenze nennt Spotify nicht. Eine zweite App unter demselben Developer-Konto hilft
+  deshalb nicht. Der Controller meldet sich weiter alle drei Sekunden bei Respawn, fragt Spotify
+  aber sparsam ab:
+  - beim Start einer Jam-Session, die Respawn ihm im Heartbeat meldet,
+  - nach Wiedergabebefehlen (Play, Pause, Weiter, Playlist, Gerätewechsel), außer der Befehl gilt
+    dem Browser-Player, der seinen neuen Zustand selbst meldet,
+  - nach einem Songwunsch nur, wenn eine Playlist läuft, denn nur dann zeigt Respawn Spotifys
+    Warteschlange,
+  - kurz nach dem erwarteten Ende des laufenden Songs,
+  - sonst während einer Session alle 20 Sekunden und ohne Session einmal pro Minute.
+
+  Spielt die Musik über **Diesen Browser als Musikgerät** oder den Kiosk-Ton, meldet der
+  Spotify-Player im Browser jeden Songwechsel, jede Pause und jeden Sprung selbst an den lokalen
+  Controller (`POST /web-player/state`, nur von der konfigurierten Respawn-Origin). Der Controller
+  gibt das sofort an Respawn weiter und fragt Spotify dann nur noch etwa einmal pro Minute zur
+  Sicherheit. Endet die Browser-Wiedergabe oder wechselt Spotify auf ein anderes Gerät, fragt er
+  sofort wieder bei Spotify nach.
+
+  Die Spotify-Warteschlange liest er nur bei einem neuen Song, einer neuen Playlist, einem
+  Songwunsch während einer Playlist oder nach Weiter, Playlist-Start und Gerätewechsel, nicht nach
+  Pause oder Fortsetzen. Respawn merkt sich die Titel aus der Suche zehn Minuten lang; ein
+  Songwunsch aus den Suchergebnissen braucht dadurch keine eigene Spotify-Abfrage. Den Fortschritt
+  zwischen zwei Abfragen rechnet Respawn selbst weiter. Bedient jemand Spotify direkt in der
+  Spotify-App, erscheint das ohne Browser-Player erst nach bis zu 20 Sekunden in Respawn. Die
+  lokale Seite zeigt die Spotify-Anfragen der letzten Stunde, aufgeteilt nach Status,
+  Warteschlange, Befehlen, Suche, Titeln und Geräten.
+- Sperrt Spotify die Wiedergabesteuerung länger wegen zu vieler Anfragen (HTTP 429,
+  `QUOTA_EXCEEDED`), nennt die lokale Seite das Ende der Sperre und der Controller wartet sie ab,
+  statt weiter anzufragen. Beobachtet am 21.11.2026: Nach rund 29.000 Statusabfragen pro Tag
+  sperrte Spotify die `/v1/me/player`-Endpunkte für rund zwölf Stunden, auch für eine zweite App
+  desselben Developer-Kontos; `/v1/me` blieb erreichbar.
 - Die lokale Seite zeigt beide Verbindungszustände getrennt, kann sofort einen neuen Versuch
   auslösen und bietet unter **Verbindung verwalten** als letzte Option einen vollständigen Reset.
   Einen neuen Download braucht es nur auf einem Ersatzgerät oder wenn die lokale Installation

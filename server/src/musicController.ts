@@ -237,7 +237,12 @@ musicControllerRouter.post('/heartbeat', controllerAuth, (req, res) => {
   if (connectionStatusChanged) {
     broadcast(Events.musicChanged, { groupId: controller.group_id }, { groupId: controller.group_id });
   }
-  res.json({ ok: true, serverTime: now });
+  // Lets the controller ask Spotify for live playback only while a Jam runs:
+  // every idle request still counts against the app's Spotify quota.
+  const sessionActive = Boolean(
+    db.prepare("SELECT 1 FROM music_sessions WHERE group_id = ? AND status = 'active' LIMIT 1").get(controller.group_id),
+  );
+  res.json({ ok: true, serverTime: now, sessionActive });
 });
 
 musicControllerRouter.get('/commands', controllerAuth, (_req, res) => {
