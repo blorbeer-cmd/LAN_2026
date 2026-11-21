@@ -135,11 +135,10 @@ export function betSourceState(groupId: string, eventId: string, type: BetSource
     invalid: source.invalid || type !== 'draw',
   };
 }
-// A winner-only result places nobody else; complete ranks or a declared
-// draw of everyone do.
+// Only a rank for every team places them all. A winner-only result or a draw
+// flag over partial ranks does not; a draw of everyone is equal ranks.
 function ranksEveryTeam(result: MatchForScoring): boolean {
-  return result.teams.every((team) => Number.isInteger(team.rank) && team.rank! >= 1) ||
-    Boolean(result.isDraw && (result.winnerTeamIndex === null || result.winnerTeamIndex === undefined));
+  return result.teams.every((team) => Number.isInteger(team.rank) && team.rank! >= 1);
 }
 // Called inside the result write. Once a draw's top-two or top-three market
 // holds tips, a result without every team's place would refund them, also

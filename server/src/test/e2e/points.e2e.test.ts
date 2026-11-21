@@ -1287,6 +1287,7 @@ test('a six-team free-for-all Match tips the top two and records its result only
       const posted = resultPosts.length;
       await result.locator('[data-result-save]').click();
       await check.held;
+      assert.equal(await result.locator('[data-result-winners] input').first().isDisabled(), true, 'inputs are locked during the check');
       await member.keyboard.press('Escape');
       await result.waitFor({ state: 'detached' });
       const checked = member.waitForResponse((response) => response.url().includes(`/api/points?eventId=${event.id}`));
@@ -1319,6 +1320,7 @@ test('a six-team free-for-all Match tips the top two and records its result only
     const write = hold('**/api/matches', 'POST');
     await result.locator('[data-result-save]').click();
     await write.held;
+    assert.equal(await result.locator('#draw-result-score-0').isDisabled(), true, 'the values read on the click cannot change during the write');
     for (const [session, outcomeId] of [[bob.cookie, '0'], [cookie, '2']] as const)
       await api(`/api/points/rounds/${lateRound.id}/tip?eventId=${event.id}`, 'PUT', { outcomeId, stake: 2 }, session);
     write.release();

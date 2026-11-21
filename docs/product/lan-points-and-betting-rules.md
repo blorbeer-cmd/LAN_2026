@@ -235,6 +235,8 @@ Bei Siegerwetten kann ein angebotenes Remis dagegen regulär gewinnen und wird g
 wie ein Sieger-Tipp. Bei Top-2- und Top-3-Wetten bilden alle gewinnenden Ausgänge gemeinsam die
 Gewinnerseite; erstattet wird, wenn alle Tipps auf der Gewinner- oder alle auf der Verliererseite
 liegen. Ein Remis aller Teams macht dort jeden Ausgang zum Gewinner und wird deshalb erstattet.
+Ein Remis-Kennzeichen ersetzt dabei keine Ränge: Ein Remis aller Teams wird über gleiche Ränge für
+jedes Team eingetragen, ein Remis über eine unvollständige Rangliste wird abgelehnt.
 Bei freien Matches gilt dieselbe Ergebnisinterpretation wie für Spielpunkte: vollständige
 Teamränge haben Vorrang vor einem separaten Siegerfeld, ein geteilter erster Rang gilt als Remis.
 Ein geteilter Turniersieg ist im Gesamtsieger-Markt nicht wählbar und führt deshalb zur

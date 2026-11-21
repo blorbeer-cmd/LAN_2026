@@ -425,7 +425,7 @@ function openTip(initialRound, ctx, { data: initialData, rounds: initialRounds }
     const top = topPlaces(round);
     dialog.setTitle(editable ? (round.sourceType === 'tournament' ? 'Turniersieger tippen' : top ? `Top ${top} tippen` : 'Sieger tippen')
       : round.sourceType === 'tournament' ? 'Dein Turniersiegertipp' : 'Dein Tipp');
-    const topRule = top ? `Dein Tipp gewinnt, wenn deine Wahl unter den ersten ${top === 2 ? 'zwei' : 'drei'} landet; ein geteilter Platz ${top} zählt mit. Ohne eingetragenen Punktestand für alle wird erstattet. ` : '';
+    const topRule = top ? `Dein Tipp gewinnt, wenn deine Wahl unter den ersten ${top === 2 ? 'zwei' : 'drei'} landet; ein geteilter Platz ${top} zählt mit. Abgerechnet wird erst, wenn für jedes Team ein Punktestand eingetragen ist. ` : '';
     const rules = `${topRule}${round.payoutPolicy === 'stake_cap_v1' ? 'Gewinn höchstens in Höhe deines Einsatzes; übrige Einsätze gehen anteilig zurück. ' : ''}Tipps auf das eigene Team sind erlaubt. Auszahlung inklusive Einsatz; Rundung auf ganze Punkte.`;
     const report = pointsReportButton('tip', round.mine?.id, ['settled', 'refunded'].includes(round.status));
     const groups = tournamentTipGroups(rounds);

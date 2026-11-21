@@ -626,6 +626,12 @@ test('large free-for-all Matches tip the top two from six and the top three from
   // Complete ranks without the writer's confirmation that every value was
   // entered (an empty field read as 0) are refused as well.
   assert.deepEqual([(await record(unranked.id, unrankedMarket, [1, 3, 2, 4, 5, 6], false)).status], [409]);
+  // A draw flag does not stand in for missing ranks: everyone sharing first
+  // place would refund the pool. An all-way tie is equal ranks instead.
+  const partialDraw = await request(app).post('/api/matches').send({ gameId: f.gameId, drawId: unranked.id, isDraw: true,
+    placementsConfirmed: true, teams: unrankedMarket.outcomes.filter((o) => o.playerIds.length)
+      .map((o, index) => ({ playerIds: o.playerIds, ...(index < 2 ? { score: 5, rank: 1 } : {}) })) });
+  assert.deepEqual([partialDraw.status, partialDraw.body.code], [409, 'placements_required']);
   const ranked = await record(unranked.id, unrankedMarket, [1, 3, 2, 4, 5, 6]);
   assert.equal(ranked.status, 201);
   const paid = await automaticMarket(f, 'draw', unranked.id);

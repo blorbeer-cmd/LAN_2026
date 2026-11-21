@@ -635,58 +635,67 @@ function openDrawResultDialog(draw, ctx, { requirePlacements = false, enteredSco
     mode,
     requireAllScores: placements,
     onSave: async ({ mode, scores, ranks, winnerIndex, complete }) => {
-      // Placement tips that arrived after opening need every team's score:
-      // reopen the dialog in that mode instead of saving a winner-only result.
-      // Typed values carry over as entered; an empty field stays empty. A
-      // dialog closed while the market was being checked stays closed.
-      const reopenForPlacements = () => {
-        if (!el.isConnected) return false;
-        const enteredScores = mode === 'score' ? [...el.querySelectorAll('[data-result-score]')].map((input) => input.value) : null;
-        close();
-        showToast('Inzwischen gibt es Platzierungstipps: Bitte für jedes Team einen Punktestand eintragen.', { error: true });
-        openDrawResultDialog(draw, ctx, { requirePlacements: true, enteredScores });
-        return false;
-      };
-      if (!placements && await competitionNeedsPlacementsNow('draw', draw.id).catch(() => false)) return reopenForPlacements();
-      // A dialog closed while the market was being checked saves nothing.
-      if (!el.isConnected) return false;
-      const payloadTeams = draw.teams.map((team, index) => ({
-        playerIds: team.players.map((player) => player.id),
-        score: mode === 'score' ? scores[index] : null,
-        rank: mode === 'score' ? ranks[index] : null,
-      }));
+      // The values were read on the click; lock every input while the market
+      // check and the write run, so the saved result is what the dialog shows.
+      const controls = [...el.querySelectorAll('.modal-body input, .modal-body textarea, .modal-body [data-result-mode]')]
+        .filter((control) => !control.disabled);
+      controls.forEach((control) => { control.disabled = true; });
       try {
-        if (recorded) {
-          await api.matches.update(draw.matchId, { teams: payloadTeams, winnerTeamIndex: winnerIndex, isDraw: winnerIndex === null, placementsConfirmed: complete, ...correction.payload(el) });
-        } else {
-          await api.matches.create({ gameId: draw.gameId, drawId: draw.id, drawLineup, teams: payloadTeams, winnerTeamIndex: winnerIndex, isDraw: winnerIndex === null, placementsConfirmed: complete });
+        // Placement tips that arrived after opening need every team's score:
+        // reopen the dialog in that mode instead of saving a winner-only result.
+        // Typed values carry over as entered; an empty field stays empty. A
+        // dialog closed while the market was being checked stays closed.
+        const reopenForPlacements = () => {
+          if (!el.isConnected) return false;
+          const enteredScores = mode === 'score' ? [...el.querySelectorAll('[data-result-score]')].map((input) => input.value) : null;
+          close();
+          showToast('Inzwischen gibt es Platzierungstipps: Bitte für jedes Team einen Punktestand eintragen.', { error: true });
+          openDrawResultDialog(draw, ctx, { requirePlacements: true, enteredScores });
+          return false;
+        };
+        if (!placements && await competitionNeedsPlacementsNow('draw', draw.id).catch(() => false)) return reopenForPlacements();
+        // A dialog closed while the market was being checked saves nothing.
+        if (!el.isConnected) return false;
+        const payloadTeams = draw.teams.map((team, index) => ({
+          playerIds: team.players.map((player) => player.id),
+          score: mode === 'score' ? scores[index] : null,
+          rank: mode === 'score' ? ranks[index] : null,
+        }));
+        try {
+          if (recorded) {
+            await api.matches.update(draw.matchId, { teams: payloadTeams, winnerTeamIndex: winnerIndex, isDraw: winnerIndex === null, placementsConfirmed: complete, ...correction.payload(el) });
+          } else {
+            await api.matches.create({ gameId: draw.gameId, drawId: draw.id, drawLineup, teams: payloadTeams, winnerTeamIndex: winnerIndex, isDraw: winnerIndex === null, placementsConfirmed: complete });
+          }
+        } catch (error) {
+          // The server refuses a result without places once such tips exist,
+          // with a code that works even while LAN points are hidden here.
+          if (!placements && error.code === 'placements_required') return reopenForPlacements();
+          if (!recorded && error.code === 'draw_lineup_changed') {
+            await reloadAfterLineupConflict(draw.id, close, ctx, error.message);
+            return;
+          }
+          throw error;
         }
-      } catch (error) {
-        // The server refuses a result without places once such tips exist,
-        // with a code that works even while LAN points are hidden here.
-        if (!placements && error.code === 'placements_required') return reopenForPlacements();
-        if (!recorded && error.code === 'draw_lineup_changed') {
-          await reloadAfterLineupConflict(draw.id, close, ctx, error.message);
-          return;
+        if (!recorded) {
+          if (state.lastMatchmaking?.id === draw.id) state.lastMatchmaking = null;
+          // Open lineups of every game are listed, but Historie shows the
+          // selected game only: follow the result so it appears there.
+          state.selectedGameId = draw.gameId;
         }
-        throw error;
+        expandedHistoryIds.add(draw.id);
+        historySectionOpen = true;
+        // Make the intent visible to the shared render-state snapshot as well.
+        // Updating only the module flag lets restoration close it again.
+        const history = document.querySelector('#view-container [data-matchmaking-section="history"]');
+        if (history) history.open = true;
+        invalidateMatchmakingHistory();
+        close();
+        await ctx.refresh();
+        showToast('Ergebnis gespeichert.');
+      } finally {
+        if (el.isConnected) controls.forEach((control) => { control.disabled = false; });
       }
-      if (!recorded) {
-        if (state.lastMatchmaking?.id === draw.id) state.lastMatchmaking = null;
-        // Open lineups of every game are listed, but Historie shows the
-        // selected game only: follow the result so it appears there.
-        state.selectedGameId = draw.gameId;
-      }
-      expandedHistoryIds.add(draw.id);
-      historySectionOpen = true;
-      // Make the intent visible to the shared render-state snapshot as well.
-      // Updating only the module flag lets restoration close it again.
-      const history = document.querySelector('#view-container [data-matchmaking-section="history"]');
-      if (history) history.open = true;
-      invalidateMatchmakingHistory();
-      close();
-      await ctx.refresh();
-      showToast('Ergebnis gespeichert.');
     },
   });
   if (recorded && correction.readOnly) {
