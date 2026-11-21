@@ -512,8 +512,8 @@ test('Jam controller asks Spotify only after changes and song ends and waits out
   // A Jam starts: checked at once, then again only after the song end.
   playing = true;
   sessionActive = true;
-  // Every requested check also rereads the queue: after the command and now.
-  await waitFor(() => playerRequests === 3 && queueReads === 3);
+  // The Jam start rereads the queue; the pause before could not change it.
+  await waitFor(() => playerRequests === 3 && queueReads === 2);
   const afterJamStart = heartbeats.length;
   // Three 50 ms heartbeats stay well inside the 2.5 s until the song-end check.
   await heartbeatsAfter(afterJamStart + 3);
@@ -526,12 +526,12 @@ test('Jam controller asks Spotify only after changes and song ends and waits out
   // Negative window: a queue read starts right after its heartbeat, so three
   // further 50 ms heartbeats leave ample time for one to arrive.
   await heartbeatsAfter(afterSongEnd + 3);
-  assert.equal(queueReads, 3, 'an unchanged song and playlist do not read the queue again');
+  assert.equal(queueReads, 2, 'an unchanged song and playlist do not read the queue again');
 
   // A queued request changes Spotify's queue and is checked at once.
   nextCommand = { id: 'command-2', type: 'queueTrack', payload: { uri: 'spotify:track:track-2', deviceId: 'device-1' } };
   await waitFor(() => commandResults[1]);
-  await waitFor(() => playerRequests === 5 && queueReads === 4);
+  await waitFor(() => playerRequests === 5 && queueReads === 3);
 
   // A long Spotify block is named and waited out instead of hammered.
   blockSpotify = true;
@@ -548,12 +548,15 @@ test('Jam controller asks Spotify only after changes and song ends and waits out
   const page = await (await fetch(`http://127.0.0.1:${controllerPort}`)).text();
   const shown = Number(page.match(/Spotify-Anfragen in der letzten Stunde<\/span><strong>(\d+)</)?.[1]);
   assert.equal(shown, spotifyRequests, 'the local page shows every Spotify request of the last hour');
+  assert.match(page, /Davon: [^<]*Status \d+[^<]*Warteschlange 3[^<]*</);
 });
 
 test('Jam controller forwards browser player reports instead of asking Spotify', async (t) => {
   const storeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'respawn-jam-browser-'));
   const heartbeats = [];
   let playerRequests = 0;
+  let nextCommand = null;
+  const commandResults = [];
   const respawn = http.createServer((req, res) => {
     const chunks = [];
     req.on('data', (chunk) => chunks.push(chunk));
@@ -564,10 +567,21 @@ test('Jam controller forwards browser player reports instead of asking Spotify',
         res.end(JSON.stringify({ ok: true, sessionActive: true }));
         return;
       }
-      res.end(JSON.stringify({ command: null }));
+      if (req.url === '/api/music/controller/commands') {
+        const command = nextCommand;
+        nextCommand = null;
+        res.end(JSON.stringify({ command }));
+        return;
+      }
+      commandResults.push(JSON.parse(Buffer.concat(chunks).toString('utf8')));
+      res.end('{}');
     });
   });
   const spotify = http.createServer((req, res) => {
+    if (req.url?.startsWith('/v1/me/player/pause')) {
+      res.writeHead(204).end();
+      return;
+    }
     if (req.url === '/v1/me/player') {
       playerRequests += 1;
       res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -664,6 +678,16 @@ test('Jam controller forwards browser player reports instead of asking Spotify',
   });
   assert.equal(forwarded.playback.isPlaying, true);
   assert.equal(forwarded.playback.progressMs, 5_000);
+
+  // A command for the reporting browser player needs no Spotify check: the
+  // player reports the result itself.
+  nextCommand = { id: 'command-1', type: 'pause', payload: { deviceId: 'browser-device' } };
+  await waitFor(() => commandResults[0]);
+  assert.equal(commandResults[0].ok, true);
+  const afterCommand = heartbeats.length;
+  // Negative window: a forced check would run on the very next heartbeat.
+  await waitFor(() => heartbeats.length >= afterCommand + 3);
+  assert.equal(playerRequests, 1, 'the browser player reports the pause instead of a Spotify check');
 
   // A stopped browser player hands over to Spotify at once.
   assert.equal((await report({ deviceId: 'browser-device', state: null })).status, 204);

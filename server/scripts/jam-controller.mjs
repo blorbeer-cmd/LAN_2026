@@ -78,6 +78,8 @@ let spotifyQueueRefreshRequested = false;
 // Latest playback reported by the local browser player, in the shape of
 // Spotify's GET /me/player answer, waiting for the next heartbeat.
 let browserPlayback = null;
+// Spotify device of the browser player while it reports its own state.
+let browserDeviceId = null;
 let lastSpotifyQueueContextUri = null;
 let lastSpotifyQueueTrackUri = null;
 let spotifyRetryAt = 0;
@@ -315,6 +317,7 @@ function page(message = '', isError = false) {
       <div><span>Browser-/Kiosk-Ton</span><strong>${browserPlaybackReady ? 'Bereit' : 'Freigabe nötig'}</strong></div>
       <div><span>Spotify-Anfragen in der letzten Stunde</span><strong>${spotifyRequestsLastHour()}</strong></div>
     </div>
+    ${spotifyRequestTimes.length ? `<p class="note" id="spotify-request-kinds">Davon: ${htmlEscape(spotifyRequestBreakdown())}</p>` : ''}
     ${runtime.respawnMessage ? `<p class="note">${htmlEscape(runtime.respawnMessage)}</p>` : ''}
     ${runtime.spotifyMessage ? `<p class="note">${htmlEscape(runtime.spotifyMessage)}</p>` : ''}
     <p class="note">Verbunden mit ${htmlEscape(state.respawnBaseUrl)}. Abbrüche werden automatisch erneut versucht; diese Seite muss nicht offen bleiben.</p>
@@ -419,9 +422,11 @@ function acceptBrowserPlayback(playback) {
     // The browser player stopped or Spotify moved on to another device: only
     // Spotify itself knows what plays now.
     browserPlayback = null;
+    browserDeviceId = null;
     requestSpotifyStatus();
   } else {
     browserPlayback = playback;
+    browserDeviceId = playback.device.id;
   }
   void sendHeartbeat();
 }
@@ -615,10 +620,28 @@ async function spotifyToken() {
   return state.accessTokenSpotify;
 }
 
+function spotifyRequestKind(pathname, method = 'GET') {
+  const path = pathname.split('?')[0];
+  if (method === 'GET' && path === '/me/player') return 'Status';
+  if (method === 'GET' && path === '/me/player/queue') return 'Warteschlange';
+  if (path === '/me/player/devices') return 'Geräte';
+  if (path === '/search') return 'Suche';
+  if (path.startsWith('/tracks/') || path.startsWith('/playlists/')) return 'Titel und Playlists';
+  return 'Befehle';
+}
+
 function spotifyRequestsLastHour() {
   const since = Date.now() - 60 * 60_000;
-  spotifyRequestTimes = spotifyRequestTimes.filter((time) => time > since);
+  spotifyRequestTimes = spotifyRequestTimes.filter((entry) => entry.time > since);
   return spotifyRequestTimes.length;
+}
+
+// Shows where the quota goes, so the load can be checked before a LAN.
+function spotifyRequestBreakdown() {
+  const counts = new Map();
+  spotifyRequestsLastHour();
+  for (const { kind } of spotifyRequestTimes) counts.set(kind, (counts.get(kind) || 0) + 1);
+  return [...counts].sort((a, b) => b[1] - a[1]).map(([kind, count]) => `${kind} ${count}`).join(' · ');
 }
 
 async function spotify(pathname, options = {}) {
@@ -627,7 +650,7 @@ async function spotify(pathname, options = {}) {
   }
   for (let attempt = 0; attempt < 2; attempt += 1) {
     const token = await spotifyToken();
-    spotifyRequestTimes.push(Date.now());
+    spotifyRequestTimes.push({ time: Date.now(), kind: spotifyRequestKind(pathname, options.method) });
     if (spotifyRequestTimes.length > 5_000) spotifyRequestsLastHour();
     const response = await fetchWithTimeout(`${SPOTIFY_API_BASE_URL}${pathname}`, {
       ...options, headers: { Authorization: `Bearer ${token}`, ...(options.headers || {}) },
@@ -694,8 +717,6 @@ function clearSchedule() {
 // keep it: otherwise a search during the last request cancels the pause
 // and Spotify's own autoplay fills the silence with unrequested songs.
 const PLAYBACK_COMMANDS = new Set(['playUris', 'playContext', 'transfer', 'pause', 'resume', 'next']);
-// Commands after which Respawn must see Spotify's new state at once.
-const STATE_CHANGING_COMMANDS = new Set([...PLAYBACK_COMMANDS, 'queueTrack']);
 
 async function executeCommand(type, payload = {}) {
   if (PLAYBACK_COMMANDS.has(type)) clearSchedule();
@@ -757,9 +778,10 @@ async function executeCommand(type, payload = {}) {
     scheduledPlayback = setTimeout(async () => {
       scheduledPlayback = null;
       try {
-        if (payload.uris?.length) await executeCommand('playUris', { deviceId: payload.deviceId, uris: payload.uris });
-        else await executeCommand('pause', { deviceId: payload.deviceId });
-        await refreshSpotifyStatusNow();
+        const type = payload.uris?.length ? 'playUris' : 'pause';
+        await executeCommand(type, { deviceId: payload.deviceId, uris: payload.uris });
+        followUpCommand(type, { deviceId: payload.deviceId });
+        await sendHeartbeat();
       } catch (error) { console.error('[Jam] Geplanter Wechsel fehlgeschlagen:', error.message); }
     }, Math.max(0, Number(payload.delayMs || 0)));
     return { scheduled: true };
@@ -778,7 +800,7 @@ async function pollCommands() {
         const data = await executeCommand(command.type, command.payload);
         // A started or changed Jam must show its new state at once, even
         // before the next heartbeat reports the session as active.
-        if (STATE_CHANGING_COMMANDS.has(command.type)) requestSpotifyStatus();
+        followUpCommand(command.type, command.payload);
         await respawnFetch(`/api/music/controller/commands/${encodeURIComponent(command.id)}/result`, {
           method: 'POST', body: JSON.stringify({ ok: true, data }),
         });
@@ -888,10 +910,28 @@ async function postControllerHeartbeat(controllerToken, playbackAvailable, playb
   }
 }
 
-function requestSpotifyStatus() {
+function requestSpotifyStatus({ queue = true } = {}) {
   spotifyStatusRequests += 1;
   nextSpotifyStatusAt = 0;
-  spotifyQueueRefreshRequested = true;
+  if (queue) spotifyQueueRefreshRequested = true;
+}
+
+// Decides what Spotify must be asked after a successful command. Every check
+// costs quota, so only what the command can have changed is read again.
+function followUpCommand(type, payload = {}) {
+  if (type === 'queueTrack') {
+    // Only Spotify's live queue changes, and Respawn shows it for playlists only.
+    if (spotifyQueueCache.contextUri) requestSpotifyStatus();
+    return;
+  }
+  if (!PLAYBACK_COMMANDS.has(type)) return;
+  const queueMayChange = type !== 'pause' && type !== 'resume';
+  if (browserDeviceId && payload.deviceId === browserDeviceId) {
+    // The browser player reports the new state itself.
+    if (queueMayChange) spotifyQueueRefreshRequested = true;
+    return;
+  }
+  requestSpotifyStatus({ queue: queueMayChange });
 }
 
 function scheduleSpotifyStatus(playback) {
