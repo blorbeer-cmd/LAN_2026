@@ -446,7 +446,13 @@ test('real LAN account, automatic orga credits, own-game betting notification, h
   await member.getByRole('tooltip').getByText(/Gewinn höchstens in Höhe deines Einsatzes/).waitFor();
   await member.keyboard.press('Escape');
   await member.locator('[data-tip-form] [name="stake"]').fill('1');
-  await member.getByRole('button', { name: 'Tipp speichern', exact: true }).click();
+  // The held amount is read through a separate request: it must wait for the
+  // saved tip, or it can still see the previous stake of 11.
+  await Promise.all([
+    member.waitForResponse((response) => response.request().method() === 'PUT'
+      && new URL(response.url()).pathname === `/api/points/rounds/${round.id}/tip` && response.ok()),
+    member.getByRole('button', { name: 'Tipp speichern', exact: true }).click(),
+  ]);
   assert.equal((await api(`/api/points?eventId=${eventId}`, 'GET', undefined, alice.cookie)).wallet.held, 1);
   assert.equal(await cardToggle.getAttribute('aria-expanded'), 'true', 'tip changes also retain an opened match');
   await api(

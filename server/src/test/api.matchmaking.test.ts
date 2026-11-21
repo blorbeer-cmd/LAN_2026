@@ -313,14 +313,16 @@ test('POST /api/matchmaking returns a draw id and null matchId', async () => {
   assert.equal(res.body.matchId, null);
 });
 
-test('POST /api/matchmaking has a null source (only a Captain-Draft sets it)', async () => {
+test('POST /api/matchmaking has a null source (only a Captain-Draft sets it) and names who drew it', async () => {
   const res = await request(app).post('/api/matchmaking').send({ gameId, playerIds, teamCount: 2 });
   assert.equal(res.status, 200);
   assert.equal(res.body.source, null);
+  assert.equal(res.body.createdByName, 'Integration Test Admin');
 
   const history = await request(app).get(`/api/matchmaking/history?gameId=${gameId}`);
   const entry = history.body.history.find((h: { id: string }) => h.id === res.body.id);
   assert.equal(entry.source, null);
+  assert.equal(entry.createdByName, 'Integration Test Admin');
 });
 
 test('POST /api/matchmaking/rematch rejects fewer than 2 teams', async () => {
@@ -865,4 +867,301 @@ test('DELETE /api/matchmaking/draws/:id/players/:playerId leaves tournament team
   const res = await removePlayer(draw.body.id, draw.body.teams[0].players[0].id);
   assert.equal(res.status, 409);
   assert.match(res.body.error, /Turnier/);
+});
+
+const shuffleDraw = (drawId: string) => request(app).post(`/api/matchmaking/draws/${drawId}/shuffle`);
+// The test app would otherwise act as the player named in the body.
+const addPlayer = (drawId: string, body: Record<string, unknown>) =>
+  request(app).post(`/api/matchmaking/draws/${drawId}/players`).set('x-test-player-id', TEST_ADMIN_ID).send(body);
+const storedLineup = (drawId: string) =>
+  teamIds(JSON.parse((db.prepare('SELECT teams FROM matchmaking_draws WHERE id = ?').get(drawId) as { teams: string }).teams));
+
+test('POST /api/matchmaking/draws/:id/shuffle redistributes the same players in place', async () => {
+  const game = await request(app).post('/api/games').send({ name: 'Shuffle Open Draw' });
+  const draw = await request(app).post('/api/matchmaking')
+    .send({ gameId: game.body.id, playerIds: playerIds.slice(0, 4), teamCount: 2 });
+  await request(app).patch(`/api/matchmaking/draws/${draw.body.id}/server`).send({ serverAddress: '10.0.0.5' });
+  const before = teamIds(draw.body.teams).map((ids) => [...ids].sort().join()).sort();
+
+  const shuffled = await shuffleDraw(draw.body.id);
+  assert.equal(shuffled.status, 200, JSON.stringify(shuffled.body));
+  assert.equal(shuffled.body.id, draw.body.id);
+  assert.equal(shuffled.body.teams.length, 2);
+  assert.notDeepEqual(teamIds(shuffled.body.teams).map((ids) => [...ids].sort().join()).sort(), before);
+  assert.deepEqual(teamIds(shuffled.body.teams).flat().sort(), playerIds.slice(0, 4).sort());
+  assert.equal(shuffled.body.serverAddress, '10.0.0.5');
+  assert.equal(shuffled.body.createdByName, 'Integration Test Admin');
+  for (const team of shuffled.body.teams as Array<{ players: Array<{ rating: number | null }>; totalRating: number }>) {
+    assert.equal(team.totalRating, team.players.reduce((sum, p) => sum + (p.rating ?? 3), 0));
+  }
+  assert.deepEqual(storedLineup(draw.body.id), teamIds(shuffled.body.teams));
+
+  assert.equal((await shuffleDraw('nope')).status, 404);
+  const pair = await request(app).post('/api/matchmaking')
+    .send({ gameId: game.body.id, playerIds: playerIds.slice(0, 2), teamCount: 2 });
+  const single = await shuffleDraw(pair.body.id);
+  assert.equal(single.status, 409);
+  assert.match(single.body.error, /nur einen Spieler/);
+});
+
+test('POST /api/matchmaking/draws/:id/shuffle turns a rematch into a rating-balanced draw', async () => {
+  const game = await request(app).post('/api/games').send({ name: 'Shuffle Rematch' });
+  const rematch = await request(app).post('/api/matchmaking/rematch').send({
+    gameId: game.body.id,
+    teams: [{ playerIds: playerIds.slice(0, 2) }, { playerIds: playerIds.slice(2, 4) }],
+  });
+  assert.equal(rematch.body.source, 'rematch');
+  const shuffled = await shuffleDraw(rematch.body.id);
+  assert.equal(shuffled.status, 200);
+  assert.equal(shuffled.body.source, null);
+});
+
+test('POST /api/matchmaking/draws/:id/players adds a participant to the smallest or the chosen team', async () => {
+  const game = await request(app).post('/api/games').send({ name: 'Add Player Open Draw' });
+  const draw = await request(app).post('/api/matchmaking')
+    .send({ gameId: game.body.id, playerIds: playerIds.slice(0, 3), teamCount: 2 });
+  const lineup = teamIds(draw.body.teams);
+  const smaller = lineup.findIndex((ids) => ids.length === 1);
+  const newcomer = playerIds[3];
+
+  assert.equal((await addPlayer(draw.body.id, { playerId: 'not valid!' })).status, 400);
+  assert.equal((await addPlayer(draw.body.id, { playerId: newcomer, teamIndex: -1 })).status, 400);
+  assert.equal((await addPlayer(draw.body.id, { playerId: newcomer, teamIndex: 2 })).status, 400);
+  assert.equal((await addPlayer(draw.body.id, { playerId: 'ghost' })).status, 404);
+  assert.equal((await addPlayer('nope', { playerId: newcomer })).status, 404);
+  const duplicate = await addPlayer(draw.body.id, { playerId: lineup[0][0] });
+  assert.equal(duplicate.status, 409);
+  assert.match(duplicate.body.error, /bereits/);
+
+  const auto = await addPlayer(draw.body.id, { playerId: newcomer });
+  assert.equal(auto.status, 200, JSON.stringify(auto.body));
+  assert.deepEqual(teamIds(auto.body.teams)[smaller], [...lineup[smaller], newcomer]);
+  const rating = db.prepare('SELECT rating FROM skills WHERE game_id = ? AND player_id = ?').pluck().get(game.body.id, newcomer) as number | undefined;
+  const added = auto.body.teams[smaller].players.at(-1);
+  assert.equal(added.rating, rating ?? null);
+  assert.equal(auto.body.teams[smaller].totalRating,
+    auto.body.teams[smaller].players.reduce((sum: number, p: { rating: number | null }) => sum + (p.rating ?? 3), 0));
+
+  const extra = await request(app).post('/api/players').send({ name: 'Late Arrival' });
+  const chosen = await addPlayer(draw.body.id, { playerId: extra.body.id, teamIndex: 0 });
+  assert.equal(chosen.status, 200);
+  assert.equal(teamIds(chosen.body.teams)[0].at(-1), extra.body.id);
+  assert.deepEqual(storedLineup(draw.body.id), teamIds(chosen.body.teams));
+});
+
+test('lineup changes refuse a draw with a result or a tournament', async () => {
+  const game = await request(app).post('/api/games').send({ name: 'Frozen Lineup' });
+  const recorded = await request(app).post('/api/matchmaking')
+    .send({ gameId: game.body.id, playerIds: playerIds.slice(0, 3), teamCount: 2 });
+  const match = await request(app).post('/api/matches').send({
+    gameId: game.body.id,
+    teams: teamIds(recorded.body.teams).map((ids) => ({ playerIds: ids })),
+    winnerTeamIndex: 0,
+    drawId: recorded.body.id,
+  });
+  assert.equal(match.status, 201);
+  const owned = await request(app).post('/api/matchmaking')
+    .send({ gameId: game.body.id, playerIds: playerIds.slice(0, 3), teamCount: 2 });
+  const tournament = await request(app).post('/api/tournaments').send({
+    gameId: game.body.id, format: 'single_elimination', drawId: owned.body.id,
+    teams: teamIds(owned.body.teams).map((ids) => ({ playerIds: ids })),
+  });
+  assert.equal(tournament.status, 201);
+
+  for (const [drawId, pattern] of [[recorded.body.id, /Ergebnis/], [owned.body.id, /Turnier/]] as const) {
+    const before = storedLineup(drawId);
+    const shuffled = await shuffleDraw(drawId);
+    assert.equal(shuffled.status, 409);
+    assert.match(shuffled.body.error, pattern);
+    const added = await addPlayer(drawId, { playerId: playerIds[3] });
+    assert.equal(added.status, 409);
+    assert.match(added.body.error, pattern);
+    assert.deepEqual(storedLineup(drawId), before);
+  }
+});
+
+test('parallel lineup changes: one of two identical additions wins, a shuffle keeps a parallel addition', async () => {
+  const game = await request(app).post('/api/games').send({ name: 'Lineup Race' });
+  const draw = await request(app).post('/api/matchmaking')
+    .send({ gameId: game.body.id, playerIds: playerIds.slice(0, 3), teamCount: 2 });
+  const statuses = (await Promise.all([
+    addPlayer(draw.body.id, { playerId: playerIds[3] }),
+    addPlayer(draw.body.id, { playerId: playerIds[3] }),
+  ])).map((res) => res.status).sort();
+  assert.deepEqual(statuses, [200, 409]);
+  assert.deepEqual(storedLineup(draw.body.id).flat().sort(), playerIds.slice(0, 4).sort());
+
+  const late = await request(app).post('/api/players').send({ name: 'Race Arrival' });
+  const [shuffled, added] = await Promise.all([shuffleDraw(draw.body.id), addPlayer(draw.body.id, { playerId: late.body.id })]);
+  assert.equal(shuffled.status, 200);
+  assert.equal(added.status, 200);
+  assert.deepEqual(storedLineup(draw.body.id).flat().sort(), [...playerIds.slice(0, 4), late.body.id].sort());
+});
+
+test('POST /api/matches refuses a result whose dialog shows an outdated draw lineup', async () => {
+  const game = await request(app).post('/api/games').send({ name: 'Stale Result Dialog' });
+  const draw = await request(app).post('/api/matchmaking')
+    .send({ gameId: game.body.id, playerIds: playerIds.slice(0, 3), teamCount: 2 });
+  const opened = teamIds(draw.body.teams);
+  const record = (lineup: unknown, teams: string[][]) => request(app).post('/api/matches').send({
+    gameId: game.body.id, drawId: draw.body.id, drawLineup: lineup,
+    teams: teams.map((ids) => ({ playerIds: ids })), winnerTeamIndex: 0,
+  });
+
+  assert.equal((await record([['x', 5]], opened)).status, 400);
+  assert.equal((await request(app).post('/api/matches').send({
+    gameId: game.body.id, drawLineup: opened, teams: opened.map((ids) => ({ playerIds: ids })), winnerTeamIndex: 0,
+  })).status, 400, 'drawLineup only makes sense together with drawId');
+
+  // Another device adds a player after this dialog was opened.
+  assert.equal((await addPlayer(draw.body.id, { playerId: playerIds[3] })).status, 200);
+  const stale = await record(opened, opened);
+  assert.equal(stale.status, 409);
+  assert.equal(stale.body.code, 'draw_lineup_changed');
+  const open = db.prepare('SELECT match_id FROM matchmaking_draws WHERE id = ?').get(draw.body.id) as { match_id: string | null };
+  assert.equal(open.match_id, null);
+  assert.ok(storedLineup(draw.body.id).flat().includes(playerIds[3]));
+
+  const current = storedLineup(draw.body.id);
+  const fresh = await record(current, current);
+  assert.equal(fresh.status, 201, JSON.stringify(fresh.body));
+  assert.deepEqual(storedLineup(draw.body.id), current);
+});
+
+test('parallel: a lineup change and a result from the old lineup never both take effect', async () => {
+  const game = await request(app).post('/api/games').send({ name: 'Lineup Result Race' });
+  const draw = await request(app).post('/api/matchmaking')
+    .send({ gameId: game.body.id, playerIds: playerIds.slice(0, 3), teamCount: 2 });
+  const opened = teamIds(draw.body.teams);
+  const [added, recorded] = await Promise.all([
+    addPlayer(draw.body.id, { playerId: playerIds[3] }),
+    request(app).post('/api/matches').send({
+      gameId: game.body.id, drawId: draw.body.id, drawLineup: opened,
+      teams: opened.map((ids) => ({ playerIds: ids })), winnerTeamIndex: 0,
+    }),
+  ]);
+  assert.equal([added.status, recorded.status].filter((status) => status < 300).length, 1,
+    `exactly one side wins: add ${added.status}, result ${recorded.status}`);
+  assert.equal(Math.max(added.status, recorded.status), 409);
+  const row = db.prepare('SELECT match_id FROM matchmaking_draws WHERE id = ?').get(draw.body.id) as { match_id: string | null };
+  assert.equal(Boolean(row.match_id), recorded.status === 201);
+  assert.equal(storedLineup(draw.body.id).flat().includes(playerIds[3]), added.status === 200);
+});
+
+test('POST /api/tournaments refuses teams from a dialog that shows an outdated draw lineup', async () => {
+  const game = await request(app).post('/api/games').send({ name: 'Stale Tournament Dialog' });
+  const draw = await request(app).post('/api/matchmaking')
+    .send({ gameId: game.body.id, playerIds: playerIds.slice(0, 3), teamCount: 2 });
+  const opened = teamIds(draw.body.teams);
+  const createTournament = (lineup: unknown, teams: string[][], withDraw = true) => request(app).post('/api/tournaments').send({
+    gameId: game.body.id, format: 'single_elimination', ...(withDraw ? { drawId: draw.body.id } : {}), drawLineup: lineup,
+    teams: teams.map((ids) => ({ playerIds: ids })),
+  });
+
+  assert.equal((await createTournament('x', opened)).status, 400);
+  assert.equal((await createTournament(opened, opened, false)).status, 400, 'drawLineup only makes sense together with drawId');
+
+  assert.equal((await addPlayer(draw.body.id, { playerId: playerIds[3] })).status, 200);
+  const stale = await createTournament(opened, opened);
+  assert.equal(stale.status, 409);
+  assert.equal(stale.body.code, 'draw_lineup_changed');
+  const open = db.prepare('SELECT tournament_id FROM matchmaking_draws WHERE id = ?').get(draw.body.id) as { tournament_id: string | null };
+  assert.equal(open.tournament_id, null, 'a refused tournament leaves the draw open');
+
+  const current = storedLineup(draw.body.id);
+  assert.equal((await createTournament(current, current)).status, 201);
+});
+
+test('POST /api/matchmaking/draws/:id/players refuses a chosen team from an outdated lineup', async () => {
+  const game = await request(app).post('/api/games').send({ name: 'Stale Team Choice' });
+  const draw = await request(app).post('/api/matchmaking')
+    .send({ gameId: game.body.id, playerIds: playerIds.slice(0, 4), teamCount: 2 });
+  const opened = teamIds(draw.body.teams);
+  const late = await request(app).post('/api/players').send({ name: 'Team Choice Arrival' });
+
+  assert.equal((await addPlayer(draw.body.id, { playerId: late.body.id, teamIndex: 0, drawLineup: [[1]] })).status, 400);
+  // Another device reshuffles between opening and saving the dialog.
+  assert.equal((await shuffleDraw(draw.body.id)).status, 200);
+  const shuffled = storedLineup(draw.body.id);
+  const stale = await addPlayer(draw.body.id, { playerId: late.body.id, teamIndex: 0, drawLineup: opened });
+  assert.equal(stale.status, 409);
+  assert.equal(stale.body.code, 'draw_lineup_changed');
+  assert.deepEqual(storedLineup(draw.body.id), shuffled);
+
+  const fresh = await addPlayer(draw.body.id, { playerId: late.body.id, teamIndex: 0, drawLineup: shuffled });
+  assert.equal(fresh.status, 200);
+  assert.deepEqual(teamIds(fresh.body.teams)[0], [...shuffled[0], late.body.id]);
+});
+
+test('parallel: a lineup change and a tournament from the old lineup never both take effect', async () => {
+  const game = await request(app).post('/api/games').send({ name: 'Lineup Tournament Race' });
+  const draw = await request(app).post('/api/matchmaking')
+    .send({ gameId: game.body.id, playerIds: playerIds.slice(0, 3), teamCount: 2 });
+  const opened = teamIds(draw.body.teams);
+  const [added, created] = await Promise.all([
+    addPlayer(draw.body.id, { playerId: playerIds[3] }),
+    request(app).post('/api/tournaments').send({
+      gameId: game.body.id, format: 'single_elimination', drawId: draw.body.id, drawLineup: opened,
+      teams: opened.map((ids) => ({ playerIds: ids })),
+    }),
+  ]);
+  assert.equal([added.status, created.status].filter((status) => status < 300).length, 1,
+    `exactly one side wins: add ${added.status}, tournament ${created.status}`);
+  assert.equal(Math.max(added.status, created.status), 409);
+  const row = db.prepare('SELECT tournament_id FROM matchmaking_draws WHERE id = ?').get(draw.body.id) as { tournament_id: string | null };
+  assert.equal(Boolean(row.tournament_id), created.status === 201);
+  assert.equal(storedLineup(draw.body.id).flat().includes(playerIds[3]), added.status === 200);
+});
+
+test('POST /api/matchmaking/draws/:id/players refuses a chosen position that now holds another team', async () => {
+  const game = await request(app).post('/api/games').send({ name: 'Swapped Team Order' });
+  const draw = await request(app).post('/api/matchmaking')
+    .send({ gameId: game.body.id, playerIds: playerIds.slice(0, 4), teamCount: 2 });
+  const opened = teamIds(draw.body.teams);
+  // Same teams, other order: what two reshuffles can produce.
+  const swapped = [opened[1], opened[0]];
+  db.prepare('UPDATE matchmaking_draws SET teams = ? WHERE id = ?')
+    .run(JSON.stringify([draw.body.teams[1], draw.body.teams[0]]), draw.body.id);
+  const late = await request(app).post('/api/players').send({ name: 'Swapped Order Arrival' });
+
+  const stale = await addPlayer(draw.body.id, { playerId: late.body.id, teamIndex: 0, drawLineup: opened });
+  assert.equal(stale.status, 409);
+  assert.equal(stale.body.code, 'draw_lineup_changed');
+  assert.deepEqual(storedLineup(draw.body.id), swapped);
+  // The same lineup without a chosen team is still the current one.
+  assert.equal((await addPlayer(draw.body.id, { playerId: late.body.id, drawLineup: opened })).status, 200);
+});
+
+test('GET /api/matchmaking/draws/:id returns one draw regardless of history filters', async () => {
+  const game = await request(app).post('/api/games').send({ name: 'Single Draw Fetch' });
+  const draw = await request(app).post('/api/matchmaking')
+    .send({ gameId: game.body.id, playerIds: playerIds.slice(0, 2), teamCount: 2 });
+  const fetched = await request(app).get(`/api/matchmaking/draws/${draw.body.id}`);
+  assert.equal(fetched.status, 200);
+  assert.deepEqual(teamIds(fetched.body.teams), teamIds(draw.body.teams));
+  assert.equal(fetched.body.createdByName, 'Integration Test Admin');
+  assert.equal((await request(app).get('/api/matchmaking/draws/nope')).status, 404);
+
+  const foreignEventId = nanoid();
+  const now = Date.now();
+  db.prepare(
+    `INSERT INTO events (id, name, starts_at, ends_at, tracking_enabled, group_id, status, visibility_scope)
+     VALUES (?, 'Fremdes Event Draw', ?, ?, 0, ?, 'published', 'participants')`,
+  ).run(foreignEventId, now - 1_000, now + 60_000, DEFAULT_GROUP_ID);
+  db.prepare('UPDATE matchmaking_draws SET event_id = ? WHERE id = ?').run(foreignEventId, draw.body.id);
+  assert.equal((await request(app).get(`/api/matchmaking/draws/${draw.body.id}`)).status, 404);
+});
+
+test('a result may send the lineup of a draw with more than 64 teams', async () => {
+  const game = await request(app).post('/api/games').send({ name: 'Huge Free For All' });
+  const ids: string[] = [];
+  for (let index = 0; index < 65; index++) ids.push((await request(app).post('/api/players').send({ name: `FFA Lineup ${index}` })).body.id);
+  const draw = await request(app).post('/api/matchmaking').send({ gameId: game.body.id, playerIds: ids, teamCount: 65 });
+  assert.equal(draw.status, 200, JSON.stringify(draw.body));
+  const lineup = teamIds(draw.body.teams);
+  const recorded = await request(app).post('/api/matches').send({
+    gameId: game.body.id, drawId: draw.body.id, drawLineup: lineup,
+    teams: lineup.map((team) => ({ playerIds: team })), winnerTeamIndex: 0,
+  });
+  assert.equal(recorded.status, 201, JSON.stringify(recorded.body));
 });
