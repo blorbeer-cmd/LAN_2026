@@ -618,6 +618,21 @@ test('each result row reports its all-time vote win count', async () => {
   const rlResult = res.body.results.find((r: { gameId: string }) => r.gameId === gameRl);
   assert.equal(rlResult.voteWinCount, 2);
   assert.equal(cs2Result.voteWinCount, 1);
+
+  // A closed round without any ballot is hidden from the history, so its
+  // winner must not count as a trophy either.
+  const junkRound = (db.prepare('SELECT MAX(round) + 1 AS n FROM vote_rounds').get() as { n: number }).n;
+  db.prepare(
+    `INSERT INTO vote_rounds (group_id, round, event_id, started_at, closed_at, winner_game_ids, mode)
+     VALUES (?, ?, ?, ?, ?, ?, 'single')`,
+  ).run(DEFAULT_GROUP_ID, junkRound, BASE_EVENT_ID, Date.now(), Date.now(), JSON.stringify([gameCs2]));
+  try {
+    const again = await request(app).get('/api/votes');
+    const cs2Again = again.body.results.find((r: { gameId: string }) => r.gameId === gameCs2);
+    assert.equal(cs2Again.voteWinCount, 1);
+  } finally {
+    db.prepare('DELETE FROM vote_rounds WHERE group_id = ? AND round = ?').run(DEFAULT_GROUP_ID, junkRound);
+  }
 });
 
 test('each result row reports total all-time playtime, growing as sessions are tracked', async () => {
