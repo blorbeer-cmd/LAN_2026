@@ -92,13 +92,22 @@ test('Tetris Arena starts with four players, survives departures and records pla
     assert.equal(spoofedLeave.ok, false);
 
     const firstState = waitForEvent<{
-      players: Array<{ playerId: string; alive: boolean; placement: number | null }>;
+      players: Array<{
+        playerId: string;
+        alive: boolean;
+        placement: number | null;
+        next: string[];
+        nextPiece: { type: string } | null;
+      }>;
     }>(sockets[0], 'tetris:state');
     assert.equal((await emitAck(sockets[3], 'tetris:match:leave', { matchId: match.matchId, playerId: fourthId })).ok, true);
     const afterFirstLeave = await firstState;
+    const hostState = afterFirstLeave.players.find((player) => player.playerId === hostId);
+    assert.ok(hostState?.nextPiece);
+    assert.equal(hostState.nextPiece.type, hostState.next[0]);
     assert.partialDeepStrictEqual(
       afterFirstLeave.players.find((player) => player.playerId === fourthId),
-      { playerId: fourthId, alive: false, placement: 4 },
+      { playerId: fourthId, alive: false, placement: 4, nextPiece: null },
     );
 
     assert.equal((await emitAck(sockets[2], 'tetris:match:leave', { matchId: match.matchId, playerId: thirdId })).ok, true);

@@ -988,10 +988,18 @@ arcadeTest('multiplayer', 'Tetris Arena supports eight ready players across mult
       primary: document.querySelector('#tetris-mine')!.getBoundingClientRect().toJSON(),
       preview: document.querySelector('#tetris-next-piece')!.getBoundingClientRect().toJSON(),
       opponentsTop: document.querySelector('.tetris-opponent-grid')!.getBoundingClientRect().top,
+      opponents: Array.from(document.querySelectorAll('.tetris-opponent-grid .tetris-board-col'), (column) => ({
+        columnWidth: column.getBoundingClientRect().width,
+        boardWidth: column.querySelector('.tetris-canvas')!.getBoundingClientRect().width,
+      })),
     }));
     assert.ok(phoneLayout.primary.height > 340);
     assert.ok(phoneLayout.preview.left >= phoneLayout.primary.right && phoneLayout.preview.right <= 390);
     assert.ok(phoneLayout.opponentsTop > phoneLayout.primary.bottom);
+    assert.ok(
+      phoneLayout.opponents.every(({ columnWidth, boardWidth }) => Math.abs(columnWidth - boardWidth) <= 1),
+      'stacked opponent boards should fill their columns on the phone',
+    );
 
     assert.equal(
       await host.page.locator('.tetris-primary-board .tetris-canvas').getAttribute('data-render-identity'),

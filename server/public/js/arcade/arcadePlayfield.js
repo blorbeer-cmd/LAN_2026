@@ -22,6 +22,13 @@ function fitTetrisArena(shell, primaryBoard, opponentGrid, playfield, availableB
   const height = Math.max(MIN_HEIGHT_BUDGET, Math.floor(
     availableBottom - bounds.top - boardChrome - stageBottomPadding - FIT_SAFETY_MARGIN,
   ));
+  shell.style.setProperty('--arcade-h-budget', `${height}px`);
+  // In the stacked layout, opponents are below the own board and have room
+  // to use the width of their grid columns.
+  if (getComputedStyle(primaryBoard.parentElement).flexDirection === 'column') {
+    shell.style.removeProperty('--tetris-opponent-h-budget');
+    return;
+  }
   const style = getComputedStyle(opponentGrid);
   const columns = style.gridTemplateColumns.trim().split(/\s+/).length;
   const rows = Math.ceil(opponentGrid.children.length / columns);
@@ -30,7 +37,6 @@ function fitTetrisArena(shell, primaryBoard, opponentGrid, playfield, availableB
     column.getBoundingClientRect().height - column.querySelector('.tetris-canvas-wrap').getBoundingClientRect().height,
   ));
   const opponentHeight = Math.min(height * 2 / 3, (height + boardChrome - (rows - 1) * rowGap) / rows - rowChrome);
-  shell.style.setProperty('--arcade-h-budget', `${height}px`);
   shell.style.setProperty('--tetris-opponent-h-budget', `${Math.max(MIN_HEIGHT_BUDGET / 2, Math.floor(opponentHeight))}px`);
 }
 
