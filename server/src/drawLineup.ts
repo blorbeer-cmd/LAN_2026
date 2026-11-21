@@ -13,10 +13,12 @@ export const DRAW_LINEUP_CHANGED = 'Die Teams dieser Auslosung wurden inzwischen
 
 export class DrawLineupChangedError extends Error {}
 
-// Bounded like the teams themselves so a malformed body cannot blow up the check.
+// Only the shape is checked: any lineup a draw can hold must stay sendable,
+// and draws themselves have no team or team-size cap. The JSON body limit
+// (1 MB, app.ts) bounds the size, and the comparison is a single sort.
 export function isDrawLineup(value: unknown): value is string[][] {
-  return Array.isArray(value) && value.length >= 1 && value.length <= 64 && value.every((team) =>
-    Array.isArray(team) && team.length <= 64 && team.every((id) => typeof id === 'string' && id.length >= 1 && id.length <= 64));
+  return Array.isArray(value) && value.length >= 1 && value.every((team) =>
+    Array.isArray(team) && team.every((id) => typeof id === 'string' && id.length >= 1 && id.length <= 64));
 }
 
 // Call inside the writing transaction; throws DrawLineupChangedError when the

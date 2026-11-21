@@ -1131,3 +1131,37 @@ test('POST /api/matchmaking/draws/:id/players refuses a chosen position that now
   // The same lineup without a chosen team is still the current one.
   assert.equal((await addPlayer(draw.body.id, { playerId: late.body.id, drawLineup: opened })).status, 200);
 });
+
+test('GET /api/matchmaking/draws/:id returns one draw regardless of history filters', async () => {
+  const game = await request(app).post('/api/games').send({ name: 'Single Draw Fetch' });
+  const draw = await request(app).post('/api/matchmaking')
+    .send({ gameId: game.body.id, playerIds: playerIds.slice(0, 2), teamCount: 2 });
+  const fetched = await request(app).get(`/api/matchmaking/draws/${draw.body.id}`);
+  assert.equal(fetched.status, 200);
+  assert.deepEqual(teamIds(fetched.body.teams), teamIds(draw.body.teams));
+  assert.equal(fetched.body.createdByName, 'Integration Test Admin');
+  assert.equal((await request(app).get('/api/matchmaking/draws/nope')).status, 404);
+
+  const foreignEventId = nanoid();
+  const now = Date.now();
+  db.prepare(
+    `INSERT INTO events (id, name, starts_at, ends_at, tracking_enabled, group_id, status, visibility_scope)
+     VALUES (?, 'Fremdes Event Draw', ?, ?, 0, ?, 'published', 'participants')`,
+  ).run(foreignEventId, now - 1_000, now + 60_000, DEFAULT_GROUP_ID);
+  db.prepare('UPDATE matchmaking_draws SET event_id = ? WHERE id = ?').run(foreignEventId, draw.body.id);
+  assert.equal((await request(app).get(`/api/matchmaking/draws/${draw.body.id}`)).status, 404);
+});
+
+test('a result may send the lineup of a draw with more than 64 teams', async () => {
+  const game = await request(app).post('/api/games').send({ name: 'Huge Free For All' });
+  const ids: string[] = [];
+  for (let index = 0; index < 65; index++) ids.push((await request(app).post('/api/players').send({ name: `FFA Lineup ${index}` })).body.id);
+  const draw = await request(app).post('/api/matchmaking').send({ gameId: game.body.id, playerIds: ids, teamCount: 65 });
+  assert.equal(draw.status, 200, JSON.stringify(draw.body));
+  const lineup = teamIds(draw.body.teams);
+  const recorded = await request(app).post('/api/matches').send({
+    gameId: game.body.id, drawId: draw.body.id, drawLineup: lineup,
+    teams: lineup.map((team) => ({ playerIds: team })), winnerTeamIndex: 0,
+  });
+  assert.equal(recorded.status, 201, JSON.stringify(recorded.body));
+});

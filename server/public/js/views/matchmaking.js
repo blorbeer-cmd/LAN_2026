@@ -534,13 +534,25 @@ function openDrawServerDialog(draw, ctx) {
 }
 
 // A dialog acted on teams another device changed meanwhile (409
-// draw_lineup_changed): close it and reload the open draws, which also
-// replace the "Neue Auslosung" copy, so reopening starts from the new teams.
-function reloadAfterLineupConflict(close, ctx, message) {
+// draw_lineup_changed): close it, fetch that draw directly (the history
+// lists follow the "Meine" filter and may leave it out) and reload the
+// lists, so the card and a reopened dialog start from the new teams.
+async function reloadAfterLineupConflict(drawId, close, ctx, message) {
   close();
+  showToast(message, { error: true });
+  try {
+    const current = await api.matchmaking.getDraw(drawId);
+    if (current.matchId || current.tournamentId) {
+      if (state.lastMatchmaking?.id === drawId) state.lastMatchmaking = null;
+    } else {
+      applyUpdatedDraw(current);
+    }
+  } catch {
+    // Deleted meanwhile, or offline: the list reload below still applies.
+    if (state.lastMatchmaking?.id === drawId) state.lastMatchmaking = null;
+  }
   invalidateMatchmakingHistory();
   ctx.rerender();
-  showToast(message, { error: true });
 }
 
 // Adds a participant who is not drawn yet. "Automatisch" lets the server put
@@ -593,7 +605,7 @@ function openDrawAddPlayerDialog(draw, ctx) {
       showToast(`${player.name} hinzugefügt.`);
     } catch (err) {
       if (err.code === 'draw_lineup_changed') {
-        reloadAfterLineupConflict(close, ctx, err.message);
+        await reloadAfterLineupConflict(draw.id, close, ctx, err.message);
         return;
       }
       submit.disabled = false;
@@ -631,7 +643,7 @@ function openDrawResultDialog(draw, ctx) {
           await api.matches.create({ gameId: draw.gameId, drawId: draw.id, drawLineup, teams: payloadTeams, winnerTeamIndex: winnerIndex, isDraw: winnerIndex === null });
         } catch (err) {
           if (err.code !== 'draw_lineup_changed') throw err;
-          reloadAfterLineupConflict(close, ctx, err.message);
+          await reloadAfterLineupConflict(draw.id, close, ctx, err.message);
           return;
         }
         if (state.lastMatchmaking?.id === draw.id) state.lastMatchmaking = null;
@@ -762,7 +774,7 @@ function openDrawTournamentDialog(draw, ctx) {
         }));
       } catch (err) {
         if (err.code === 'draw_lineup_changed') {
-          reloadAfterLineupConflict(close, ctx, err.message);
+          await reloadAfterLineupConflict(draw.id, close, ctx, err.message);
           return;
         }
         showToast(err.message, { error: true });

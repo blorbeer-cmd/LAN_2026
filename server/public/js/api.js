@@ -335,6 +335,7 @@ export const api = {
     shuffleDraw: (drawId) => apiFetch(`/api/matchmaking/draws/${drawId}/shuffle`, { method: 'POST' }),
     removeDrawPlayer: (drawId, playerId) =>
       apiFetch(`/api/matchmaking/draws/${drawId}/players/${encodeURIComponent(playerId)}`, { method: 'DELETE' }),
+    getDraw: (drawId) => apiFetch(`/api/matchmaking/draws/${drawId}`),
     removeDraw: (drawId) => apiFetch(`/api/matchmaking/draws/${drawId}`, { method: 'DELETE' }),
   },
 

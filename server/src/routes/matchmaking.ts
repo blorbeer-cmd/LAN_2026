@@ -539,6 +539,17 @@ matchmakingRouter.get('/history', (req, res) => {
   res.json({ history: draws, openDraws, nextCursor: hasMore && last ? { before: last.generatedAt, beforeId: last.id } : null });
 });
 
+// GET /api/matchmaking/draws/:id - one draw in its client shape, for a view
+// that must refresh a specific draw independent of the history filters (a
+// lineup conflict on the "Neue Auslosung" card, which "Meine" may hide).
+matchmakingRouter.get('/draws/:id', (req, res) => {
+  const row = db.prepare('SELECT id, event_id FROM matchmaking_draws WHERE id = ? AND group_id = ?')
+    .get(req.params.id, req.group!.id) as { id: string; event_id: string } | undefined;
+  if (!row) return res.status(404).json({ error: 'Auslosung nicht gefunden.' });
+  if (!requireGroupEventAccess(req, res, row.event_id)) return;
+  res.json(loadDrawView(row.id));
+});
+
 // Removing a card also removes its linked standalone leaderboard result.
 // A tournament-owned draw must go through the tournament delete flow instead.
 matchmakingRouter.delete('/draws/:id', requireGroupRole('admin'), requireRecentReauthentication, (req, res) => {
