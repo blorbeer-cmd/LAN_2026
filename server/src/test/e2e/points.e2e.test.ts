@@ -18,6 +18,7 @@ import { mkdtempSync, rmSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { once } from 'node:events';
+import { clickActionMenuEntry } from './actionMenuHelpers';
 
 let server: E2EServer;
 let browser: Browser;
@@ -308,8 +309,9 @@ test('real LAN account, automatic orga credits, own-game betting notification, h
   const freshBetting = member.locator(`[data-draw-card="${draw.id}"] [data-betting-controls]`);
   await freshBetting.getByRole('button', { name: 'Jetzt tippen', exact: true }).waitFor();
   assert.equal(await freshBetting.locator('[data-action-menu]').count(), 0, 'a single tip action is a direct button with its state label');
-  assert.equal(await freshBetting.locator(`[data-lock-round="${round.id}"]`).innerText(), 'Spiel starten',
-    'players start the match with a separate action instead of a menu entry next to the tip');
+  assert.equal(await freshBetting.locator('[data-lock-round]').count(), 0, 'starting the match is no betting entry next to the tip');
+  assert.equal(await member.locator(`[data-action-menu="match-fresh-open-${draw.id}"] [data-lock-round="${round.id}"]`).textContent(), 'Spiel starten',
+    'players start the match from the general match actions');
   await member.locator(`[data-draw-card="${draw.id}"] [data-betting-summary="${round.id}"]`).getByText('Tipps offen', { exact: true }).waitFor();
   assert.equal(await member.locator('.history-details').evaluate((element) => (element as HTMLDetailsElement).open), true);
   assert.equal(await freshBetting.evaluate((controls) => Boolean(controls.closest('.matchmaking-draw-head'))), true, 'fresh matches keep betting in the header');
@@ -455,15 +457,13 @@ test('real LAN account, automatic orga credits, own-game betting notification, h
   );
   assert.equal((await api(`/api/points?eventId=${eventId}`, 'GET', undefined, alice.cookie)).rounds.find((row: any) => row.id === round.id).pot, 16);
   assert.doesNotMatch(await member.locator('#view-container').innerText(), /Quoten?/i, 'LAN markets show no odds');
-  await openRoundActions(member, round.id);
-  await selectedCard.locator(`[data-lock-round="${round.id}"]`).click();
+  await clickActionMenuEntry(selectedCard.locator(`[data-lock-round="${round.id}"]`));
   await member.getByRole('alertdialog').getByRole('button', { name: 'Spiel starten', exact: true }).click();
   await member.locator(`#match-history-open [data-reopen-round="${round.id}"]`).waitFor({ state: 'attached' });
   await openRoundActions(member, round.id);
   await selectedCard.locator(`[data-reopen-round="${round.id}"]`).click();
   await member.locator(`#match-history-open [data-lock-round="${round.id}"]`).waitFor({ state: 'attached' });
-  await openRoundActions(member, round.id);
-  await selectedCard.locator(`[data-lock-round="${round.id}"]`).click();
+  await clickActionMenuEntry(selectedCard.locator(`[data-lock-round="${round.id}"]`));
   await member.getByRole('alertdialog').getByRole('button', { name: 'Spiel starten', exact: true }).click();
   await member.locator(`#match-history-open [data-reopen-round="${round.id}"]`).waitFor({ state: 'attached' });
   await api('/api/matches', 'POST', {
@@ -474,7 +474,7 @@ test('real LAN account, automatic orga credits, own-game betting notification, h
   });
   const recordedCard = member.locator(`[data-history-item="${draw.id}"]`);
   await recordedCard.waitFor();
-  assert.equal(await recordedCard.locator('.action-menu').count(), 0, 'hidden report actions do not create a one-option menu');
+  assert.equal(await recordedCard.locator('[data-betting-controls] .action-menu').count(), 0, 'hidden report actions do not create a one-option menu');
   await recordedCard.locator('[data-tip-round]').click();
   const tipDetails = member.getByRole('dialog', { name: 'Dein Tipp', exact: true });
   await tipDetails.getByText(/Einsatz 1 P. · Auszahlung 2 P. · Netto \+1 P./).waitFor();
@@ -507,7 +507,7 @@ test('real LAN account, automatic orga credits, own-game betting notification, h
   const recordedMatch = member.locator(`[data-history-toggle="${draw.id}"]`);
   if (await recordedMatch.getAttribute('aria-expanded') !== 'true') await recordedMatch.click();
   assert.equal(await recordedCard.locator('.matchmaking-history-head [data-tip-round]').count(), 1, 'recorded matches keep betting in the header');
-  await recordedCard.locator('[data-edit-draw-result]').click();
+  await clickActionMenuEntry(recordedCard.locator('[data-edit-draw-result]'));
   await member.getByRole('dialog').getByText('Diese Korrektur kann nur ein Admin durchführen.', { exact: true }).waitFor();
   assert.equal(await member.locator('[data-result-save]').isDisabled(), true);
   assert.equal(await member.locator('[data-result-entry] input:enabled').count(), 0);

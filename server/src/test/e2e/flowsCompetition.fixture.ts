@@ -23,6 +23,7 @@ import {
 import { openMoreViewEntry, openMatchHistoryFilters, selectMatchHistoryFilter } from './navHelpers';
 import { TRACKING_CONSENT_TEXT_VERSION } from '../../privacyPolicy';
 import { assertPaintedPollResultCentered } from './pollResultGeometry';
+import { clickActionMenuEntry, openActionMenuOf } from './actionMenuHelpers';
 
 registerFlowFixture('competition');
 
@@ -1132,7 +1133,7 @@ flowTest('matchmaking Historie marks a recorded draw as Unentschieden', async ()
   assert.equal(await openTile.getAttribute('open'), null, 'unplayed games start collapsed');
   assert.equal(await openTile.evaluate((element) => Boolean(element.compareDocumentPosition(document.querySelector('.history-details')!) & Node.DOCUMENT_POSITION_FOLLOWING)), true);
   assert.equal(await page.locator('#match-history-open .matchmaking-history-item').count(), 0, 'closed open draws should not build every editable card');
-  if ((await openTile.getAttribute('open')) === null) await openTile.locator('summary').click();
+  if ((await openTile.getAttribute('open')) === null) await openTile.locator(':scope > summary').click();
   const openDraw = page.locator('#match-history-open .matchmaking-history-item').first();
   await openDraw.waitFor();
   const drawToggle = openDraw.locator('[data-history-toggle]');
@@ -1157,8 +1158,9 @@ flowTest('matchmaking Historie marks a recorded draw as Unentschieden', async ()
   const viewport = page.viewportSize()!;
   try {
     await page.setViewportSize({ width: 1024, height: viewport.height });
-    const serverInfo = openDraw.getByRole('button', { name: /Server und Passwort/ });
-    assert.equal(await serverInfo.count(), 1);
+    const serverInfo = openDraw.locator('[data-draw-server-info]');
+    assert.equal((await serverInfo.textContent())?.trim(), 'Server und Passwort');
+    await openActionMenuOf(serverInfo);
     await serverInfo.press('Enter');
     const serverDialog = page.getByRole('dialog', { name: 'Server und Passwort' });
     const address = serverDialog.getByLabel('Server', { exact: true });
@@ -1178,7 +1180,7 @@ flowTest('matchmaking Historie marks a recorded draw as Unentschieden', async ()
     await serverDialog.waitFor({ state: 'hidden' });
 
     await page.setViewportSize({ width: 390, height: viewport.height });
-    await serverInfo.click();
+    await clickActionMenuEntry(serverInfo);
     assert.equal(await address.inputValue(), '10.0.0.5:27015');
     assert.equal(await password.inputValue(), 'zocken123');
     assert.equal(await serverDialog.getByRole('button', { name: 'Passwort kopieren' }).isEnabled(), true);
@@ -1190,7 +1192,36 @@ flowTest('matchmaking Historie marks a recorded draw as Unentschieden', async ()
   }
   await drawToggle.click();
   assert.doesNotMatch(await openDraw.innerText(), /10\.0\.0\.5|zocken123/);
-  await page.click('#match-history-open [data-record-draw]');
+
+  // A live refresh between focusing a menu entry and choosing it rebuilds the
+  // card. The keyboard user keeps the open menu and the focused entry; the
+  // test never reopens the menu itself.
+  const recordEntry = openDraw.locator('[data-record-draw]');
+  const drawId = (await recordEntry.getAttribute('data-record-draw'))!;
+  const actionMenu = openDraw.locator(`[data-action-menu="match-open-${drawId}"]`);
+  await actionMenu.locator(':scope > summary').focus();
+  await page.keyboard.press('Enter');
+  await recordEntry.waitFor();
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('Tab');
+  assert.equal(await recordEntry.evaluate((entry) => document.activeElement === entry), true);
+  await actionMenu.evaluate((menu) => { (menu as HTMLElement).dataset.beforeRefresh = 'true'; });
+  const refresh = await fetch(`${BASE_URL}/api/matchmaking/draws/${drawId}/server`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json', cookie: adminCookie },
+    body: JSON.stringify({ serverAddress: '10.0.0.5:27015', serverPassword: 'zocken123' }),
+  });
+  assert.equal(refresh.status, 200, await refresh.text());
+  await page.waitForFunction((id) => {
+    const menu = document.querySelector(`[data-action-menu="match-open-${id}"]`);
+    return menu instanceof HTMLElement && !menu.dataset.beforeRefresh;
+  }, drawId);
+  assert.equal(await actionMenu.evaluate((menu) => (menu as HTMLDetailsElement).open), true,
+    'the rebuilt menu stays open');
+  assert.equal(await recordEntry.isVisible(), true, 'the rebuilt entry stays reachable');
+  assert.equal(await recordEntry.evaluate((entry) => document.activeElement === entry), true,
+    'keyboard focus stays on the chosen entry');
+  await page.keyboard.press('Enter');
 
   const panelHeight = await page.locator('.modal .result-mode-panels').evaluate((element) => element.getBoundingClientRect().height);
   const pickHeights = await page.locator('.modal .tournament-result-pick').evaluateAll((picks) =>
@@ -1221,10 +1252,13 @@ flowTest('matchmaking Historie marks a recorded draw as Unentschieden', async ()
   assert.equal(await recordedMatch.locator('.matchmaking-history-teams').evaluate((element) =>
     getComputedStyle(element).gridTemplateColumns.split(' ').length), 4);
   await page.setViewportSize({ width: 390, height: 844 });
-  const historyActions = await page.locator('.matchmaking-history-item:has([data-edit-draw-result]) .matchmaking-draw-actions').first()
-    .locator('button').evaluateAll((buttons) => buttons.map((button) =>
-      button.hasAttribute('data-edit-draw-result') ? 'edit' : button.hasAttribute('data-delete-draw') ? 'delete' : button.textContent?.trim()));
-  assert.deepEqual(historyActions, ['edit', 'Rematch', 'delete']);
+  const historyMenu = page.locator('.matchmaking-history-item:has([data-edit-draw-result]) .matchmaking-draw-actions').first()
+    .locator(':scope > .action-menu');
+  assert.equal((await historyMenu.locator(':scope > summary').innerText()).trim(), 'Aktion',
+    'general match actions share one menu beside the betting controls');
+  const historyActions = await historyMenu.locator('.action-menu-panel button').evaluateAll((buttons) =>
+    buttons.map((button) => button.textContent?.trim()));
+  assert.deepEqual(historyActions, ['Ergebnis bearbeiten', 'Rematch', 'Match löschen']);
 });
 
 flowTest('matchmaking Historie derives the winner and keeps open games and sections after saving a result', async (t) => {
@@ -1248,7 +1282,7 @@ flowTest('matchmaking Historie derives the winner and keeps open games and secti
   const oldId = await oldMatch.getAttribute('data-history-toggle');
   if (await oldMatch.getAttribute('aria-expanded') === 'false') await oldMatch.click();
   const openTile = page.locator('.matchmaking-open-draws');
-  if ((await openTile.getAttribute('open')) === null) await openTile.locator('summary').click();
+  if ((await openTile.getAttribute('open')) === null) await openTile.locator(':scope > summary').click();
   const spareToggle = page.locator(`[data-history-toggle="o-${spare.id}"]`);
   if (await spareToggle.getAttribute('aria-expanded') === 'false') await spareToggle.click();
   // App refreshes restore native disclosures programmatically. The view's
@@ -1270,14 +1304,14 @@ flowTest('matchmaking Historie derives the winner and keeps open games and secti
   await selectMatchHistoryFilter(page, 'matches');
   assert.equal(await openTile.evaluate((element: HTMLDetailsElement) => element.open), true,
     'a restored open section survives disappearing temporarily during a refresh');
-  await page.locator(`#match-history-open [data-record-draw="${draw.id}"]`).click();
+  await clickActionMenuEntry(page.locator(`#match-history-open [data-record-draw="${draw.id}"]`));
 
   await page.click('[data-result-mode="score"]');
   await page.fill('#draw-result-score-0', '3');
   assert.equal(await page.inputValue('#draw-result-score-1'), '');
   await page.click('.modal [data-result-save]');
 
-  await page.locator(`[data-edit-draw-result="${draw.id}"]`).waitFor();
+  await page.locator(`[data-edit-draw-result="${draw.id}"]`).waitFor({ state: 'attached' });
   await page.waitForLoadState('networkidle');
   assert.equal(await page.locator('.history-details').evaluate((element: HTMLDetailsElement) => element.open), true,
     'saving leaves the history section open');
@@ -1294,7 +1328,7 @@ flowTest('matchmaking Historie derives the winner and keeps open games and secti
   assert.equal(await loserTeam.locator('.lb-rank').innerText(), '2');
   assert.equal(await loserTeam.locator('.matchmaking-history-team-score').innerText(), '0');
   await openTile.locator(':scope > summary').click();
-  await page.locator(`[data-edit-draw-result="${draw.id}"]`).click();
+  await clickActionMenuEntry(page.locator(`[data-edit-draw-result="${draw.id}"]`));
   await page.fill('#draw-result-score-0', '4');
   await page.click('.modal [data-result-save]');
   await page.locator('.modal-backdrop').waitFor({ state: 'detached' });
@@ -1309,7 +1343,7 @@ flowTest('matchmaking Historie derives the winner and keeps open games and secti
   assert.equal(await page.getAttribute('[data-history-filter="tournaments"]', 'aria-pressed'), 'true');
   assert.equal(await page.locator('.matchmaking-history-team').count(), 0);
   await selectMatchHistoryFilter(page, 'matches');
-  await page.waitForSelector('.matchmaking-history-item [data-edit-draw-result]');
+  await page.waitForSelector('.matchmaking-history-item [data-edit-draw-result]', { state: 'attached' });
   assert.equal(await page.getAttribute('[data-history-filter="matches"]', 'aria-pressed'), 'true');
 });
 
@@ -1594,10 +1628,10 @@ flowTest('an open game can be deleted from its own card after confirmation', asy
   const openSection = page.locator('.matchmaking-open-draws');
   await openSection.waitFor();
   if (!(await openSection.evaluate((element) => (element as HTMLDetailsElement).open))) {
-    await openSection.locator('summary').click();
+    await openSection.locator(':scope > summary').click();
   }
   const deleteButton = openSection.locator(`[data-delete-draw="${draw.id}"]`);
-  await deleteButton.click();
+  await clickActionMenuEntry(deleteButton);
   await page.getByRole('alertdialog', { name: 'Spiel löschen' }).getByRole('button', { name: 'Löschen' }).click();
   if (await page.locator('#reauth-form').isVisible()) {
     await page.fill('#reauth-password', alice.password);

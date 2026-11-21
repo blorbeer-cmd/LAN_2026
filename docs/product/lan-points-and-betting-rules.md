@@ -260,9 +260,9 @@ sich aufklappen; die LAN-Punkteansicht enthält keine Spieleliste, nur die Tipp�
 
 Die Wettaktion steht im Header von Matchkarten, auch bei geschlossener Spielkarte. Ein einzelnes
 Angebot behält seine Statusbeschriftung („Jetzt tippen“, „Tipp ändern“, „Tippdetails“), erst
-mehrere bilden das Menü „Wetten“. Mitspieler und Admins starten ein Match über die eigene
-Aktion „Spiel starten“ mit Bestätigung; sie schließt die Tipps für alle und steht nicht mehr
-neben „Jetzt tippen“ im Menü. Die Metazeile der Karte nennt den Stand: „Tipps offen“,
+mehrere bilden das Menü „Wetten“. Mitspieler und Admins starten ein Match über „Spiel starten“
+mit Bestätigung im allgemeinen Menü „Aktion“ der Matchkarte; die Aktion schließt die Tipps für
+alle und steht nie neben „Jetzt tippen“ im Menü „Wetten“. Die Metazeile der Karte nennt den Stand: „Tipps offen“,
 „Tipps geschlossen“ oder „Abgerechnet“, Topf, Tippanzahl und den eigenen Tipp mit Team und
 Einsatz beziehungsweise nach der Abrechnung den Nettowert. Turnierkarten fassen alle Märkte
 zusammen: offene Tipprunden, sonst „Tipps geschlossen“, solange ein Ergebnis aussteht, danach

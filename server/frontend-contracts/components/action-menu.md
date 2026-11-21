@@ -46,7 +46,7 @@ Eintragsgröße erzeugen.
 | Standardtrigger | `summary.btn.btn-sm` | umgesetzt | sichtbarer Text „Aktion“ plus Chevron |
 | Standardpanel | `.action-menu-panel` | umgesetzt | vertikale Liste sekundärer/destruktiver Buttons |
 | Eintrag mit Zusatzcontrol | `.action-menu-row` | umgesetzt | bestehende Zeile, zum Beispiel Aktion plus Infohilfe |
-| Schwebendes Wettmenü | `floating: true`, `.action-menu-panel[popover]` | umgesetzt | natives manuelles Popover hält Wettoptionen über scrollenden Karten und benachbarten Inhalten erreichbar |
+| Schwebendes Menü | `floating: true`, `.action-menu-panel[popover]` | umgesetzt | natives manuelles Popover hält Wett- und Matchaktionen über scrollenden Karten und benachbarten Inhalten erreichbar |
 | Ohne Aktionen | `actionMenuHtml([], label)` | umgesetzt | rendert kein leeres Menü |
 | Direkte Einträge | `actionMenuHtml(actions, label, { inlineMax })` | umgesetzt | bis `inlineMax` Einträge (Standard 1) stehen als normale Buttons im Kopf, ohne Trigger |
 | Benannter Trigger | `actionMenuHtml(actions, label, { summary })` | umgesetzt | bündelt Einträge einer einzigen Aktionsart unter ihrem Namen, etwa „Kalender“ (Google, Outlook, Download) oder „Absagen“ (Absagen, Mit Ausrede absagen) auf Eventkarten |
@@ -94,6 +94,15 @@ Eine dauerhaft geöffnete, verschachtelte oder mehrspaltige Variante existiert n
   entfernt.
 - Das modulweite Wiring bricht die Listener des zuvor verdrahteten Containers ab. Damit bleiben
   nach Viewwechsel oder Re-Render keine konkurrierenden Dokumentlistener aktiv.
+- Ein offenes Menü mit `key` bleibt über einen Live-Re-Render desselben Views geöffnet, auch wenn
+  ein Abschnitt seine Karten erst nach dem Rendern aufbaut. Das Wiring zeigt das schwebende Panel
+  sofort an, damit die Fokuswiederherstellung den fokussierten Eintrag erreicht; ist der Fokus
+  durch den Neuaufbau verloren gegangen, setzt das Wiring ihn auf denselben Eintrag (über sein
+  erstes `data-*`-Attribut) oder, falls dieser nicht mehr existiert, auf den Trigger. Schließen
+  über Aktionswahl, Escape, Außen-Pointer oder Trigger beendet dieses Gedächtnis; jeder
+  Ansichtswechsel verwirft es, auch über eine Ansicht ohne Aktionsmenüs. Menüs ohne `key` werden
+  nie gemerkt. Aufrufer wählen den `key` so, dass er den fachlichen Zustand benennt, wenn ein
+  geänderter Zustand andere Einträge bedeutet (Matchkarten: offen, erfasst, Turnier).
 
 Registry-Bezüge: `action-menu-trigger`, `action-menu-entry`, `button`, `button-small` und
 `button-meaning` in [component-registry.mjs](../component-registry.mjs).
@@ -108,7 +117,8 @@ Registry-Bezüge: `action-menu-trigger`, `action-menu-entry`, `button`, `button-
 - Schließen über Außen-Pointer, Escape oder aktive Aktionswahl;
 - sekundäre und destruktive Einträge;
 - vorhandener deaktivierter Eintrag;
-- erneuter View-Render mit neu verdrahtetem Container.
+- erneuter View-Render mit neu verdrahtetem Container;
+- Live-Re-Render bei geöffnetem Menü mit erhaltenem Fokus auf Eintrag oder Trigger.
 
 ## 8. Accessibility
 
@@ -128,6 +138,8 @@ Registry-Bezüge: `action-menu-trigger`, `action-menu-entry`, `button`, `button-
   (`inlineMax: 0`, immer als Menü) sowie die benannten Trigger „Absagen“ und, über
   `eventPresentation.js`, „Kalender“
 - `public/js/views/foodOrders.js` für Bestellkarten mit stabilem `key`
+- `public/js/views/matchmaking.js` für Matchkarten: schwebendes „Aktion“ mit Server und Passwort,
+  Ergebnis, Turnier, Rematch, „Spiel starten“ und Löschen, getrennt vom Menü „Wetten“
 
 ## 10. Prüfungen und Abnahmebeispiele
 
@@ -136,6 +148,9 @@ Registry-Bezüge: `action-menu-trigger`, `action-menu-entry`, `button`, `button-
   Aktionswahl-Fokusrückgabe, Außen-Pointer ohne Fokusverschiebung und erneutes Wiring nach Re-Render.
 - `public/js/actionMenu.test.js` prüft die Grenze zwischen direkten Einträgen und Menü samt
   `inlineMax`, `key` und escaptem Label.
+- `src/test/e2e/flowsCompetition.fixture.ts` öffnet das „Aktion“-Menü einer offenen Auslosung per
+  Tastatur, löst zwischen Fokussieren und Aktivieren einen Live-Refresh aus und prüft ohne
+  erneutes Öffnen, dass Menü und Fokus erhalten bleiben und Enter den Eintrag ausführt.
 - `src/test/e2e/eventWorkspaceSwitch.e2e.test.ts` prüft an einer allgemeinen Eventkarte ohne
   Tracking, dass „Bearbeiten“ und ein neutrales „Beenden“ ohne Menü direkt im Kopf stehen.
 - Bei 320×568 und 390×844 bleibt das Panel innerhalb des Viewports; bei 512×384 und 720×450
@@ -149,9 +164,9 @@ Trigger folgt der 32-px-Standardgeometrie, Einträge sind ausdrückliche 44-px-S
 Button-IDs liefern Bedeutungs- und Textgeometrie. `.action-menu-row` ist eine interne
 Zusammensetzung, keine weitere Größenvariante. Es gibt keine befristete ActionMenu-Ausnahme.
 
-### Schwebende Wettmenüs
+### Schwebende Menüs
 
-`floating: true` nutzt bei mehreren Einträgen ein natives manuelles Popover in der obersten
+Wettmenüs und das „Aktion“-Menü der Matchkarten sind schwebend. `floating: true` nutzt bei mehreren Einträgen ein natives manuelles Popover in der obersten
 Browserebene. Ein einzelner Eintrag bleibt ein direkter Button. Der Helper positioniert das
 Panel am Trigger, innerhalb des Viewports und bei Platzmangel darüber; die maximale Höhe
 bleibt viewportgebunden. Innere Zeilen und Tastaturpfade bleiben unverändert. Schließen blendet

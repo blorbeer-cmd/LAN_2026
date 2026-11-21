@@ -28,6 +28,7 @@ import {
 } from './flowsShared.fixture';
 import { openMoreViewEntry, setAdminMode, selectMatchHistoryFilter } from './navHelpers';
 import { assertControlHeights, assertNoOverflow } from './visualHelpers';
+import { clickActionMenuEntry } from './actionMenuHelpers';
 
 registerFlowFixture('shell');
 
@@ -2259,12 +2260,12 @@ flowTest('Turnier: create a K.O. bracket from a Match draw and play it to a cham
   assert.equal(await neighborHelp.getAttribute('aria-expanded'), 'true');
   await page.keyboard.press('Escape');
 
-  // Draw, then turn the fresh draw into a tournament; recording a single
-  // result stays available through the "+" beside it.
+  // Draw, then turn the fresh draw into a tournament through the card's
+  // "Aktion" menu, which also offers recording a single result.
   await page.fill('#mm-teamcount', '2');
   await page.click('#mm-generate');
   const freshDraw = page.locator('.matchmaking-new-draw');
-  await freshDraw.locator('[data-draw-tournament].btn-primary').click();
+  await clickActionMenuEntry(freshDraw.locator('[data-draw-tournament]'));
   await page.waitForSelector('#draw-tournament-form');
   assert.equal(await page.locator('[data-draw-team-name]').count(), 2);
   // Two players on two teams: every solo team is prefilled with its player's name.
@@ -2310,7 +2311,7 @@ flowTest('Turnier: create a K.O. bracket from a Match draw and play it to a cham
   const openTournamentSection = page.locator('.matchmaking-open-draws');
   await openTournamentSection.waitFor();
   if (!(await openTournamentSection.evaluate((section) => (section as HTMLDetailsElement).open))) {
-    await openTournamentSection.locator('summary').click();
+    await openTournamentSection.locator(':scope > summary').click();
   }
   await openTournamentSection.locator(`[data-open-draw-tournament="${tournamentId}"]`).waitFor();
   assert.equal(await page.locator(`.history-details [data-open-draw-tournament="${tournamentId}"]`).count(), 0,

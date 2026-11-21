@@ -1,5 +1,5 @@
 import { historyItemHtml as sharedHistoryItemHtml } from '../historyItem.js';
-import { competitionBettingHtml, competitionBettingSummaryHtml, competitionMatchesTipFilter, wireCompetitionBetting, competitionCorrection, bettingHiddenHintHtml } from './points.js';
+import { competitionBettingHtml, competitionStartActionHtml, competitionBettingSummaryHtml, competitionMatchesTipFilter, wireCompetitionBetting, competitionCorrection, bettingHiddenHintHtml } from './points.js';
 let pointsContext = null;
 // Matchmaking view (FR-16..18): pick a game + present players, draw balanced
 // teams. Results are stored in shared state (updated live via the
@@ -25,6 +25,7 @@ import { withStepUp } from '../reauth.js';
 import { isGroupAdmin } from '../groupContext.js';
 import { RESTORE_FOCUS_EVENT } from '../viewRenderState.js';
 import { copyText } from '../clipboard.js';
+import { actionMenuHtml } from '../actionMenu.js';
 
 // Persists across re-renders of this view (but not across a full page
 // reload) so toggling checkboxes survives a re-roll without extra plumbing.
@@ -329,7 +330,7 @@ function drawIncludesMe(draw) {
 // draggable player rows and the button to record a result — which is what
 // changes its actions inside the shared Historie. Arrow keys provide the
 // keyboard path for moving a player between teams.
-function renderDrawCard(draw, { editable: editableInput, showGame = false, primaryTournament = false, collapsible = false }) {
+function renderDrawCard(draw, { editable: editableInput, showGame = false, collapsible = false }) {
   // A draw that became a tournament is frozen like a recorded one, but it has
   // no result of its own: no winner, no "Remis", just the link to its bracket.
   const inTournament = Boolean(draw.tournamentId);
@@ -389,27 +390,34 @@ function renderDrawCard(draw, { editable: editableInput, showGame = false, prima
       : ''
     : '';
 
-  const serverAction = editable && !draw.matchId
-    ? `<button type="button" class="tournament-fixture-action" data-draw-server-info="${escapeHtml(draw.id)}" aria-haspopup="dialog" aria-label="Server und Passwort" title="Server und Passwort">${icon('info')}</button>`
-    : '';
-
-  // Same action slot as tournament fixtures: a pencil for a recorded result,
-  // "+" for an open draw. An open draw can alternatively become a tournament;
-  // on the freshly drawn lineup that is the highlighted next step, so
-  // "Turnier erstellen" carries the gradient and sits rightmost.
-  const actions = inTournament
-    ? `<button type="button" class="btn btn-sm" data-open-draw-tournament="${escapeHtml(draw.tournamentId)}">${escapeHtml(draw.tournamentName ?? 'Turnier')}</button>`
-    : editable
-    ? `${serverAction}<button type="button" class="tournament-fixture-action is-open" data-record-draw="${draw.id}" aria-label="Ergebnis eintragen" title="Ergebnis eintragen">${icon('plus')}</button>
-       <button type="button" class="btn btn-sm${primaryTournament ? ' btn-primary' : ''}" data-draw-tournament="${draw.id}">Turnier erstellen</button>`
-    : `<button type="button" class="tournament-fixture-action" data-edit-draw-result="${draw.id}" aria-label="Ergebnis bearbeiten" title="Ergebnis bearbeiten">${icon('pencil')}</button>
-       <button type="button" class="btn btn-sm" data-rematch-draw="${draw.id}">Rematch</button>`;
+  // General match actions share one "Aktion" menu; betting keeps its own
+  // "Wetten" menu beside it. "Spiel starten" closes the tips but reads as a
+  // match action, so it joins the general menu and never sits beside
+  // "Jetzt tippen".
+  const keyPrefix = collapsible ? 'match' : 'match-fresh';
+  const betting = inTournament ? '' : competitionBettingHtml('draw', draw.id, pointsContext,
+    { separateStart: true, ...(collapsible ? {} : { keyPrefix: 'betting-fresh' }) });
+  const actions = drawActionMenuHtml(draw, [
+    ...(inTournament
+      ? [`<button type="button" class="btn btn-sm" data-open-draw-tournament="${escapeHtml(draw.tournamentId)}">${escapeHtml(draw.tournamentName ?? 'Turnier')}</button>`]
+      : editable
+      ? [
+        draw.matchId ? '' : `<button type="button" class="btn btn-sm" data-draw-server-info="${escapeHtml(draw.id)}" aria-haspopup="dialog">Server und Passwort</button>`,
+        `<button type="button" class="btn btn-sm" data-record-draw="${draw.id}">Ergebnis eintragen</button>`,
+        `<button type="button" class="btn btn-sm" data-draw-tournament="${draw.id}">Turnier erstellen</button>`,
+        competitionStartActionHtml('draw', draw.id, pointsContext),
+      ]
+      : [
+        `<button type="button" class="btn btn-sm" data-edit-draw-result="${draw.id}">Ergebnis bearbeiten</button>`,
+        `<button type="button" class="btn btn-sm" data-rematch-draw="${draw.id}">Rematch</button>`,
+      ]),
+    collapsible && isGroupAdmin() ? `<button type="button" class="btn btn-sm btn-danger" data-delete-draw="${draw.id}">Auslosung löschen</button>` : '',
+  ], `${keyPrefix}-${inTournament ? 'tournament' : editable ? 'open' : 'result'}-${draw.id}`);
 
   if (collapsible) {
     const meta = `<span class="muted">${formatDateTime(draw.generatedAt)}</span>
       <span class="muted">${draw.teams.length} Teams</span>${draw.source === 'draft' ? '<span class="badge">Captain Draft</span>' : ''}${inTournament ? '' : competitionBettingSummaryHtml('draw', draw.id)}`;
-    const cardActions = `${actions}${inTournament ? '' : competitionBettingHtml('draw', draw.id, pointsContext)}${isGroupAdmin() ? `<button type="button" class="tournament-fixture-action" data-delete-draw="${draw.id}" aria-label="Auslosung löschen" title="Auslosung löschen">${icon('trash')}</button>` : ''}`;
-    return historyItemHtml(`o-${draw.id}`, draw.gameName, meta, cardActions,
+    return historyItemHtml(`o-${draw.id}`, draw.gameName, meta, `${actions}${betting}`,
       `<div class="tournament-team-preview-grid" data-draw-teams="${draw.id}">${teamsHtml}</div>${seatingNote}`, 'matchmaking-open-draw-item', drawIncludesMe(draw));
   }
 
@@ -423,7 +431,7 @@ function renderDrawCard(draw, { editable: editableInput, showGame = false, prima
           ${draw.matchId && draw.isDraw ? '<span class="tournament-fixture-score">Remis</span>' : ''}
           ${inTournament ? '' : competitionBettingSummaryHtml('draw', draw.id)}
         </div>
-        ${actions ? `<div class="matchmaking-draw-actions">${actions}${inTournament ? '' : competitionBettingHtml('draw', draw.id, pointsContext, { keyPrefix: 'betting-fresh' })}</div>` : ''}
+        ${actions || betting ? `<div class="matchmaking-draw-actions">${actions}${betting}</div>` : ''}
       </div>
       <div class="tournament-team-preview-grid" data-draw-teams="${draw.id}">${teamsHtml}</div>
       ${seatingNote}
@@ -990,6 +998,15 @@ function wireHistoryItemToggles(container, ctx) {
   }));
 }
 
+// One "Aktion" menu bundles a match card's general actions; a single action
+// stays a direct button. It floats like the "Wetten" menu, so collapsed tiles
+// and scrolling sections never clip it. The key names the card's state, so a
+// menu kept open across a live refresh never reopens on a draw that has since
+// been recorded or turned into a tournament.
+function drawActionMenuHtml(draw, actions, key) {
+  return actionMenuHtml(actions, `Aktion: ${draw.gameName}`, { key, floating: true });
+}
+
 function historyMatchHtml(draw) {
   const winner = draw.winnerTeamIndex == null ? null : draw.teams[draw.winnerTeamIndex];
   const winnerName = winner ? defaultDrawTeamName(draw, winner, draw.winnerTeamIndex) : '';
@@ -1000,9 +1017,11 @@ function historyMatchHtml(draw) {
     ? `<span class="tournament-fixture-score is-pick">Win</span> <strong>${escapeHtml(winnerName)}${winner.score != null && draw.teams.length !== 2 ? ` · <span class="is-win">${winner.score}</span>` : ''}</strong> ${scoreChip}`
     : `<span class="tournament-fixture-score">${draw.isDraw ? 'Remis' : 'Ohne Ergebnis'}</span>`;
   const meta = `<span class="muted">${formatDateTime(draw.generatedAt)}</span> ${result} <span class="muted">${draw.teams.length} Teams</span>${draw.source === 'draft' ? '<span class="badge">Captain Draft</span>' : ''}${competitionBettingSummaryHtml('draw', draw.id)}`;
-  const actions = `<button type="button" class="tournament-fixture-action" data-edit-draw-result="${draw.id}" aria-label="Ergebnis bearbeiten" title="Ergebnis bearbeiten">${icon('pencil')}</button>
-    <button type="button" class="btn btn-sm" data-rematch-draw="${draw.id}">Rematch</button>
-    ${isGroupAdmin() ? `<button type="button" class="tournament-fixture-action" data-delete-draw="${draw.id}" aria-label="Match löschen" title="Match löschen">${icon('trash')}</button>` : ''}`;
+  const actions = drawActionMenuHtml(draw, [
+    `<button type="button" class="btn btn-sm" data-edit-draw-result="${draw.id}">Ergebnis bearbeiten</button>`,
+    `<button type="button" class="btn btn-sm" data-rematch-draw="${draw.id}">Rematch</button>`,
+    isGroupAdmin() ? `<button type="button" class="btn btn-sm btn-danger" data-delete-draw="${draw.id}">Match löschen</button>` : '',
+  ], `match-result-${draw.id}`);
   const order = draw.teams.map((team, index) => ({ team, index })).sort((a, b) => {
     if (a.team.rank != null || b.team.rank != null) return (a.team.rank ?? Infinity) - (b.team.rank ?? Infinity) || a.index - b.index;
     return Number(b.index === draw.winnerTeamIndex) - Number(a.index === draw.winnerTeamIndex) || a.index - b.index;
@@ -1710,7 +1729,7 @@ function renderResult(result) {
   return `
     <section class="matchmaking-new-draw" aria-labelledby="matchmaking-new-draw-title">
       <h2 id="matchmaking-new-draw-title" class="matchmaking-new-draw-title">Neue Auslosung</h2>
-      ${renderDrawCard(result, { editable: true, showGame: true, primaryTournament: true })}
+      ${renderDrawCard(result, { editable: true, showGame: true })}
     </section>
   `;
 }

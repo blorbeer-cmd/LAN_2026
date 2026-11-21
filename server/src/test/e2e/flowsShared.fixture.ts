@@ -158,7 +158,7 @@ export async function setDateTimeField(id: string, value: string): Promise<void>
 
 export async function openMatchmakingHistory(): Promise<void> {
   const details = page.locator('details.history-details:has(summary:has-text("Historie"))');
-  if ((await details.getAttribute('open')) === null) await details.locator('summary').click();
+  if ((await details.getAttribute('open')) === null) await details.locator(':scope > summary').click();
 }
 
 export async function openTeams(): Promise<void> {

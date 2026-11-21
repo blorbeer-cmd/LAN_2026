@@ -820,6 +820,11 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
   const anonymousActionMenu = anonymousPoll.locator('.action-menu');
   assert.match((await ratingActionMenu.locator('summary').innerText()).trim(), /^Aktion/);
   assert.match((await ratingActionMenu.locator('summary').getAttribute('aria-label')) ?? '', /^Aktion/);
+  // Poll menus carry no key; focus moving into and out of them must not
+  // reach the keyed re-render memory of actionMenu.js.
+  const menuScriptErrors: string[] = [];
+  const collectMenuScriptError = (error: Error) => { menuScriptErrors.push(error.message); };
+  ownerPage.on('pageerror', collectMenuScriptError);
   for (const viewport of [
     { width: 320, height: 568 }, { width: 390, height: 844 },
     { width: 512, height: 384 }, { width: 720, height: 450 },
@@ -867,6 +872,8 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
   await outsideAction.dispatchEvent('pointerdown');
   assert.equal(await anonymousActionMenu.evaluate((details) => (details as HTMLDetailsElement).open), false, 'clicking outside closes the action menu');
   assert.equal(await outsideAction.evaluate((element) => document.activeElement === element), true, 'outside pointer dismissal does not move focus back to the trigger');
+  ownerPage.off('pageerror', collectMenuScriptError);
+  assert.deepEqual(menuScriptErrors, [], 'focus entering and leaving unkeyed action menus raises no script error');
 
   await ratingActionMenu.locator('summary').click();
   await ratingActionMenu.locator('summary').evaluate((summary) => {
