@@ -168,3 +168,13 @@ test('reshuffleTeams reports when no other split exists', () => {
   const players: PlayerRating[] = [{ id: 'a', rating: 5 }, { id: 'b', rating: 1 }];
   assert.equal(reshuffleTeams(players, [['a'], ['b']]), null);
 });
+
+test('balanceTeams and reshuffleTeams never leave a team empty when every rating is equal', () => {
+  const players: PlayerRating[] = ['a', 'b', 'c', 'd'].map((id) => ({ id, rating: 0 }));
+  const drawn = balanceTeams(players, 3);
+  assert.deepEqual(drawn.map((ids) => ids.length).sort(), [1, 1, 2]);
+  // A rematch lineup of the same shape must reshuffle into three teams again.
+  const next = reshuffleTeams(players, [['a', 'b'], ['c'], ['d']])!;
+  assert.deepEqual(next.map((ids) => ids.length).sort(), [1, 1, 2]);
+  assert.deepEqual(next.flat().sort(), ['a', 'b', 'c', 'd']);
+});

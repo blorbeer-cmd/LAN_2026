@@ -582,6 +582,9 @@ function openDrawAddPlayerDialog(draw, ctx) {
 // Draw results keep the Match API shape; only the form is shared.
 function openDrawResultDialog(draw, ctx) {
   const recorded = Boolean(draw.matchId);
+  // The lineup this dialog shows; the server refuses the result if another
+  // device reshuffled, extended or edited the draw in the meantime.
+  const drawLineup = draw.teams.map((team) => team.players.map((player) => player.id));
   const hasValues = recorded && draw.teams.some((team) => team.score != null);
   const teams = draw.teams.map((team, index) => ({ name: defaultDrawTeamName(draw, team, index), players: team.players.map((player) => player.name) }));
   const correction = competitionCorrection('draw', draw.id);
@@ -601,7 +604,17 @@ function openDrawResultDialog(draw, ctx) {
       if (recorded) {
         await api.matches.update(draw.matchId, { teams: payloadTeams, winnerTeamIndex: winnerIndex, isDraw: winnerIndex === null, ...correction.payload(el) });
       } else {
-        await api.matches.create({ gameId: draw.gameId, drawId: draw.id, teams: payloadTeams, winnerTeamIndex: winnerIndex, isDraw: winnerIndex === null });
+        try {
+          await api.matches.create({ gameId: draw.gameId, drawId: draw.id, drawLineup, teams: payloadTeams, winnerTeamIndex: winnerIndex, isDraw: winnerIndex === null });
+        } catch (err) {
+          if (err.code !== 'draw_lineup_changed') throw err;
+          // Reopening shows the current teams; this dialog's lineup is gone.
+          close();
+          invalidateMatchmakingHistory();
+          await ctx.refresh();
+          showToast(err.message, { error: true });
+          return;
+        }
         if (state.lastMatchmaking?.id === draw.id) state.lastMatchmaking = null;
         // Open lineups of every game are listed, but Historie shows the
         // selected game only: follow the result so it appears there.

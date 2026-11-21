@@ -997,3 +997,53 @@ test('parallel lineup changes: one of two identical additions wins, a shuffle ke
   assert.equal(added.status, 200);
   assert.deepEqual(storedLineup(draw.body.id).flat().sort(), [...playerIds.slice(0, 4), late.body.id].sort());
 });
+
+test('POST /api/matches refuses a result whose dialog shows an outdated draw lineup', async () => {
+  const game = await request(app).post('/api/games').send({ name: 'Stale Result Dialog' });
+  const draw = await request(app).post('/api/matchmaking')
+    .send({ gameId: game.body.id, playerIds: playerIds.slice(0, 3), teamCount: 2 });
+  const opened = teamIds(draw.body.teams);
+  const record = (lineup: unknown, teams: string[][]) => request(app).post('/api/matches').send({
+    gameId: game.body.id, drawId: draw.body.id, drawLineup: lineup,
+    teams: teams.map((ids) => ({ playerIds: ids })), winnerTeamIndex: 0,
+  });
+
+  assert.equal((await record([['x', 5]], opened)).status, 400);
+  assert.equal((await request(app).post('/api/matches').send({
+    gameId: game.body.id, drawLineup: opened, teams: opened.map((ids) => ({ playerIds: ids })), winnerTeamIndex: 0,
+  })).status, 400, 'drawLineup only makes sense together with drawId');
+
+  // Another device adds a player after this dialog was opened.
+  assert.equal((await addPlayer(draw.body.id, { playerId: playerIds[3] })).status, 200);
+  const stale = await record(opened, opened);
+  assert.equal(stale.status, 409);
+  assert.equal(stale.body.code, 'draw_lineup_changed');
+  const open = db.prepare('SELECT match_id FROM matchmaking_draws WHERE id = ?').get(draw.body.id) as { match_id: string | null };
+  assert.equal(open.match_id, null);
+  assert.ok(storedLineup(draw.body.id).flat().includes(playerIds[3]));
+
+  const current = storedLineup(draw.body.id);
+  const fresh = await record(current, current);
+  assert.equal(fresh.status, 201, JSON.stringify(fresh.body));
+  assert.deepEqual(storedLineup(draw.body.id), current);
+});
+
+test('parallel: a lineup change and a result from the old lineup never both take effect', async () => {
+  const game = await request(app).post('/api/games').send({ name: 'Lineup Result Race' });
+  const draw = await request(app).post('/api/matchmaking')
+    .send({ gameId: game.body.id, playerIds: playerIds.slice(0, 3), teamCount: 2 });
+  const opened = teamIds(draw.body.teams);
+  const [added, recorded] = await Promise.all([
+    addPlayer(draw.body.id, { playerId: playerIds[3] }),
+    request(app).post('/api/matches').send({
+      gameId: game.body.id, drawId: draw.body.id, drawLineup: opened,
+      teams: opened.map((ids) => ({ playerIds: ids })), winnerTeamIndex: 0,
+    }),
+  ]);
+  assert.equal([added.status, recorded.status].filter((status) => status < 300).length, 1,
+    `exactly one side wins: add ${added.status}, result ${recorded.status}`);
+  assert.equal(Math.max(added.status, recorded.status), 409);
+  const row = db.prepare('SELECT match_id FROM matchmaking_draws WHERE id = ?').get(draw.body.id) as { match_id: string | null };
+  assert.equal(Boolean(row.match_id), recorded.status === 201);
+  assert.equal(storedLineup(draw.body.id).flat().includes(playerIds[3]), added.status === 200);
+});

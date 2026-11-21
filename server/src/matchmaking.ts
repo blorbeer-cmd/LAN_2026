@@ -186,8 +186,10 @@ function reduceSeatConflicts(
 }
 
 // Greedily assigns each player (highest rating first) to the team with the
-// lowest current skill sum, skipping teams already at the max allowed size so
-// team sizes never differ by more than one player. Skill balance is always
+// lowest current skill sum (the one with fewer players on a tie), skipping
+// teams already at the max allowed size so team sizes never differ by more
+// than one player and, with at least as many players as teams, no team stays
+// empty: an empty team always has the lowest possible sum and size. Skill balance is always
 // the primary goal; if `avoidPairs` is given (seat neighbors for a game
 // where that matters), a second pass then tries to move them off opposing
 // teams without meaningfully hurting that balance — best-effort, not
@@ -209,7 +211,11 @@ export function balanceTeams(
     let best = -1;
     for (let i = 0; i < teams.length; i++) {
       if (teams[i].ids.length >= maxPerTeam) continue;
-      if (best === -1 || teams[i].sum < teams[best].sum) best = i;
+      // Equal sums go to the team with fewer players. Otherwise zero-rated
+      // players would fill the first teams up to maxPerTeam and could leave
+      // a later team empty (four 0-rated players in three teams: 2/2/0).
+      if (best === -1 || teams[i].sum < teams[best].sum
+        || (teams[i].sum === teams[best].sum && teams[i].ids.length < teams[best].ids.length)) best = i;
     }
     teams[best].ids.push(p.id);
     teams[best].sum += p.rating;
