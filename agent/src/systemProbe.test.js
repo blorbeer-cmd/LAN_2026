@@ -191,20 +191,6 @@ test('parsePsOutput returns an empty array for empty output', () => {
   assert.deepEqual(parsePsOutput(''), []);
 });
 
-test('probeSystem finds a process that is actually running', async () => {
-  // Same trick the e2e test uses: this test itself runs in Node, so one of
-  // these spellings must be found — which also proves the real OS probe is
-  // wired up, not just the parsing.
-  const candidates = ['node.exe', 'node', 'mainthread'];
-  const probe = await probeSystem({ allowedProcessNames: candidates });
-
-  assert.ok(probe.processNames.length > 0, 'the running Node test process should be found by a targeted probe');
-  assert.ok(
-    probe.processNames.every((name) => candidates.includes(name)),
-    'only names that were asked about may be returned'
-  );
-});
-
 test('probeSystem returns nothing for a name that is not running', async () => {
   const probe = await probeSystem({ allowedProcessNames: ['definitely-not-running-lanparty-xyz.exe'] });
   assert.deepEqual(probe.processNames, []);
@@ -222,13 +208,6 @@ test('probeSystem touches the machine for nothing when there is nothing to ask a
   assert.deepEqual(await probeSystem(), { processNames: [], foregroundProcessName: null, idleSeconds: null });
 });
 
-test('probeSystem reports no activity data on platforms that do not support it', async () => {
-  const probe = await probeSystem({ allowedProcessNames: ['node.exe', 'node', 'mainthread'], includeActivity: true });
-  if (os.platform() === 'win32') return;
-  assert.equal(probe.foregroundProcessName, null, 'the foreground window is a Windows-only capability');
-  assert.equal(probe.idleSeconds, null, 'idle time is a Windows-only capability');
-});
-
 test('probeSystem never lets a hostile allow-list entry reach the shell', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-probe-test-'));
   const marker = path.join(dir, 'pwned');
@@ -241,13 +220,16 @@ test('probeSystem never lets a hostile allow-list entry reach the shell', async 
   assert.equal(fs.existsSync(marker), false, 'an unsafe name must never be executed by the probe');
 });
 
-test('probeSystem handles an allow-list far larger than any real LAN', async () => {
+test('a real OS probe finds the running process in a large allow-list', async () => {
+  const running = ['node.exe', 'node', 'mainthread'];
   const filler = Array.from({ length: 500 }, (_, i) => `not-running-filler-${i}.exe`);
-  const probe = await probeSystem({ allowedProcessNames: [...filler, 'node.exe', 'node', 'mainthread'] });
+  const includeActivity = os.platform() !== 'win32';
+  const probe = await probeSystem({ allowedProcessNames: [...filler, ...running], includeActivity });
 
-  assert.ok(probe.processNames.length > 0, 'the running Node process should still be found');
-  assert.ok(
-    probe.processNames.every((name) => !name.startsWith('not-running-filler-')),
-    'no filler name may be reported as running'
-  );
+  assert.ok(probe.processNames.length > 0, 'the running Node process should be found');
+  assert.ok(probe.processNames.every((name) => running.includes(name)), 'only configured running names are reported');
+  if (includeActivity) {
+    assert.equal(probe.foregroundProcessName, null, 'the foreground window is a Windows-only capability');
+    assert.equal(probe.idleSeconds, null, 'idle time is a Windows-only capability');
+  }
 });

@@ -1,113 +1,100 @@
-// Integration tests for playtime tracking (FR-29): sessions opened/closed by
-// agent reports, and the aggregated /api/stats/playtime endpoint.
-
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
-import { createTestApp, enableTestTracking } from './testApp';
+import { createEvent } from '../events';
+import { createTestApp, DEFAULT_GROUP_ID, enableTestTracking, TEST_ADMIN_ID } from './testApp';
 
-const app = createTestApp();
-let apiKey: string;
-let playerId: string;
-let cs2GameId: string;
+async function trackingFixture(name: string) {
+  const app = createTestApp();
+  const event = createEvent(name, {
+    groupId: DEFAULT_GROUP_ID,
+    startsAt: Date.now() - 60_000,
+    endsAt: Date.now() + 3_600_000,
+  });
+  enableTestTracking(TEST_ADMIN_ID, event.id);
 
-test('setup: a player and the seeded CS2 game', async () => {
-  const player = await request(app).post('/api/players').send({ name: 'Playtime Tester' });
-  playerId = player.body.id;
-  apiKey = player.body.api_key;
-  enableTestTracking(playerId);
-  const games = await request(app).get('/api/games');
-  cs2GameId = games.body.find((g: { name: string }) => g.name === 'Counter-Strike 2').id;
+  return {
+    app,
+    stats: (gameId?: string) =>
+      request(app).get('/api/stats/playtime').query({ eventId: event.id, ...(gameId && { gameId }) }).expect(200),
+    async addPlayer(playerName: string) {
+      const { body } = await request(app).post('/api/players').send({ name: playerName }).expect(201);
+      const { id, api_key: apiKey } = body as { id: string; api_key: string };
+      enableTestTracking(id, event.id);
+      return {
+        id,
+        report: (processNames: string[], activity: { foregroundProcessName?: unknown; idleSeconds?: unknown } = {}) =>
+          request(app).post('/api/agent/report').set('x-api-key', apiKey).send({ processNames, ...activity }),
+      };
+    },
+  };
+}
+
+test('playtime counts open sessions, freezes closed sessions and sums by player and game', async (t) => {
+  t.mock.timers.enable({ apis: ['Date'], now: Date.UTC(2026, 0, 1) });
+  const { app, stats, addPlayer } = await trackingFixture('Playtime lifecycle');
+  const alice = await addPlayer('Playtime Alice');
+  const bob = await addPlayer('Playtime Bob');
+  const { body: games } = await request(app).get('/api/games').expect(200);
+  const cs2 = games.find((game: { name: string }) => game.name === 'Counter-Strike 2');
+  assert.deepEqual((await stats()).body.entries, []);
+
+  await alice.report(['cs2.exe']).expect(200);
+  t.mock.timers.tick(12_000);
+  assert.equal((await stats()).body.entries[0].totalMs, 12_000);
+  await alice.report([]).expect(200);
+  t.mock.timers.tick(5_000);
+  assert.equal((await stats()).body.entries[0].totalMs, 12_000, 'closed sessions stop accumulating time');
+
+  await alice.report(['cs2.exe', 'rocketleague.exe']).expect(200);
+  t.mock.timers.tick(18_000);
+  await alice.report([]).expect(200);
+  await bob.report(['cs2.exe']).expect(200);
+  t.mock.timers.tick(9_000);
+  await bob.report([]).expect(200);
+
+  const { body } = await stats();
+  const aliceTotal = body.totals.find((row: { playerId: string }) => row.playerId === alice.id);
+  const cs2Total = body.totalsByGame.find((row: { gameId: string }) => row.gameId === cs2.id);
+  assert.equal(aliceTotal.totalMs, 48_000, 'Alice played CS2 for 30s and Rocket League for 18s');
+  assert.equal(aliceTotal.formatted, '1m');
+  assert.equal(cs2Total.totalMs, 39_000, 'Alice played CS2 for 30s and Bob for 9s');
+  assert.equal(cs2Total.gameName, 'Counter-Strike 2');
+
+  const filtered = await stats(cs2.id);
+  const { body: aliceStats } = await request(app).get(`/api/players/${alice.id}/stats`).expect(200);
+  const aliceCs2 = aliceStats.games.find((row: { gameId: string }) => row.gameId === cs2.id);
+  assert.deepEqual(filtered.body.entries.map((row: { gameId: string }) => row.gameId), [cs2.id, cs2.id]);
+  assert.equal(aliceCs2.totalMs, 30_000);
+  assert.equal(aliceStats.totalMs, 48_000);
+  assert.equal(aliceStats.sessionCount, 3);
+  assert.equal(aliceStats.distinctGamesCount, 2);
+  assert.equal(aliceStats.events.length, 1);
+  assert.ok(aliceStats.longestSessions.length > 0);
 });
 
-test('GET /api/stats/playtime is empty before any session', async () => {
-  const res = await request(app).get('/api/stats/playtime');
-  assert.equal(res.status, 200);
-  assert.deepEqual(
-    res.body.entries.filter((e: { playerId: string }) => e.playerId === playerId),
-    []
-  );
+test('only a matching foreground game with no excessive idle time earns active playtime', async (t) => {
+  t.mock.timers.enable({ apis: ['Date'], now: Date.UTC(2026, 0, 1) });
+  const { stats, addPlayer } = await trackingFixture('Focused playtime');
+  const player = await addPlayer('Focused player');
+  await player.report(['cs2.exe']).expect(200);
+
+  for (const { activity, expectedActiveMs } of [
+    { activity: {}, expectedActiveMs: 0 },
+    { activity: { foregroundProcessName: 'CS2.EXE', idleSeconds: 0 }, expectedActiveMs: 1_000 },
+    { activity: { foregroundProcessName: 'discord.exe', idleSeconds: 0 }, expectedActiveMs: 1_000 },
+    { activity: { foregroundProcessName: 'cs2.exe', idleSeconds: 999 }, expectedActiveMs: 1_000 },
+  ]) {
+    t.mock.timers.tick(1_000);
+    await player.report(['cs2.exe'], activity).expect(200);
+    assert.equal((await stats()).body.entries[0].activeMs, expectedActiveMs, JSON.stringify(activity));
+  }
+  assert.equal((await stats()).body.entries[0].totalMs, 4_000);
 });
 
-test('an ongoing session (no stop report yet) already counts some playtime', async () => {
-  await request(app).post('/api/agent/report').set('x-api-key', apiKey).send({ processNames: ['cs2.exe'] });
-  await new Promise((r) => setTimeout(r, 50));
-
-  const res = await request(app).get(`/api/stats/playtime?gameId=${cs2GameId}`);
-  const entry = res.body.entries.find((e: { playerId: string }) => e.playerId === playerId);
-  assert.ok(entry, 'expected an in-progress session to already show up');
-  assert.ok(entry.totalMs > 0);
-});
-
-test('stopping the game closes the session and playtime stops growing', async () => {
-  await request(app).post('/api/agent/report').set('x-api-key', apiKey).send({ processNames: [] });
-
-  const first = await request(app).get(`/api/stats/playtime?gameId=${cs2GameId}`);
-  const firstMs = first.body.entries.find((e: { playerId: string }) => e.playerId === playerId).totalMs;
-
-  await new Promise((r) => setTimeout(r, 60));
-
-  const second = await request(app).get(`/api/stats/playtime?gameId=${cs2GameId}`);
-  const secondMs = second.body.entries.find((e: { playerId: string }) => e.playerId === playerId).totalMs;
-
-  assert.equal(firstMs, secondMs, 'closed session must not keep accumulating time');
-});
-
-test('a second session on the same game adds to the total instead of replacing it', async () => {
-  const before = await request(app).get(`/api/stats/playtime?gameId=${cs2GameId}`);
-  const beforeMs = before.body.entries.find((e: { playerId: string }) => e.playerId === playerId).totalMs;
-
-  await request(app).post('/api/agent/report').set('x-api-key', apiKey).send({ processNames: ['cs2.exe'] });
-  await new Promise((r) => setTimeout(r, 50));
-  await request(app).post('/api/agent/report').set('x-api-key', apiKey).send({ processNames: [] });
-
-  const after = await request(app).get(`/api/stats/playtime?gameId=${cs2GameId}`);
-  const afterMs = after.body.entries.find((e: { playerId: string }) => e.playerId === playerId).totalMs;
-
-  assert.ok(afterMs > beforeMs, 'second session should add on top of the first');
-});
-
-test('GET /api/stats/playtime totals aggregate across games for the same player', async () => {
-  const res = await request(app).get('/api/stats/playtime');
-  const total = res.body.totals.find((t: { playerId: string }) => t.playerId === playerId);
-  assert.ok(total);
-  assert.ok(total.formatted); // e.g. "1m" or "45m"
-});
-
-test('GET /api/stats/playtime totalsByGame aggregates across all players for CS2', async () => {
-  // A second player also plays a CS2 session, so the per-game total should
-  // exceed what any single player racked up alone.
-  const other = await request(app).post('/api/players').send({ name: 'Playtime Tester 2' });
-  enableTestTracking(other.body.id);
-  await request(app)
-    .post('/api/agent/report')
-    .set('x-api-key', other.body.api_key)
-    .send({ processNames: ['cs2.exe'] });
-  await new Promise((r) => setTimeout(r, 50));
-  await request(app).post('/api/agent/report').set('x-api-key', other.body.api_key).send({ processNames: [] });
-
-  const res = await request(app).get(`/api/stats/playtime?gameId=${cs2GameId}`);
-  const gameTotal = res.body.totalsByGame.find((g: { gameId: string }) => g.gameId === cs2GameId);
-  const player1Ms = res.body.entries.find((e: { playerId: string }) => e.playerId === playerId).totalMs;
-  const player2Ms = res.body.entries.find((e: { playerId: string }) => e.playerId === other.body.id).totalMs;
-
-  assert.ok(gameTotal);
-  assert.equal(gameTotal.totalMs, player1Ms + player2Ms);
-  assert.equal(gameTotal.gameName, 'Counter-Strike 2');
-});
-
-test('GET /api/players/:id/stats reflects this player\'s own sessions only', async () => {
-  const res = await request(app).get(`/api/players/${playerId}/stats`);
-  assert.equal(res.status, 200);
-  assert.ok(res.body.totalMs > 0);
-  assert.equal(res.body.sessionCount, 2); // two CS2 sessions recorded above
-  assert.equal(res.body.distinctGamesCount, 1);
-
-  const cs2 = res.body.games.find((g: { gameId: string }) => g.gameId === cs2GameId);
-  assert.ok(cs2);
-  assert.equal(cs2.gameName, 'Counter-Strike 2');
-  assert.equal(cs2.totalMs, res.body.totalMs);
-
-  assert.ok(res.body.events.length >= 1);
-  assert.ok(res.body.longestSessions.length > 0);
+test('agent reports reject malformed activity fields', async () => {
+  const { addPlayer } = await trackingFixture('Invalid activity metadata');
+  const player = await addPlayer('Invalid activity reporter');
+  await player.report(['cs2.exe'], { foregroundProcessName: 123 }).expect(400);
+  await player.report(['cs2.exe'], { idleSeconds: 'a lot' }).expect(400);
 });
