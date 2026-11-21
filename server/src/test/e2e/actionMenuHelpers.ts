@@ -6,6 +6,9 @@ import type { Locator } from 'playwright';
 // a live re-render must keep it open (actionMenu.js), so a closed menu here is
 // a failure, not something to retry.
 export async function openActionMenuOf(entry: Locator): Promise<void> {
+  // A card that is still being rendered has no menu yet; checking it before
+  // the entry exists would skip opening and then wait on a hidden entry.
+  await entry.waitFor({ state: 'attached' });
   const menu = entry.locator('xpath=ancestor::details[contains(concat(" ", normalize-space(@class), " "), " action-menu ")][1]');
   if (await menu.count() && !(await menu.evaluate((element) => (element as HTMLDetailsElement).open))) {
     await menu.locator(':scope > summary').click();
