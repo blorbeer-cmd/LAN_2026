@@ -1066,19 +1066,6 @@ export const components = [
     ]
   },
   {
-    "id": "music-queue-open",
-    "role": "composite-part",
-    "selector": ".music-queue-open",
-    "owner": "public/css/overlays.css",
-    "contract": "components/controls.md#tokens-und-einzeilige-controls",
-    "purpose": "Jam request title opens the detail dialog: plain one-line text whose hit area covers the whole row, blue on row hover.",
-    "properties": [
-      "max-width",
-      "padding",
-      "white-space"
-    ]
-  },
-  {
     "id": "native-control-line",
     "role": "composite-part",
     "selector": "button, input",

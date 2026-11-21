@@ -1,6 +1,41 @@
 import { escapeHtml } from './format.js';
 import { icon } from './icons.js';
 
+const SAME_TRACK_RESTART_GAP_MS = 10_000;
+
+export function estimatedKioskMusicProgress(session, now = Date.now()) {
+  if (!session?.currentTrack) return 0;
+  const elapsed = session.isPlaying && session.playbackUpdatedAt ? now - session.playbackUpdatedAt : 0;
+  return Math.max(
+    0,
+    Math.min(Number(session.currentTrack.durationMs || 0), Number(session.progressMs || 0) + elapsed),
+  );
+}
+
+export function stabilizeKioskMusicSession(previousSession, nextSession, now = Date.now()) {
+  if (!nextSession?.currentTrack) return nextSession;
+  const incomingProgress = estimatedKioskMusicProgress(nextSession, now);
+  const sameTrack = previousSession?.currentTrack?.uri === nextSession.currentTrack.uri;
+  const previousProgress = sameTrack ? estimatedKioskMusicProgress(previousSession, now) : 0;
+  const incomingSourceUpdatedAt = Number(nextSession.playbackUpdatedAt || 0);
+  const previousSourceUpdatedAt = Number(
+    previousSession?.sourcePlaybackUpdatedAt || previousSession?.playbackUpdatedAt || 0,
+  );
+  const restartedSameTrack = sameTrack
+    && nextSession.isPlaying
+    && incomingSourceUpdatedAt > previousSourceUpdatedAt
+    && previousProgress - incomingProgress > SAME_TRACK_RESTART_GAP_MS;
+
+  return {
+    ...nextSession,
+    progressMs: sameTrack && nextSession.isPlaying && !restartedSameTrack
+      ? Math.max(previousProgress, incomingProgress)
+      : incomingProgress,
+    playbackUpdatedAt: now,
+    sourcePlaybackUpdatedAt: incomingSourceUpdatedAt,
+  };
+}
+
 function queuedRequests(session) {
   return (session?.requests || []).filter((entry) => entry.status === 'queued' || entry.status === 'sending');
 }
@@ -39,7 +74,6 @@ export function kioskMusicQueueHtml(session) {
     return `
       ${nextTrack.imageUrl ? `<img class="kiosk-music-cover" src="${escapeHtml(nextTrack.imageUrl)}" alt="" />` : `<span class="kiosk-music-cover kiosk-music-placeholder">${icon('music')}</span>`}
       <span class="kiosk-music-copy">
-        <span class="muted kiosk-music-next-label">${icon('music')} Als Nächstes</span>
         <strong>${escapeHtml(nextTrack.name)}</strong>
         <span class="muted">${escapeHtml(nextTrack.artist)} · ${nextRequest ? `gewünscht von ${escapeHtml(nextRequest.requestedByName)}` : `aus „${escapeHtml(playlist.name)}“${playlist.addedByName ? ` · hinzugefügt von ${escapeHtml(playlist.addedByName)}` : ''}`}</span>
       </span>`;
@@ -49,10 +83,8 @@ export function kioskMusicQueueHtml(session) {
     const requestLabel = requestCountLabel(queued.length);
     return `
       <span class="kiosk-music-copy">
-        <span class="muted kiosk-music-next-label">${icon('music')} Als Nächstes</span>
         <strong>Playlist im Zufallsmodus</strong>
-        <span class="muted">„${escapeHtml(playlist.name)}“${playlist.addedByName ? ` · hinzugefügt von ${escapeHtml(playlist.addedByName)}` : ''} · Spotify wählt den nächsten Titel</span>
-        <span class="muted">${remainingPlaylistLabel(playlist)}${requestLabel ? ` · ${requestLabel}` : ''}</span>
+        <span class="muted">„${escapeHtml(playlist.name)}“${playlist.addedByName ? ` · hinzugefügt von ${escapeHtml(playlist.addedByName)}` : ''} · Spotify wählt den nächsten Titel · ${remainingPlaylistLabel(playlist)}${requestLabel ? ` · ${requestLabel}` : ''}</span>
       </span>`;
   }
 
@@ -61,11 +93,10 @@ export function kioskMusicQueueHtml(session) {
     return `
       ${request.imageUrl ? `<img class="kiosk-music-cover" src="${escapeHtml(request.imageUrl)}" alt="" />` : `<span class="kiosk-music-cover kiosk-music-placeholder">${icon('music')}</span>`}
       <span class="kiosk-music-copy">
-        <span class="muted kiosk-music-next-label">${icon('music')} Als Nächstes</span>
         <strong>${escapeHtml(request.name)}</strong>
         <span class="muted">${escapeHtml(request.artist)} · gewünscht von ${escapeHtml(request.requestedByName)}</span>
       </span>`;
   }
 
-  return '<span class="kiosk-music-copy"><span class="muted kiosk-music-next-label">Als Nächstes</span><span class="muted">Keine weiteren Titel eingeplant.</span></span>';
+  return '<span class="kiosk-music-copy"><span class="muted">Keine weiteren Titel eingeplant.</span></span>';
 }
