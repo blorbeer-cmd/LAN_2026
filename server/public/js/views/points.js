@@ -588,7 +588,7 @@ export function competitionCorrection(type, sourceId, fixtureIds = []) {
     readOnly: rounds.length > 0 && !isGroupAdmin(),
     html: !rounds.length
       ? ''
-      : `<div class="stack">${isGroupAdmin() ? '<label class="stack"><span class="field-label">Begründung der Ergebniskorrektur</span><textarea data-betting-correction-reason maxlength="300" required></textarea></label>' : '<p>Diese Korrektur kann nur ein Admin durchführen.</p>'}</div>`,
+      : `<div class="stack result-correction">${isGroupAdmin() ? '<label class="stack"><span class="field-label">Begründung der Ergebniskorrektur</span><textarea data-betting-correction-reason maxlength="300" required></textarea></label>' : '<p>Diese Korrektur kann nur ein Admin durchführen.</p>'}</div>`,
     payload(el) {
       if (!rounds.length) return {};
       if (!isGroupAdmin()) throw new Error('Nur ein Admin kann bereits abgerechnete Ergebnisse korrigieren.');

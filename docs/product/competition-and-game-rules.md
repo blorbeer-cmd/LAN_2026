@@ -205,7 +205,9 @@ Die Spielberechnung übernimmt die Platzregel des Zielkonzepts
   An open draw offers „Server und Passwort“ in its „Aktion“ menu, available even when
   the draw is collapsed and before any values are saved. Every event participant can open it
   to view, copy and edit the optional „Server“ (at most 100 characters) and „Passwort“ (at most
-  60 characters). „Speichern“ shares the values with the other participants. Clearing a field
+  60 characters). When „Server“ is a web address (`https://…`, `http://…`, `www.…`), a „Server
+  öffnen“ link icon before its copy action opens it in a new tab; it follows the typed value and is
+  absent for an IP:port or a plain name. „Speichern“ shares the values with the other participants. Clearing a field
   removes its value. The action is available until the draw has a result or becomes a tournament
   (the API then returns `409`).
 - **Player skill display** — `skillDisplay.js` renders the shared activity icon plus the selected

@@ -11,7 +11,7 @@ import { icon } from '../icons.js';
 import { domainIcon } from '../domainIcons.js';
 import { confirmDialog, openModal } from '../modal.js';
 import { state, gameById, catalogGames, gamesWithHistory, eventPlayers, defaultCatalogGameId } from '../state.js';
-import { escapeHtml, avatarHtml, formatDateTime, seatConflictIconHtml } from '../format.js';
+import { escapeHtml, avatarHtml, formatDateTime, seatConflictIconHtml, webUrlHref } from '../format.js';
 import { showToast } from '../toast.js';
 import { getMyId } from '../whoami.js';
 import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
@@ -440,25 +440,41 @@ function renderDrawCard(draw, { editable: editableInput, showGame = false, colla
 }
 
 // Server address and password are optional; clearing both fields removes them.
+// A server given as a web address (a join or browser link) also gets an
+// "open" action; an IP:port or plain name stays copy-only.
 function openDrawServerDialog(draw, ctx) {
-  const field = (id, label, value, maxLength) => `
+  const openLink = (id, label, value) => {
+    const href = webUrlHref(value);
+    return `<a class="icon-btn" data-open-draw-server="${id}"${href ? ` href="${escapeHtml(href)}"` : ' hidden'} target="_blank" rel="noopener noreferrer" aria-label="${label} öffnen" title="${label} öffnen">${icon('squareArrowOutUpRight')}</a>`;
+  };
+  const field = (id, label, value, maxLength, { linkable = false } = {}) => `
       <div>
         <label class="field-label" for="${id}">${label}</label>
         <div class="row matchmaking-draw-server-field">
           <input type="text" id="${id}" maxlength="${maxLength}" autocomplete="off" value="${escapeHtml(value ?? '')}" />
+          ${linkable ? openLink(id, label, value) : ''}
           <button type="button" class="icon-btn" data-copy-draw-server="${id}" aria-label="${label} kopieren" title="${label} kopieren"${value ? '' : ' disabled'}>${icon('copy')}</button>
         </div>
       </div>`;
   const { close, el } = openModal('Server und Passwort', `
     <form class="stack" data-draw-server-form>
       <div class="muted result-dialog-subtitle">${escapeHtml(draw.gameName)} · ${draw.teams.length} Teams</div>
-      ${field('draw-server-address', 'Server', draw.serverAddress, 100)}
+      ${field('draw-server-address', 'Server', draw.serverAddress, 100, { linkable: true })}
       ${field('draw-server-password', 'Passwort', draw.serverPassword, 60)}
       <div class="draw-tournament-footer"><button type="submit" class="btn btn-primary btn-sm">Speichern</button></div>
     </form>`);
   const address = el.querySelector('#draw-server-address');
   const password = el.querySelector('#draw-server-password');
   address.focus();
+  el.querySelectorAll('[data-open-draw-server]').forEach((link) => {
+    const input = el.querySelector(`#${link.dataset.openDrawServer}`);
+    input.addEventListener('input', () => {
+      const href = webUrlHref(input.value);
+      link.hidden = !href;
+      if (href) link.href = href;
+      else link.removeAttribute('href');
+    });
+  });
   el.querySelectorAll('[data-copy-draw-server]').forEach((button) => {
     const input = el.querySelector(`#${button.dataset.copyDrawServer}`);
     input.addEventListener('input', () => { button.disabled = !input.value.trim(); });

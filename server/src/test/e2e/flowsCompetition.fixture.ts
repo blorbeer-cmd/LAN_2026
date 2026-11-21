@@ -1167,7 +1167,14 @@ flowTest('matchmaking Historie marks a recorded draw as Unentschieden', async ()
     const password = serverDialog.getByLabel('Passwort', { exact: true });
     assert.equal(await drawToggle.getAttribute('aria-expanded'), 'false');
     assert.equal(await address.inputValue(), '');
+    // Only a web address gets the "open" action; it follows the typed value.
+    const openServer = serverDialog.getByRole('link', { name: 'Server öffnen' });
+    assert.equal(await openServer.count(), 0);
+    await address.fill('https://lan.example/join');
+    assert.equal(await openServer.getAttribute('href'), 'https://lan.example/join');
+    assert.equal(await openServer.getAttribute('target'), '_blank');
     await address.fill('10.0.0.5:27015');
+    await openServer.waitFor({ state: 'hidden' });
     await password.fill('zocken123');
     await serverDialog.getByRole('button', { name: 'Speichern' }).click();
     await serverDialog.waitFor({ state: 'hidden' });
