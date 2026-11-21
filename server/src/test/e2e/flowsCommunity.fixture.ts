@@ -328,7 +328,7 @@ flowTest('Durchsage: notification center can navigate, mark read and remove with
   // A second message can be ended early by its creator; it remains a past
   // notification until this player removes it from the center.
   await openMoreViewEntry(page, '[data-navigate="broadcast"]');
-  await page.fill('#broadcast-message', 'Turnier startet gleich!');
+  await page.fill('#broadcast-message', 'Turnier startet gleich! Bracket: https://lan.example/bracket.');
   await page.click('#broadcast-form button[type="submit"]');
   const activeRow = page.locator('.broadcast-table-row:has-text("Turnier startet gleich!")');
   await activeRow.waitFor();
@@ -336,6 +336,10 @@ flowTest('Durchsage: notification center can navigate, mark read and remove with
   // end it there as well as from the row's fixed action column.
   await activeRow.locator('[data-broadcast-detail]').click();
   await page.waitForSelector('.broadcast-detail-message:has-text("Turnier startet gleich!")');
+  // A web address in the message is a link; the sentence's period stays text.
+  const broadcastLink = page.locator('.broadcast-detail-message').getByRole('link', { name: 'https://lan.example/bracket' });
+  assert.equal(await broadcastLink.getAttribute('href'), 'https://lan.example/bracket');
+  assert.equal(await broadcastLink.getAttribute('target'), '_blank');
   await page.keyboard.press('Escape');
   await page.waitForSelector('.broadcast-detail-modal', { state: 'detached' });
   await activeRow.locator('[data-end-broadcast]').click();

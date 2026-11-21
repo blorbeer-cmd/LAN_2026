@@ -8,7 +8,7 @@
 // wherever they are without losing the view they were working in.
 
 import { api } from '../api.js';
-import { escapeHtml, formatDateTime } from '../format.js';
+import { escapeHtml, formatDateTime, linkifyHtml } from '../format.js';
 import { openModal, confirmDialog } from '../modal.js';
 import { showToast } from '../toast.js';
 import { withStepUp } from '../reauth.js';
@@ -42,15 +42,6 @@ async function load() {
 export function invalidateInfoBoard() {
   cache = null;
   if (openDialog) load();
-}
-
-// Turns bare URLs into clickable links — applied AFTER escapeHtml, so the
-// matched text is already entity-escaped and safe to wrap in an anchor.
-function linkify(escaped) {
-  return escaped.replace(
-    /(https?:\/\/[^\s<]+)/g,
-    (url) => `<a href="${url}" target="_blank" rel="noopener" style="color:var(--accent);word-break:break-all;">${url}</a>`
-  );
 }
 
 function findEntry(id) {
@@ -154,7 +145,7 @@ function openEntryDetail(entry) {
     : '<div class="row" style="justify-content:flex-end;"><button type="button" class="btn btn-primary btn-sm" data-detail-copy>Kopieren</button></div>';
   const { close } = openModal(entry.title, `
     <div class="stack">
-      <p class="info-board-content">${linkify(escapeHtml(entry.content))}</p>
+      <p class="info-board-content">${linkifyHtml(entry.content)}</p>
       ${meta ? `<p class="info-board-meta">${meta}</p>` : ''}
       ${footer}
     </div>`, {

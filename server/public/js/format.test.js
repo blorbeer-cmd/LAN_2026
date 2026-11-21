@@ -12,6 +12,8 @@ import {
   stateLabel,
   avatarHtml,
   gameChipsHtml,
+  linkifyHtml,
+  webUrlHref,
 } from './format.js';
 
 test('escapeHtml neutralizes all five HTML-significant characters', () => {
@@ -114,4 +116,30 @@ test('gameChipsHtml with a single game never shows the foreground/background dis
   const html = gameChipsHtml(games, true);
   assert.doesNotMatch(html, /chip-foreground/);
   assert.doesNotMatch(html, /aktiv/);
+});
+
+test('linkifyHtml links web addresses in escaped user text and leaves trailing punctuation outside', () => {
+  assert.equal(
+    linkifyHtml('Bracket: https://lan.example/t?a=1&b=2. Fotos (www.fotos.example) <b>'),
+    'Bracket: <a class="text-link" href="https://lan.example/t?a=1&amp;b=2" target="_blank" rel="noopener noreferrer">https://lan.example/t?a=1&amp;b=2</a>. '
+      + 'Fotos (<a class="text-link" href="https://www.fotos.example/" target="_blank" rel="noopener noreferrer">www.fotos.example</a>) &lt;b&gt;',
+  );
+  assert.match(linkifyHtml('https://de.wikipedia.org/wiki/LAN_(Netz)'), /href="https:\/\/de\.wikipedia\.org\/wiki\/LAN_\(Netz\)"/);
+});
+
+test('linkifyHtml never builds a link from another scheme or a quote-breaking address', () => {
+  assert.equal(linkifyHtml('javascript:alert(1) steam://connect/1.2.3.4'), 'javascript:alert(1) steam://connect/1.2.3.4');
+  assert.equal(linkifyHtml('Essen kommen!'), 'Essen kommen!');
+  const html = linkifyHtml('https://x.example/"onmouseover="alert(1)');
+  assert.match(html, /href="https:\/\/x\.example\/"/);
+  assert.match(html, /&quot;onmouseover=&quot;alert\(1\)$/);
+});
+
+test('webUrlHref accepts only a whole http(s) or www address', () => {
+  assert.equal(webUrlHref(' https://lan.example/join '), 'https://lan.example/join');
+  assert.equal(webUrlHref('www.lan.example'), 'https://www.lan.example/');
+  assert.equal(webUrlHref('10.0.0.5:27015'), null);
+  assert.equal(webUrlHref('https://lan.example join'), null);
+  assert.equal(webUrlHref('steam://connect/10.0.0.5'), null);
+  assert.equal(webUrlHref(null), null);
 });

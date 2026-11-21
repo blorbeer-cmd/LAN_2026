@@ -2,7 +2,7 @@
 // through the shared in-app, kiosk and Web Push delivery pipeline.
 
 import { api } from '../api.js';
-import { escapeHtml, formatDateTime } from '../format.js';
+import { escapeHtml, formatDateTime, linkifyHtml } from '../format.js';
 import { showToast } from '../toast.js';
 import { getMyId } from '../whoami.js';
 import {
@@ -125,7 +125,7 @@ function openDetail(b, myId, ctx) {
   const { close } = openModal(
     'Durchsage',
     `<div class="stack">
-       <p class="broadcast-detail-message">${escapeHtml(b.message)}</p>
+       <p class="broadcast-detail-message">${linkifyHtml(b.message)}</p>
        <dl class="broadcast-detail-facts">
          ${facts.map(([label, value]) => `<dt>${label}</dt><dd>${value}</dd>`).join('')}
        </dl>
