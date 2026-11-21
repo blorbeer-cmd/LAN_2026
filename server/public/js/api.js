@@ -322,6 +322,11 @@ export const api = {
         method: 'PATCH',
         body: JSON.stringify({ playerId, toTeamIndex }),
       }),
+    updateDrawServer: (drawId, { serverAddress, serverPassword }) =>
+      apiFetch(`/api/matchmaking/draws/${drawId}/server`, {
+        method: 'PATCH',
+        body: JSON.stringify({ serverAddress, serverPassword }),
+      }),
     removeDrawPlayer: (drawId, playerId) =>
       apiFetch(`/api/matchmaking/draws/${drawId}/players/${encodeURIComponent(playerId)}`, { method: 'DELETE' }),
     removeDraw: (drawId) => apiFetch(`/api/matchmaking/draws/${drawId}`, { method: 'DELETE' }),

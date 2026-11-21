@@ -18,6 +18,7 @@ import Database from 'better-sqlite3';
 import { EVENT_FEATURE_KEYS } from '../eventFeatureCatalog';
 
 const DB_JS_PATH = path.join(__dirname, '..', 'db.js');
+const EXPECTED_MIGRATION_VERSIONS = Array.from({ length: 140 }, (_, index) => index + 1);
 const BOOTSTRAP_ADMINS_JS_PATH = path.join(__dirname, '..', 'bootstrapAdmins.js');
 
 test('points migrations leave legacy LANs hidden and preserve background balances across replay', () => {
@@ -1932,10 +1933,10 @@ test('records the complete migration history and does not duplicate it on restar
     name: string;
   }>;
 
-  assert.equal(migrations.length, 139);
+  assert.equal(migrations.length, EXPECTED_MIGRATION_VERSIONS.length);
   assert.deepEqual(
     migrations.map((migration) => migration.version),
-    Array.from({ length: 139 }, (_, index) => index + 1),
+    EXPECTED_MIGRATION_VERSIONS,
   );
   assert.ok(migrations.every((migration) => migration.name.length > 0));
   for (const table of ['scribble_drawings', 'scribble_drawing_reactions', 'scribble_drawing_favorites']) {
@@ -2537,8 +2538,8 @@ test('runs migrations in ascending version order regardless of declaration order
   );
   assert.deepEqual(
     order,
-    Array.from({ length: 139 }, (_, index) => index + 1),
-    'every version 1..139 runs exactly once',
+    EXPECTED_MIGRATION_VERSIONS,
+    'every registered version runs exactly once',
   );
 });
 
@@ -5419,6 +5420,42 @@ test('migration 110 repairs the main migrations a draft installation skipped', (
     ),
     'the draw-to-tournament link stays repaired',
   );
+  migrated.close();
+  fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
+});
+
+test('migration 140 adds empty server details to existing draws, rolls back a partial failure and replays', () => {
+  const dbFile = makeTempDbPath('draw-server-details');
+  runMigrations(dbFile);
+  const fixture = new Database(dbFile);
+  fixture.exec(`INSERT INTO events(id,name,starts_at,group_id,status,event_type_key)
+      VALUES('server-event','Existing LAN',1,'default-group','published','lan');
+    INSERT INTO games(id,name,created_at,group_id,status) VALUES('server-game','Server game',1,'default-group','catalog');
+    INSERT INTO matchmaking_draws(id,game_id,event_id,group_id,teams,generated_at) VALUES
+      ('server-draw','server-game','server-event','default-group','[{"players":[]}]',1);
+    ALTER TABLE matchmaking_draws DROP COLUMN server_address;
+    ALTER TABLE matchmaking_draws DROP COLUMN server_password;
+    DELETE FROM schema_migrations WHERE version=140;
+    -- Blocks only the second column: the first one must not survive the failure.
+    ALTER TABLE matchmaking_draws ADD COLUMN SERVER_PASSWORD_BLOCKER TEXT;
+    ALTER TABLE matchmaking_draws RENAME COLUMN SERVER_PASSWORD_BLOCKER TO "SERVER_PASSWORD";`);
+  const before = fixture.prepare('SELECT id, teams FROM matchmaking_draws ORDER BY id').all();
+  fixture.close();
+  assert.throws(() => runMigrations(dbFile), /duplicate column name/);
+  const failed = new Database(dbFile);
+  const failedColumns = (failed.pragma('table_info(matchmaking_draws)') as Array<{ name: string }>).map((column) => column.name);
+  assert.ok(!failedColumns.includes('server_address'));
+  assert.equal(failed.prepare('SELECT 1 FROM schema_migrations WHERE version=140').get(), undefined);
+  failed.exec('ALTER TABLE matchmaking_draws DROP COLUMN "SERVER_PASSWORD"');
+  failed.close();
+  runMigrations(dbFile);
+  runMigrations(dbFile);
+  const migrated = new Database(dbFile, { readonly: true });
+  assert.ok(migrated.prepare('SELECT 1 FROM schema_migrations WHERE version=140').get());
+  assert.deepEqual(migrated.prepare('SELECT id, teams FROM matchmaking_draws ORDER BY id').all(), before);
+  assert.deepEqual(migrated.prepare('SELECT server_address, server_password FROM matchmaking_draws').all(),
+    [{ server_address: null, server_password: null }]);
+  assert.deepEqual(migrated.pragma('foreign_key_check'), []);
   migrated.close();
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
 });

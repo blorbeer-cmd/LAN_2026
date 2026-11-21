@@ -24,6 +24,7 @@ import { resultFormHtml, wireResultForm } from '../resultDialog.js';
 import { withStepUp } from '../reauth.js';
 import { isGroupAdmin } from '../groupContext.js';
 import { RESTORE_FOCUS_EVENT } from '../viewRenderState.js';
+import { copyText } from '../clipboard.js';
 
 // Persists across re-renders of this view (but not across a full page
 // reload) so toggling checkboxes survives a re-roll without extra plumbing.
@@ -388,6 +389,10 @@ function renderDrawCard(draw, { editable: editableInput, showGame = false, prima
       : ''
     : '';
 
+  const serverAction = editable && !draw.matchId
+    ? `<button type="button" class="tournament-fixture-action" data-draw-server-info="${escapeHtml(draw.id)}" aria-haspopup="dialog" aria-label="Server und Passwort" title="Server und Passwort">${icon('info')}</button>`
+    : '';
+
   // Same action slot as tournament fixtures: a pencil for a recorded result,
   // "+" for an open draw. An open draw can alternatively become a tournament;
   // on the freshly drawn lineup that is the highlighted next step, so
@@ -395,7 +400,7 @@ function renderDrawCard(draw, { editable: editableInput, showGame = false, prima
   const actions = inTournament
     ? `<button type="button" class="btn btn-sm" data-open-draw-tournament="${escapeHtml(draw.tournamentId)}">${escapeHtml(draw.tournamentName ?? 'Turnier')}</button>`
     : editable
-    ? `<button type="button" class="tournament-fixture-action is-open" data-record-draw="${draw.id}" aria-label="Ergebnis eintragen" title="Ergebnis eintragen">${icon('plus')}</button>
+    ? `${serverAction}<button type="button" class="tournament-fixture-action is-open" data-record-draw="${draw.id}" aria-label="Ergebnis eintragen" title="Ergebnis eintragen">${icon('plus')}</button>
        <button type="button" class="btn btn-sm${primaryTournament ? ' btn-primary' : ''}" data-draw-tournament="${draw.id}">Turnier erstellen</button>`
     : `<button type="button" class="tournament-fixture-action" data-edit-draw-result="${draw.id}" aria-label="Ergebnis bearbeiten" title="Ergebnis bearbeiten">${icon('pencil')}</button>
        <button type="button" class="btn btn-sm" data-rematch-draw="${draw.id}">Rematch</button>`;
@@ -424,6 +429,59 @@ function renderDrawCard(draw, { editable: editableInput, showGame = false, prima
       ${seatingNote}
       ${inTournament ? '' : bettingHiddenHintHtml()}
     </div>`;
+}
+
+// Server address and password are optional; clearing both fields removes them.
+function openDrawServerDialog(draw, ctx) {
+  const field = (id, label, value, maxLength) => `
+      <div>
+        <label class="field-label" for="${id}">${label}</label>
+        <div class="row matchmaking-draw-server-field">
+          <input type="text" id="${id}" maxlength="${maxLength}" autocomplete="off" value="${escapeHtml(value ?? '')}" />
+          <button type="button" class="icon-btn" data-copy-draw-server="${id}" aria-label="${label} kopieren" title="${label} kopieren"${value ? '' : ' disabled'}>${icon('copy')}</button>
+        </div>
+      </div>`;
+  const { close, el } = openModal('Server und Passwort', `
+    <form class="stack" data-draw-server-form>
+      <div class="muted result-dialog-subtitle">${escapeHtml(draw.gameName)} · ${draw.teams.length} Teams</div>
+      ${field('draw-server-address', 'Server', draw.serverAddress, 100)}
+      ${field('draw-server-password', 'Passwort', draw.serverPassword, 60)}
+      <div class="draw-tournament-footer"><button type="submit" class="btn btn-primary btn-sm">Speichern</button></div>
+    </form>`);
+  const address = el.querySelector('#draw-server-address');
+  const password = el.querySelector('#draw-server-password');
+  address.focus();
+  el.querySelectorAll('[data-copy-draw-server]').forEach((button) => {
+    const input = el.querySelector(`#${button.dataset.copyDrawServer}`);
+    input.addEventListener('input', () => { button.disabled = !input.value.trim(); });
+    button.addEventListener('click', async () => {
+      try {
+        await copyText(input.value.trim());
+        showToast(`${input.labels[0].textContent} kopiert.`);
+      } catch {
+        input.select();
+        showToast('Bitte den markierten Text manuell kopieren.', { error: true });
+      }
+    });
+  });
+  el.querySelector('[data-draw-server-form]').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const submit = event.currentTarget.querySelector('[type="submit"]');
+    submit.disabled = true;
+    try {
+      const updated = await api.matchmaking.updateDrawServer(draw.id, {
+        serverAddress: address.value.trim() || null,
+        serverPassword: password.value.trim() || null,
+      });
+      applyUpdatedDraw(updated);
+      close();
+      ctx.rerender();
+      showToast(updated.serverAddress || updated.serverPassword ? 'Server gespeichert.' : 'Server entfernt.');
+    } catch (err) {
+      submit.disabled = false;
+      showToast(err.message, { error: true });
+    }
+  });
 }
 
 // Draw results keep the Match API shape; only the form is shared.
@@ -585,7 +643,8 @@ function openDrawTournamentDialog(draw) {
 }
 
 function applyUpdatedDraw(updated) {
-  if (state.lastMatchmaking?.id === updated.id) state.lastMatchmaking = updated;
+  // Merge so client-only fields of a fresh draw (avoidPairs) survive.
+  if (state.lastMatchmaking?.id === updated.id) state.lastMatchmaking = { ...state.lastMatchmaking, ...updated };
   if (historyCache) {
     const idx = historyCache.findIndex((draw) => draw.id === updated.id);
     if (idx !== -1) historyCache[idx] = updated;
@@ -718,6 +777,12 @@ function wireDrawCards(container, ctx) {
       showToast(err.message, { error: true });
     }
   }));
+  container.querySelectorAll('[data-draw-server-info]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const draw = findDrawById(btn.dataset.drawServerInfo);
+      if (draw && !draw.matchId && !draw.tournamentId) openDrawServerDialog(draw, ctx);
+    });
+  });
   container.querySelectorAll('[data-draw-tournament]').forEach((btn) => {
     btn.addEventListener('click', () => {
       const draw = findDrawById(btn.dataset.drawTournament);

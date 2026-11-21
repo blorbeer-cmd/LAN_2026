@@ -1126,6 +1126,9 @@ function wireSocket() {
     // not just the history entry.
     if ((payload?.matchId || payload?.deleted) && state.lastMatchmaking?.id === payload.id) {
       state.lastMatchmaking = null;
+    } else if (payload?.id && state.lastMatchmaking?.id === payload.id && !payload.tournamentId) {
+      // Still open (moved player, server details): keep the fresh draw in sync.
+      state.lastMatchmaking = { ...state.lastMatchmaking, ...payload };
     }
     if (currentView === 'matchmaking') renderCurrent();
   });

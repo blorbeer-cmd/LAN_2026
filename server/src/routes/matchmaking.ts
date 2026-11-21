@@ -265,6 +265,8 @@ matchmakingRouter.post('/', (req, res) => {
     matchId: null as string | null,
     source: null as string | null,
     bettingAllowed,
+    serverAddress: null as string | null,
+    serverPassword: null as string | null,
   };
 
   // Logged for the history view (every draw, including re-rolls — see the
@@ -353,6 +355,8 @@ matchmakingRouter.post('/rematch', (req, res) => {
     matchId: null as string | null,
     source: 'rematch' as string | null,
     bettingAllowed,
+    serverAddress: null as string | null,
+    serverPassword: null as string | null,
   };
 
   withBettingAccounting(eventId, () => db.prepare(
@@ -377,7 +381,19 @@ interface DrawRow {
   tournamentId?: string | null;
   tournamentName?: string | null;
   bettingAllowed: number;
+  serverAddress: string | null;
+  serverPassword: string | null;
 }
+
+const DRAW_COLUMNS = `md.id AS id, md.game_id AS gameId, g.name AS gameName, g.icon AS gameIcon,
+              md.teams AS teamsJson, md.seat_conflicts AS seatConflicts,
+              md.seat_pairs_considered AS seatPairsConsidered, md.generated_at AS generatedAt,
+              md.match_id AS matchId, md.source AS source, md.betting_allowed AS bettingAllowed,
+              md.tournament_id AS tournamentId, t.name AS tournamentName,
+              md.server_address AS serverAddress, md.server_password AS serverPassword`;
+const DRAW_JOINS = `FROM matchmaking_draws md
+       JOIN games g ON g.id = md.game_id
+       LEFT JOIN tournaments t ON t.id = md.tournament_id`;
 
 function parseDrawRow(r: DrawRow) {
   return {
@@ -394,6 +410,10 @@ function parseDrawRow(r: DrawRow) {
     tournamentId: r.tournamentId ?? null,
     tournamentName: r.tournamentName ?? null,
     bettingAllowed: Boolean(r.bettingAllowed),
+    // Server details only matter while the Match is still open; a recorded or
+    // tournament-owned draw no longer exposes them (nor can they be edited).
+    serverAddress: r.matchId || r.tournamentId ? null : r.serverAddress ?? null,
+    serverPassword: r.matchId || r.tournamentId ? null : r.serverPassword ?? null,
   };
 }
 
@@ -481,14 +501,8 @@ matchmakingRouter.get('/history', (req, res) => {
     params.push(Number(before), Number(before), beforeId as string);
   }
 
-  const columns = `md.id AS id, md.game_id AS gameId, g.name AS gameName, g.icon AS gameIcon,
-              md.teams AS teamsJson, md.seat_conflicts AS seatConflicts,
-              md.seat_pairs_considered AS seatPairsConsidered, md.generated_at AS generatedAt,
-              md.match_id AS matchId, md.source AS source, md.betting_allowed AS bettingAllowed,
-              md.tournament_id AS tournamentId, t.name AS tournamentName`;
-  const joins = `FROM matchmaking_draws md
-       JOIN games g ON g.id = md.game_id
-       LEFT JOIN tournaments t ON t.id = md.tournament_id`;
+  const columns = DRAW_COLUMNS;
+  const joins = DRAW_JOINS;
 
   const rows = db
     .prepare(
@@ -640,15 +654,7 @@ matchmakingRouter.patch('/draws/:id/move', (req, res) => {
 // The client-facing shape of one draw, including a linked result.
 function loadDrawView(drawId: string) {
   const row = db
-    .prepare(
-      `SELECT md.id AS id, md.game_id AS gameId, g.name AS gameName, g.icon AS gameIcon,
-              md.teams AS teamsJson, md.seat_conflicts AS seatConflicts,
-              md.seat_pairs_considered AS seatPairsConsidered, md.generated_at AS generatedAt,
-              md.match_id AS matchId, md.source AS source, md.betting_allowed AS bettingAllowed,
-              md.tournament_id AS tournamentId, t.name AS tournamentName
-       FROM matchmaking_draws md JOIN games g ON g.id = md.game_id
-       LEFT JOIN tournaments t ON t.id = md.tournament_id WHERE md.id = ?`
-    )
+    .prepare(`SELECT ${DRAW_COLUMNS} ${DRAW_JOINS} WHERE md.id = ?`)
     .get(drawId) as DrawRow;
   const draw = parseDrawRow(row);
   attachMatchResults([draw]);
@@ -736,3 +742,66 @@ matchmakingRouter.delete('/draws/:id/players/:playerId', (req, res) => {
   if (recorded) broadcast(Events.leaderboardChanged, null, scope);
   res.json(draw);
 });
+
+// PATCH /api/matchmaking/draws/:id/server - note where an open Match is
+// hosted. Body: { serverAddress: string | null, serverPassword: string | null };
+// blank values clear the field. Like moving players it is only allowed while
+// the draw has neither a result nor a tournament, so a recorded lineup stays
+// frozen. Concurrent edits are last-write-wins: both fields are written in
+// one statement whose WHERE clause re-checks that the draw is still open.
+matchmakingRouter.patch('/draws/:id/server', (req, res) => {
+  const serverAddress = normalizeServerField(req.body?.serverAddress, SERVER_ADDRESS_MAX_LENGTH);
+  if (serverAddress === 'invalid') return res.status(400).json({ error: 'Server ist ungültig.' });
+  if (serverAddress === 'too-long') {
+    return res.status(400).json({ error: `Server darf höchstens ${SERVER_ADDRESS_MAX_LENGTH} Zeichen lang sein.` });
+  }
+  const serverPassword = normalizeServerField(req.body?.serverPassword, SERVER_PASSWORD_MAX_LENGTH);
+  if (serverPassword === 'invalid') return res.status(400).json({ error: 'Passwort ist ungültig.' });
+  if (serverPassword === 'too-long') {
+    return res.status(400).json({ error: `Passwort darf höchstens ${SERVER_PASSWORD_MAX_LENGTH} Zeichen lang sein.` });
+  }
+
+  const row = db
+    .prepare('SELECT id, event_id, match_id, tournament_id FROM matchmaking_draws WHERE id = ? AND group_id = ?')
+    .get(req.params.id, req.group!.id) as
+    | { id: string; event_id: string; match_id: string | null; tournament_id: string | null }
+    | undefined;
+  if (!row) return res.status(404).json({ error: 'Auslosung nicht gefunden.' });
+  if (!requireGroupEventAccess(req, res, row.event_id)) return;
+
+  const updated = db
+    .prepare(
+      `UPDATE matchmaking_draws SET server_address = ?, server_password = ?
+       WHERE id = ? AND match_id IS NULL AND tournament_id IS NULL`
+    )
+    .run(serverAddress.value, serverPassword.value, row.id);
+  if (updated.changes === 0) {
+    return res.status(409).json({
+      error: row.tournament_id
+        ? 'Aus dieser Auslosung wurde bereits ein Turnier erstellt.'
+        : 'Für diese Auslosung wurde bereits ein Ergebnis erfasst.',
+    });
+  }
+
+  const draw = loadDrawView(row.id);
+  broadcast(Events.matchmakingDrawsChanged, draw, {
+    groupId: req.group!.id,
+    eventId: deliveryEventId(row.event_id),
+  });
+  res.json(draw);
+});
+
+const SERVER_ADDRESS_MAX_LENGTH = 100;
+const SERVER_PASSWORD_MAX_LENGTH = 60;
+
+// Optional free-text field: missing, null or blank clears it (null), a string
+// within the limit is stored trimmed; a non-string is 'invalid' and an
+// over-long string 'too-long', so each gets its own error message.
+type ServerFieldResult = { value: string | null } | 'invalid' | 'too-long';
+function normalizeServerField(value: unknown, maxLength: number): ServerFieldResult {
+  if (value === undefined || value === null) return { value: null };
+  if (typeof value !== 'string') return 'invalid';
+  const trimmed = value.trim();
+  if (!trimmed) return { value: null };
+  return trimmed.length <= maxLength ? { value: trimmed } : 'too-long';
+}

@@ -2753,6 +2753,12 @@ input.food-order-price-input {
   gap: var(--space-2);
 }
 
+/* Keep the copy action beside its field on narrow dialogs. */
+.matchmaking-draw-server-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
 /* Active lobbies: flat hairline rows inside one card. The credentials sit
    as code chips with their copy action and never wrap mid-name. */
 .tournament-lobby-row {

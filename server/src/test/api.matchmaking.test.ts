@@ -635,6 +635,134 @@ test('DELETE /api/matchmaking/draws/:id protects tournament-owned draws', async 
   assert.ok(db.prepare('SELECT id FROM tournaments WHERE id = ?').get(tournament.body.id));
 });
 
+async function openServerTestDraw(name: string) {
+  const game = await request(app).post('/api/games').send({ name });
+  const draw = await request(app).post('/api/matchmaking')
+    .send({ gameId: game.body.id, playerIds: playerIds.slice(0, 2), teamCount: 2 });
+  assert.equal(draw.status, 200, JSON.stringify(draw.body));
+  return { gameId: game.body.id as string, draw: draw.body as { id: string; teams: Array<{ players: Array<{ id: string }> }> } };
+}
+
+const storedServer = (drawId: string) => db
+  .prepare('SELECT server_address AS serverAddress, server_password AS serverPassword FROM matchmaking_draws WHERE id = ?')
+  .get(drawId) as { serverAddress: string | null; serverPassword: string | null };
+
+test('PATCH /api/matchmaking/draws/:id/server stores, lists and clears trimmed server details', async () => {
+  const { gameId, draw } = await openServerTestDraw('Server Details Game');
+  assert.equal((draw as { serverAddress?: unknown }).serverAddress, null);
+
+  const saved = await request(app).patch(`/api/matchmaking/draws/${draw.id}/server`)
+    .send({ serverAddress: '  10.0.0.5:27015 ', serverPassword: ' zocken123 ' });
+  assert.equal(saved.status, 200, JSON.stringify(saved.body));
+  assert.equal(saved.body.serverAddress, '10.0.0.5:27015');
+  assert.equal(saved.body.serverPassword, 'zocken123');
+  assert.deepEqual(saved.body.teams, draw.teams);
+
+  const history = await request(app).get(`/api/matchmaking/history?gameId=${gameId}`);
+  const listed = history.body.openDraws.find((entry: { id: string }) => entry.id === draw.id);
+  assert.equal(listed.serverAddress, '10.0.0.5:27015');
+  assert.equal(listed.serverPassword, 'zocken123');
+
+  const passwordOnly = await request(app).patch(`/api/matchmaking/draws/${draw.id}/server`)
+    .send({ serverAddress: '   ', serverPassword: 'geheim' });
+  assert.equal(passwordOnly.status, 200);
+  assert.deepEqual(storedServer(draw.id), { serverAddress: null, serverPassword: 'geheim' });
+
+  const cleared = await request(app).patch(`/api/matchmaking/draws/${draw.id}/server`).send({});
+  assert.equal(cleared.status, 200);
+  assert.deepEqual(storedServer(draw.id), { serverAddress: null, serverPassword: null });
+});
+
+test('PATCH /api/matchmaking/draws/:id/server validates input, event access and the open state', async () => {
+  const { gameId, draw } = await openServerTestDraw('Server Guard Game');
+  await request(app).patch(`/api/matchmaking/draws/${draw.id}/server`)
+    .send({ serverAddress: 'lan-host', serverPassword: 'pw' });
+
+  for (const [body, message] of [
+    [{ serverAddress: 'x'.repeat(101) }, /höchstens 100 Zeichen/],
+    [{ serverPassword: 'x'.repeat(61) }, /höchstens 60 Zeichen/],
+    [{ serverAddress: 27015 }, /Server ist ungültig/],
+    [{ serverPassword: ['pw'] }, /Passwort ist ungültig/],
+  ] as const) {
+    const res = await request(app).patch(`/api/matchmaking/draws/${draw.id}/server`).send(body);
+    assert.equal(res.status, 400, JSON.stringify(body));
+    assert.match(res.body.error, message);
+  }
+  assert.equal((await request(app).patch('/api/matchmaking/draws/nope/server').send({})).status, 404);
+
+  // Same event boundary as moving players: only participants may write.
+  const foreign = await openServerTestDraw('Server Foreign Event Game');
+  const foreignEventId = nanoid();
+  const now = Date.now();
+  db.prepare(
+    `INSERT INTO events (id, name, starts_at, ends_at, tracking_enabled, group_id, status, visibility_scope)
+     VALUES (?, 'Fremdes Server-Event', ?, ?, 0, ?, 'published', 'participants')`,
+  ).run(foreignEventId, now - 1_000, now + 60_000, DEFAULT_GROUP_ID);
+  db.prepare('UPDATE matchmaking_draws SET event_id = ? WHERE id = ?').run(foreignEventId, foreign.draw.id);
+  const refused = await request(app).patch(`/api/matchmaking/draws/${foreign.draw.id}/server`)
+    .send({ serverAddress: 'evil' });
+  assert.equal(refused.status, 404);
+  assert.deepEqual(storedServer(foreign.draw.id), { serverAddress: null, serverPassword: null });
+
+  const recorded = await request(app).post('/api/matches').send({
+    gameId,
+    teams: draw.teams.map((team) => ({ playerIds: team.players.map((player) => player.id) })),
+    winnerTeamIndex: 0,
+    drawId: draw.id,
+  });
+  assert.equal(recorded.status, 201);
+  const afterResult = await request(app).patch(`/api/matchmaking/draws/${draw.id}/server`).send({ serverAddress: 'late' });
+  assert.equal(afterResult.status, 409);
+  assert.deepEqual(storedServer(draw.id), { serverAddress: 'lan-host', serverPassword: 'pw' });
+  // A recorded game no longer exposes the details it can no longer edit.
+  const recordedHistory = await request(app).get(`/api/matchmaking/history?gameId=${gameId}`);
+  const recordedEntry = recordedHistory.body.history.find((entry: { id: string }) => entry.id === draw.id);
+  assert.equal(recordedEntry.serverAddress, null);
+  assert.equal(recordedEntry.serverPassword, null);
+
+  const tournamentDraw = await openServerTestDraw('Server Tournament Game');
+  const tournament = await request(app).post('/api/tournaments').send({
+    gameId: tournamentDraw.gameId,
+    format: 'single_elimination',
+    drawId: tournamentDraw.draw.id,
+    teams: tournamentDraw.draw.teams.map((team) => ({ playerIds: team.players.map((player) => player.id) })),
+  });
+  assert.equal(tournament.status, 201);
+  const afterTournament = await request(app).patch(`/api/matchmaking/draws/${tournamentDraw.draw.id}/server`)
+    .send({ serverAddress: 'late' });
+  assert.equal(afterTournament.status, 409);
+  assert.match(afterTournament.body.error, /Turnier/);
+});
+
+test('parallel PATCH /api/matchmaking/draws/:id/server writes one complete pair and loses cleanly to a recorded result', async () => {
+  const { draw } = await openServerTestDraw('Server Race Game');
+  const payloads = [
+    { serverAddress: 'host-a', serverPassword: 'pw-a' },
+    { serverAddress: 'host-b', serverPassword: 'pw-b' },
+  ];
+  const edits = await Promise.all(payloads.map((body) =>
+    request(app).patch(`/api/matchmaking/draws/${draw.id}/server`).send(body)));
+  assert.deepEqual(edits.map((res) => res.status), [200, 200]);
+  const stored = storedServer(draw.id);
+  assert.ok(payloads.some((body) => body.serverAddress === stored.serverAddress && body.serverPassword === stored.serverPassword),
+    `fields of different edits were mixed: ${JSON.stringify(stored)}`);
+
+  const race = await openServerTestDraw('Server Result Race Game');
+  const [edit, result] = await Promise.all([
+    request(app).patch(`/api/matchmaking/draws/${race.draw.id}/server`).send({ serverAddress: 'racing-host' }),
+    request(app).post('/api/matches').send({
+      gameId: race.gameId,
+      teams: race.draw.teams.map((team) => ({ playerIds: team.players.map((player) => player.id) })),
+      winnerTeamIndex: 0,
+      drawId: race.draw.id,
+    }),
+  ]);
+  assert.equal(result.status, 201, JSON.stringify(result.body));
+  assert.ok([200, 409].includes(edit.status), `unexpected status ${edit.status}`);
+  // A losing edit must not have written anything after the draw was frozen.
+  assert.equal(storedServer(race.draw.id).serverAddress, edit.status === 200 ? 'racing-host' : null);
+});
+
 type DrawTeam = { players: Array<{ id: string }>; totalRating: number };
 const teamIds = (teams: DrawTeam[]) => teams.map((team) => team.players.map((player) => player.id));
 const removePlayer = (drawId: string, playerId: string) =>
