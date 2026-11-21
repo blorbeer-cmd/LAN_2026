@@ -410,8 +410,10 @@ function parseDrawRow(r: DrawRow) {
     tournamentId: r.tournamentId ?? null,
     tournamentName: r.tournamentName ?? null,
     bettingAllowed: Boolean(r.bettingAllowed),
-    serverAddress: r.serverAddress ?? null,
-    serverPassword: r.serverPassword ?? null,
+    // Server details only matter while the Match is still open; a recorded or
+    // tournament-owned draw no longer exposes them (nor can they be edited).
+    serverAddress: r.matchId || r.tournamentId ? null : r.serverAddress ?? null,
+    serverPassword: r.matchId || r.tournamentId ? null : r.serverPassword ?? null,
   };
 }
 
@@ -749,11 +751,13 @@ matchmakingRouter.delete('/draws/:id/players/:playerId', (req, res) => {
 // one statement whose WHERE clause re-checks that the draw is still open.
 matchmakingRouter.patch('/draws/:id/server', (req, res) => {
   const serverAddress = normalizeServerField(req.body?.serverAddress, SERVER_ADDRESS_MAX_LENGTH);
-  if (serverAddress === undefined) {
+  if (serverAddress === 'invalid') return res.status(400).json({ error: 'Server ist ungültig.' });
+  if (serverAddress === 'too-long') {
     return res.status(400).json({ error: `Server darf höchstens ${SERVER_ADDRESS_MAX_LENGTH} Zeichen lang sein.` });
   }
   const serverPassword = normalizeServerField(req.body?.serverPassword, SERVER_PASSWORD_MAX_LENGTH);
-  if (serverPassword === undefined) {
+  if (serverPassword === 'invalid') return res.status(400).json({ error: 'Passwort ist ungültig.' });
+  if (serverPassword === 'too-long') {
     return res.status(400).json({ error: `Passwort darf höchstens ${SERVER_PASSWORD_MAX_LENGTH} Zeichen lang sein.` });
   }
 
@@ -770,7 +774,7 @@ matchmakingRouter.patch('/draws/:id/server', (req, res) => {
       `UPDATE matchmaking_draws SET server_address = ?, server_password = ?
        WHERE id = ? AND match_id IS NULL AND tournament_id IS NULL`
     )
-    .run(serverAddress, serverPassword, row.id);
+    .run(serverAddress.value, serverPassword.value, row.id);
   if (updated.changes === 0) {
     return res.status(409).json({
       error: row.tournament_id
@@ -791,11 +795,13 @@ const SERVER_ADDRESS_MAX_LENGTH = 100;
 const SERVER_PASSWORD_MAX_LENGTH = 60;
 
 // Optional free-text field: missing, null or blank clears it (null), a string
-// within the limit is stored trimmed, anything else is invalid (undefined).
-function normalizeServerField(value: unknown, maxLength: number): string | null | undefined {
-  if (value === undefined || value === null) return null;
-  if (typeof value !== 'string') return undefined;
+// within the limit is stored trimmed; a non-string is 'invalid' and an
+// over-long string 'too-long', so each gets its own error message.
+type ServerFieldResult = { value: string | null } | 'invalid' | 'too-long';
+function normalizeServerField(value: unknown, maxLength: number): ServerFieldResult {
+  if (value === undefined || value === null) return { value: null };
+  if (typeof value !== 'string') return 'invalid';
   const trimmed = value.trim();
-  if (!trimmed) return null;
-  return trimmed.length <= maxLength ? trimmed : undefined;
+  if (!trimmed) return { value: null };
+  return trimmed.length <= maxLength ? { value: trimmed } : 'too-long';
 }

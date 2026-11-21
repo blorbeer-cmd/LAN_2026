@@ -678,14 +678,15 @@ test('PATCH /api/matchmaking/draws/:id/server validates input, event access and 
   await request(app).patch(`/api/matchmaking/draws/${draw.id}/server`)
     .send({ serverAddress: 'lan-host', serverPassword: 'pw' });
 
-  for (const body of [
-    { serverAddress: 'x'.repeat(101) },
-    { serverPassword: 'x'.repeat(61) },
-    { serverAddress: 27015 },
-    { serverPassword: ['pw'] },
-  ]) {
+  for (const [body, message] of [
+    [{ serverAddress: 'x'.repeat(101) }, /höchstens 100 Zeichen/],
+    [{ serverPassword: 'x'.repeat(61) }, /höchstens 60 Zeichen/],
+    [{ serverAddress: 27015 }, /Server ist ungültig/],
+    [{ serverPassword: ['pw'] }, /Passwort ist ungültig/],
+  ] as const) {
     const res = await request(app).patch(`/api/matchmaking/draws/${draw.id}/server`).send(body);
     assert.equal(res.status, 400, JSON.stringify(body));
+    assert.match(res.body.error, message);
   }
   assert.equal((await request(app).patch('/api/matchmaking/draws/nope/server').send({})).status, 404);
 
@@ -713,6 +714,11 @@ test('PATCH /api/matchmaking/draws/:id/server validates input, event access and 
   const afterResult = await request(app).patch(`/api/matchmaking/draws/${draw.id}/server`).send({ serverAddress: 'late' });
   assert.equal(afterResult.status, 409);
   assert.deepEqual(storedServer(draw.id), { serverAddress: 'lan-host', serverPassword: 'pw' });
+  // A recorded game no longer exposes the details it can no longer edit.
+  const recordedHistory = await request(app).get(`/api/matchmaking/history?gameId=${gameId}`);
+  const recordedEntry = recordedHistory.body.history.find((entry: { id: string }) => entry.id === draw.id);
+  assert.equal(recordedEntry.serverAddress, null);
+  assert.equal(recordedEntry.serverPassword, null);
 
   const tournamentDraw = await openServerTestDraw('Server Tournament Game');
   const tournament = await request(app).post('/api/tournaments').send({
