@@ -140,20 +140,26 @@ test('gamesWithHistory also keeps the extra ids it is handed', () => {
   );
 });
 
-test('defaultCatalogGameId opens on the last played catalog game, not the alphabetical first', () => {
+test('defaultCatalogGameId opens on the latest game Historie lists, not the alphabetical first', () => {
   state.games = [
     { id: 'g1', name: 'Age of Empires', isSuggestion: false },
     { id: 'g2', name: 'CS2', isSuggestion: false },
     { id: 'g3', name: 'Rocket League', isSuggestion: false },
     { id: 'g4', name: 'Zurückgestuft', isSuggestion: true },
+    { id: 'g5', name: 'Valorant', isSuggestion: false },
   ];
   state.matches = [
-    { id: 'm1', gameId: 'g3', playedAt: 1_000 },
-    { id: 'm2', gameId: 'g2', playedAt: 3_000 },
-    { id: 'm3', gameId: 'g4', playedAt: 5_000 },
+    { id: 'm1', gameId: 'g3', playedAt: 1_000, drawId: null, tournamentStatus: 'completed' },
+    { id: 'm2', gameId: 'g2', playedAt: 3_000, drawId: 'd2', tournamentStatus: null },
+    // A demoted game cannot be drawn for, so its newer result does not win.
+    { id: 'm3', gameId: 'g4', playedAt: 5_000, drawId: 'd3', tournamentStatus: null },
+    // Neither a running tournament's round nor an ad-hoc result shows in Historie.
+    { id: 'm4', gameId: 'g5', playedAt: 6_000, drawId: null, tournamentStatus: 'active' },
+    { id: 'm5', gameId: 'g5', playedAt: 7_000, drawId: null, tournamentStatus: null },
   ];
-  // A demoted game cannot be drawn for, so its newer result does not win.
   assert.equal(defaultCatalogGameId(), 'g2');
+  state.matches = state.matches.filter((match) => match.id !== 'm2');
+  assert.equal(defaultCatalogGameId(), 'g3', 'a completed tournament counts');
   state.matches = [];
   assert.equal(defaultCatalogGameId(), 'g1');
   state.games = [];

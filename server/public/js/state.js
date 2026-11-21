@@ -113,15 +113,18 @@ export function gamesWithHistory(extraGameIds = []) {
 }
 
 // The catalog game a game picker opens on before anyone picked one: the game
-// of the most recently played result, otherwise the first catalog game. The
-// catalog is alphabetical and every member may add games, so its first entry
-// is often one nobody has played yet — opening Match on it would hide the
-// whole Historie behind an empty game.
+// of the most recent result Match's Historie lists, otherwise the first
+// catalog game. The catalog is alphabetical and every member may add games,
+// so its first entry is often one nobody has played yet — opening Match on it
+// would hide the whole Historie behind an empty game. Historie lists recorded
+// draws and completed tournaments only, so a round of a still-running
+// tournament (GET /api/matches marks both) does not count.
 export function defaultCatalogGameId() {
   const catalogIds = new Set(catalogGames().map((game) => game.id));
   let latest = null;
   for (const match of state.matches) {
-    if (catalogIds.has(match.gameId) && (!latest || match.playedAt > latest.playedAt)) latest = match;
+    const inHistory = Boolean(match.drawId) || match.tournamentStatus === 'completed';
+    if (inHistory && catalogIds.has(match.gameId) && (!latest || match.playedAt > latest.playedAt)) latest = match;
   }
   return latest?.gameId ?? catalogGames()[0]?.id ?? null;
 }
