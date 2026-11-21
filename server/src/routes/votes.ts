@@ -248,12 +248,20 @@ interface ResultRow {
 // How often each game has won a closed vote round, all-time — read once per
 // buildResults call from vote_rounds.winner_game_ids (a small JSON array per
 // row), not worth a dedicated join since round counts stay tiny at LAN scale.
-function voteWinCountsByGame(groupId: string): Map<string, number> {
+// Only rounds that appear in the history count (at least one submitted ballot
+// for an existing game); ballot-less rounds are junk the history hides too.
+function voteWinCountsByGame(groupId: string, includeTestData: boolean): Map<string, number> {
   const rows = db
     .prepare(
-      'SELECT winner_game_ids AS winnerGameIdsJson FROM vote_rounds WHERE group_id = ? AND closed_at IS NOT NULL AND winner_game_ids IS NOT NULL',
+      `SELECT vr.winner_game_ids AS winnerGameIdsJson FROM vote_rounds vr
+       WHERE vr.group_id = ? AND vr.closed_at IS NOT NULL AND vr.winner_game_ids IS NOT NULL
+         AND EXISTS (
+           SELECT 1 FROM votes v JOIN games g ON g.id = v.game_id
+           WHERE v.group_id = vr.group_id AND v.round = vr.round AND g.group_id = vr.group_id
+             AND (? = 1 OR v.player_id NOT IN (SELECT id FROM players WHERE is_test = 1))
+         )`,
     )
-    .all(groupId) as Array<{ winnerGameIdsJson: string }>;
+    .all(groupId, includeTestData ? 1 : 0) as Array<{ winnerGameIdsJson: string }>;
   const counts = new Map<string, number>();
   for (const row of rows) {
     const ids: string[] = JSON.parse(row.winnerGameIdsJson);
@@ -334,7 +342,7 @@ function buildAllResults(
     Omit<ResultRow, 'score' | 'totalPlaytimeFormatted' | 'voteWinCount'>
   >;
 
-  const winCounts = voteWinCountsByGame(groupId);
+  const winCounts = voteWinCountsByGame(groupId, includeTestData);
   const results: ResultRow[] = rows.map((r) => ({
     ...r,
     score: mode === 'points' ? r.points : r.votes,
