@@ -14,6 +14,26 @@ const MIN_HEIGHT_BUDGET = 160;
 // Rounding headroom so the fitted layout never ends a pixel past the fold.
 const FIT_SAFETY_MARGIN = 8;
 
+function fitTetrisArena(shell, primaryBoard, opponentGrid, playfield, availableBottom) {
+  const stage = primaryBoard.closest('.arcade-stage');
+  const stageBottomPadding = Number.parseFloat(getComputedStyle(stage).paddingBottom) || 0;
+  const bounds = playfield.getBoundingClientRect();
+  const boardChrome = primaryBoard.getBoundingClientRect().bottom - bounds.bottom;
+  const height = Math.max(MIN_HEIGHT_BUDGET, Math.floor(
+    availableBottom - bounds.top - boardChrome - stageBottomPadding - FIT_SAFETY_MARGIN,
+  ));
+  const style = getComputedStyle(opponentGrid);
+  const columns = style.gridTemplateColumns.trim().split(/\s+/).length;
+  const rows = Math.ceil(opponentGrid.children.length / columns);
+  const rowGap = Number.parseFloat(style.rowGap) || 0;
+  const rowChrome = Math.max(...Array.from(opponentGrid.children, (column) =>
+    column.getBoundingClientRect().height - column.querySelector('.tetris-canvas-wrap').getBoundingClientRect().height,
+  ));
+  const opponentHeight = Math.min(height * 2 / 3, (height + boardChrome - (rows - 1) * rowGap) / rows - rowChrome);
+  shell.style.setProperty('--arcade-h-budget', `${height}px`);
+  shell.style.setProperty('--tetris-opponent-h-budget', `${Math.max(MIN_HEIGHT_BUDGET / 2, Math.floor(opponentHeight))}px`);
+}
+
 export function fitArcadePlayfield(shell) {
   if (!shell?.isConnected) return;
   const viewContainer = shell.closest('.view-container');
@@ -30,17 +50,18 @@ export function fitArcadePlayfield(shell) {
   const tetrisBoards = shell.querySelector('.tetris-boards.is-arena');
   const opponentGrid = tetrisBoards?.querySelector('.tetris-opponent-grid');
   const primaryBoard = tetrisBoards?.querySelector('.tetris-primary-board');
-  // On phones the Arena stacks the own board above the opponents. Fitting the
-  // whole stack would shrink the own board to a stamp, so only the own board
-  // has to fit there; the opponents follow below the fold.
-  const stackedArena = Boolean(primaryBoard && getComputedStyle(tetrisBoards).flexDirection === 'column');
-  const fitAnchor = stackedArena ? primaryBoard : shell;
-  const neededHeight = fitAnchor.getBoundingClientRect().bottom - containerTop + paddingBottom;
+  // The own board uses the space above the fold independently of opponent rows
+  // and of the Arena summary below the stage.
+  if (primaryBoard && opponentGrid) {
+    fitTetrisArena(shell, primaryBoard, opponentGrid, playfield, containerTop + viewContainer.clientHeight - paddingBottom);
+    return;
+  }
+  const neededHeight = shell.getBoundingClientRect().bottom - containerTop + paddingBottom;
   // An overflowing view reports its exact excess through scrollHeight (which
   // also covers collapsed trailing margins); otherwise the free space below
   // the shell is what the playfield may still grow into.
   const overflow = viewContainer.scrollHeight - viewContainer.clientHeight;
-  const delta = !stackedArena && overflow > 0 ? -overflow : viewContainer.clientHeight - neededHeight;
+  const delta = overflow > 0 ? -overflow : viewContainer.clientHeight - neededHeight;
   // The playfield's own rendered height is the most reliable source for the
   // CSS budget: every formula in arcade.css makes it grow 1:1 with the budget
   // until the width caps it. Measuring it avoids reconstructing the CSS
@@ -51,7 +72,7 @@ export function fitArcadePlayfield(shell) {
   // is half as tall as the shared budget.
   const budgetScale = playfield.closest('.tetris-opponent-grid.is-spectator') ? 2 : 1;
   let target = (currentHeight + delta) * budgetScale - FIT_SAFETY_MARGIN;
-  if (tetrisBoards && opponentGrid && !stackedArena) {
+  if (tetrisBoards && opponentGrid) {
     // Side-by-side Arena opponents can span several grid rows. The first
     // canvas alone does not describe the layout height, so derive the budget
     // from the complete board group and its actual row count.

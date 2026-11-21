@@ -908,9 +908,9 @@ arcadeTest('multiplayer', 'Tetris fits a short laptop screen and fullscreen grow
   }
 });
 
-arcadeTest('multiplayer', 'Tetris Arena supports six ready players across multiple opponent rows', async () => {
+arcadeTest('multiplayer', 'Tetris Arena supports eight ready players across multiple opponent rows', async () => {
   const players = await Promise.all(
-    ['Arena Browser Host', 'Arena Browser Zwei', 'Arena Browser Drei', 'Arena Browser Vier', 'Arena Browser Fünf', 'Arena Browser Sechs'].map(createPlayer),
+    ['Host', 'Zwei', 'Drei', 'Vier', 'Fünf', 'Sechs', 'Sieben', 'Acht'].map((name) => createPlayer(`Arena Browser ${name}`)),
   );
   const actors = await Promise.all(players.map((player, index) => openArcadeAs(
     player.id,
@@ -931,9 +931,9 @@ arcadeTest('multiplayer', 'Tetris Arena supports six ready players across multip
     await host.page.waitForSelector('#tetris-start:not([disabled])');
     await host.page.click('#tetris-start');
     await host.page.waitForSelector('.tetris-boards.is-arena');
-    assert.equal(await host.page.locator('.tetris-canvas').count(), 6);
+    assert.equal(await host.page.locator('.tetris-canvas').count(), 8);
     assert.equal(await host.page.locator('.tetris-primary-board .tetris-canvas').count(), 1);
-    assert.equal(await host.page.locator('.tetris-opponent-grid .tetris-canvas').count(), 5);
+    assert.equal(await host.page.locator('.tetris-opponent-grid .tetris-canvas').count(), 7);
     await host.page.waitForFunction(() => {
       const shell = document.querySelector('.arcade-game-shell') as HTMLElement | null;
       return Boolean(shell?.style.getPropertyValue('--arcade-h-budget').trim());
@@ -946,23 +946,52 @@ arcadeTest('multiplayer', 'Tetris Arena supports six ready players across multip
       canvas.dataset.renderIdentity = 'before-pause';
       window.dispatchEvent(new CustomEvent('respawn:aktuell-changed'));
     });
+    const nextPiece = host.page.getByRole('img', { name: /^Nächster Stein: [IOTSZJL]$/ });
+    await nextPiece.waitFor();
+    await host.page.locator('.countdown-overlay').waitFor({ state: 'hidden' });
+    const firstPreview = await nextPiece.getAttribute('aria-label');
+    await host.page.keyboard.press('Space');
+    await host.page.waitForFunction((previous) => {
+      const label = document.getElementById('tetris-next-piece')?.getAttribute('aria-label');
+      return label !== previous && /^Nächster Stein: [IOTSZJL]$/.test(label ?? '');
+    }, firstPreview);
+    assert.equal(await host.page.locator('.tetris-opponent-grid #tetris-next-piece').count(), 0);
+
     const layout = await host.page.evaluate(() => {
       const primary = document.querySelector('.tetris-primary-board .tetris-canvas') as HTMLElement;
       const opponent = document.querySelector('.tetris-opponent-grid .tetris-canvas') as HTMLElement;
       return {
         primaryWidth: primary.getBoundingClientRect().width,
         opponentWidth: opponent.getBoundingClientRect().width,
-        opponentGridHeight: (document.querySelector('.tetris-opponent-grid') as HTMLElement).getBoundingClientRect().height,
         primaryHeight: primary.getBoundingClientRect().height,
-        heightBudget: Number.parseFloat(getComputedStyle(document.querySelector('.arcade-game-shell') as HTMLElement).getPropertyValue('--arcade-h-budget')),
+        primaryBottom: primary.getBoundingClientRect().bottom,
+        viewHeight: document.getElementById('view-container')!.clientHeight,
+        viewBottom: document.getElementById('view-container')!.getBoundingClientRect().bottom,
         scrollWidth: document.documentElement.scrollWidth,
         clientWidth: document.documentElement.clientWidth,
       };
     });
     assert.ok(layout.primaryWidth > layout.opponentWidth);
-    assert.ok(layout.opponentGridHeight > layout.primaryHeight, 'multiple opponent rows must be represented by the full opponent grid');
-    assert.ok(layout.heightBudget > 160, `multi-row arena must not collapse to the minimum height budget (${layout.heightBudget})`);
+    assert.ok(layout.primaryHeight > layout.viewHeight * 0.7, 'multiple opponent rows must leave most of the viewport height for the own board');
+    assert.ok(layout.primaryBottom <= layout.viewBottom, 'the full own board must be visible');
     assert.ok(layout.scrollWidth <= layout.clientWidth);
+
+    await host.page.getByRole('button', { name: 'Vollbild', exact: true }).click();
+    await host.page.waitForFunction((before) =>
+      document.querySelector('#tetris-mine')!.getBoundingClientRect().height > before, layout.primaryHeight);
+    assert.equal(await nextPiece.isVisible(), true);
+    await host.page.getByRole('button', { name: 'Vollbild beenden', exact: true }).click();
+
+    const phone = guests[0].page;
+    await phone.getByRole('img', { name: /^Nächster Stein: [IOTSZJL]$/ }).waitFor();
+    const phoneLayout = await phone.evaluate(() => ({
+      primary: document.querySelector('#tetris-mine')!.getBoundingClientRect().toJSON(),
+      preview: document.querySelector('#tetris-next-piece')!.getBoundingClientRect().toJSON(),
+      opponentsTop: document.querySelector('.tetris-opponent-grid')!.getBoundingClientRect().top,
+    }));
+    assert.ok(phoneLayout.primary.height > 340);
+    assert.ok(phoneLayout.preview.left >= phoneLayout.primary.right && phoneLayout.preview.right <= 390);
+    assert.ok(phoneLayout.opponentsTop > phoneLayout.primary.bottom);
 
     assert.equal(
       await host.page.locator('.tetris-primary-board .tetris-canvas').getAttribute('data-render-identity'),
