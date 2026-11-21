@@ -2311,7 +2311,7 @@ flowTest('Turnier: create a K.O. bracket from a Match draw and play it to a cham
   const openTournamentSection = page.locator('.matchmaking-open-draws');
   await openTournamentSection.waitFor();
   if (!(await openTournamentSection.evaluate((section) => (section as HTMLDetailsElement).open))) {
-    await openTournamentSection.locator('summary').click();
+    await openTournamentSection.locator(':scope > summary').click();
   }
   await openTournamentSection.locator(`[data-open-draw-tournament="${tournamentId}"]`).waitFor();
   assert.equal(await page.locator(`.history-details [data-open-draw-tournament="${tournamentId}"]`).count(), 0,

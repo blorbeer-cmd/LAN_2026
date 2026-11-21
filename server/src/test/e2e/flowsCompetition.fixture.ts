@@ -1133,7 +1133,7 @@ flowTest('matchmaking Historie marks a recorded draw as Unentschieden', async ()
   assert.equal(await openTile.getAttribute('open'), null, 'unplayed games start collapsed');
   assert.equal(await openTile.evaluate((element) => Boolean(element.compareDocumentPosition(document.querySelector('.history-details')!) & Node.DOCUMENT_POSITION_FOLLOWING)), true);
   assert.equal(await page.locator('#match-history-open .matchmaking-history-item').count(), 0, 'closed open draws should not build every editable card');
-  if ((await openTile.getAttribute('open')) === null) await openTile.locator('summary').click();
+  if ((await openTile.getAttribute('open')) === null) await openTile.locator(':scope > summary').click();
   const openDraw = page.locator('#match-history-open .matchmaking-history-item').first();
   await openDraw.waitFor();
   const drawToggle = openDraw.locator('[data-history-toggle]');
@@ -1246,7 +1246,7 @@ flowTest('matchmaking Historie derives the winner and keeps open games and secti
   const oldId = await oldMatch.getAttribute('data-history-toggle');
   if (await oldMatch.getAttribute('aria-expanded') === 'false') await oldMatch.click();
   const openTile = page.locator('.matchmaking-open-draws');
-  if ((await openTile.getAttribute('open')) === null) await openTile.locator('summary').click();
+  if ((await openTile.getAttribute('open')) === null) await openTile.locator(':scope > summary').click();
   const spareToggle = page.locator(`[data-history-toggle="o-${spare.id}"]`);
   if (await spareToggle.getAttribute('aria-expanded') === 'false') await spareToggle.click();
   // App refreshes restore native disclosures programmatically. The view's
@@ -1592,7 +1592,7 @@ flowTest('an open game can be deleted from its own card after confirmation', asy
   const openSection = page.locator('.matchmaking-open-draws');
   await openSection.waitFor();
   if (!(await openSection.evaluate((element) => (element as HTMLDetailsElement).open))) {
-    await openSection.locator('summary').click();
+    await openSection.locator(':scope > summary').click();
   }
   const deleteButton = openSection.locator(`[data-delete-draw="${draw.id}"]`);
   await clickActionMenuEntry(deleteButton);

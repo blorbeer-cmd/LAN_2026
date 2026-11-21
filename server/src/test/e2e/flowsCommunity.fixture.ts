@@ -437,7 +437,7 @@ flowTest('Captain-Draft: pick captains, run the live draft to completion', async
   await page.waitForSelector('details.history-details:has(summary:has-text("Historie"))');
   await openMatchmakingHistory();
   const openTile = page.locator('.matchmaking-open-draws');
-  if ((await openTile.getAttribute('open')) === null) await openTile.locator('summary').click();
+  if ((await openTile.getAttribute('open')) === null) await openTile.locator(':scope > summary').click();
   await page.waitForSelector('#match-history-open [data-record-draw]', { state: 'attached' });
 });
 
