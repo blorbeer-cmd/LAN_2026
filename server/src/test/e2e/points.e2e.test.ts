@@ -548,13 +548,16 @@ test('real LAN account, automatic orga credits, own-game betting notification, h
   for (const [account, label] of Object.entries({ orga: 'Orga', playing: 'Spielen', betting: 'Wetten' })) {
     await openSection(member, `ranking-${account}`);
     const section = member.locator(`[data-points-section="ranking-${account}"]`);
-    const expected = categoryData.standings.filter((row: any) => row.categories[account].rank !== null)
-      .sort((a: any, b: any) => a.categories[account].rank - b.categories[account].rank || a.name.localeCompare(b.name, 'de'));
+    // Betting lists every participant, placed ones first; the other categories only placed ones.
+    const place = (row: any) => row.categories[account].rank ?? Infinity;
+    const expected = categoryData.standings.filter((row: any) => account === 'betting' || row.categories[account].rank !== null)
+      .sort((a: any, b: any) => place(a) - place(b) || b.categories[account].raw - a.categories[account].raw || a.name.localeCompare(b.name, 'de'));
+    const shown = (row: any) => (account === 'betting' ? categoryData.settings.initial_points : 0) + row.categories[account].raw;
     if (expected.length) {
       const ranking = section.getByRole('list', { name: `${label}-Rangliste`, exact: true });
       await ranking.waitFor();
       assert.deepEqual(await ranking.locator('.ranked-list-title').allTextContents(), expected.map((row: any) => row.name));
-      assert.deepEqual(await ranking.locator('.ranked-list-value').allTextContents(), expected.map((row: any) => `${row.categories[account].raw} P.`));
+      assert.deepEqual(await ranking.locator('.ranked-list-value').allTextContents(), expected.map((row: any) => `${shown(row)} P.`));
       assert.deepEqual(await ranking.locator('.ranked-list-meta').allTextContents(), expected.map((row: any) => `Wertung für Gesamtranking: ${row.categories[account].placePoints} P.`));
     } else await section.getByText('Noch keine Platzierung.', { exact: true }).waitFor();
   }

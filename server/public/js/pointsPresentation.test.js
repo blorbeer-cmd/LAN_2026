@@ -46,10 +46,11 @@ test('category views keep each full history when searching and escape journal co
     { id: 'orga-2', account: 'orga', amount: -3, title: 'Korrektur <script>', reason: '<img src=x onerror=alert(1)>', createdAt: 2000 },
     { id: 'wallet-1', account: 'wallet', amount: 100, title: 'Startguthaben', createdAt: 3000 },
   ];
-  const data = { categoryJournal: entries, categoryBalances: { orga: -1, playing: 4, betting: 0 },
+  const bettingScores = [{ raw: -5, rank: null, placePoints: 0 }, { raw: 0, rank: null, placePoints: 0 }, { raw: 3, rank: 1, placePoints: 4 }];
+  const data = { categoryJournal: entries, categoryBalances: { orga: -1, playing: 4, betting: -5 }, settings: { initial_points: 100 },
     standings: ['<Alice>', 'Bob', 'Carol'].map((name, index) => ({ name, categories: {
       orga: { raw: index < 2 ? 6 : 0, rank: index < 2 ? 1 : null, placePoints: index < 2 ? 4 : 0 },
-      playing: { raw: 4, rank: 1, placePoints: 4 }, betting: { raw: 0, rank: null, placePoints: 0 },
+      playing: { raw: 4, rank: 1, placePoints: 4 }, betting: bettingScores[index],
     } })),
     participantCount: 4, categoryStanding: { points: 4, rank: 2, categories: {
       orga: { rank: null, placePoints: 0 }, playing: { rank: 1, placePoints: 4 }, betting: { rank: null, placePoints: 0 },
@@ -69,6 +70,13 @@ test('category views keep each full history when searching and escape journal co
   assert.match(html, /aria-label="Spielen-Rangliste"/);
   assert.match(html, /aria-label="Wetten-Rangliste"/);
   assert.ok(html.indexOf('&lt;Alice&gt;') < html.indexOf('Bob'), 'tied category leaders stay ordered by name');
+  const bettingList = html.slice(html.indexOf('aria-label="Wetten-Rangliste" style'));
+  assert.deepEqual([...bettingList.matchAll(/ranked-list-title">([^<]*)</g)].map((match) => match[1]).slice(0, 3),
+    ['Carol', 'Bob', '&lt;Alice&gt;'], 'betting lists everyone: placed first, then by result');
+  assert.deepEqual([...bettingList.matchAll(/ranked-list-value">([^<]*)</g)].map((match) => match[1]).slice(0, 3),
+    ['103 P.', '100 P.', '95 P.'], 'betting values include the start credit');
+  assert.deepEqual([...bettingList.matchAll(/ranked-list-rank">([^<]*)</g)].map((match) => match[1]).slice(0, 3), ['1', '', '']);
+  assert.match(html, /data-category-balance="betting">95</);
   const oneTip = categoryPointsHtml({ ...data, categoryBalances: { ...data.categoryBalances, betting: 10 },
     bettingParticipation: { settledTips: 1, minimumTips: 2, hasMinimum: false } });
   assert.match(oneTip, /1\/2 abgerechnet/);

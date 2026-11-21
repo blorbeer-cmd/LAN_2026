@@ -255,7 +255,10 @@ To-do-Zeilen, -Formulare und -Details wiederholen die einheitliche Punktevergüt
 Die LAN-Übersicht bietet getrennte einklappbare Ranglisten für Orga, Spielen, Wetten und den
 Gesamtstand. Jede Kategorie zeigt die eigenen „Punkte“, den Rang und die „Platzpunkte“; die Rangliste
 verwendet dieselben berechtigten Plätze wie die Gesamtwertung. Ihre Zeilen stellen die Kategoriepunkte
-rechts als „N P.“ in den Vordergrund; die Platzpunkte stehen darunter als „Wertung für Gesamtranking: N P.“. Verläufe und Diagramme lassen
+rechts als „N P.“ in den Vordergrund; die Platzpunkte stehen darunter als „Wertung für Gesamtranking: N P.“.
+Die Wetten-Rangliste führt alle Teilnehmer: Punkte sind dort Wett-Startguthaben plus Nettoergebnis
+(ohne Wetten also 100 P.), Teilnehmer ohne Platz folgen den platzierten ohne Platznummer. Orga und
+Spielen listen nur platzierte Teilnehmer. Verläufe und Diagramme lassen
 sich aufklappen; die LAN-Punkteansicht enthält keine Spieleliste, nur die Tippübersicht. Seltenere Informationen stehen in Details oder der bestehenden Hilfe.
 
 Die Wettaktion steht im Header von Matchkarten, auch bei geschlossener Spielkarte. Ein einzelnes
