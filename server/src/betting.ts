@@ -149,12 +149,16 @@ function ranksEveryTeam(result: MatchForScoring): boolean {
 // a bare winner afterwards. Ranks alone do not prove that every team's value
 // was entered — a form may read an empty field as 0 — so the writer also
 // confirms that (`placementsConfirmed`), checked in the same write as the tips.
+// Error code of that refusal. The result dialog reopens asking every team's
+// score on it, also while LAN points are hidden from its viewer.
+export const PLACEMENTS_REQUIRED = 'placements_required';
 export function assertPlacementResult(drawId: string, result: MatchForScoring, placementsConfirmed: unknown): void {
   const market = db.prepare(`SELECT r.market FROM betting_rounds r WHERE r.source_type = 'draw' AND r.source_id = ?
     AND r.market != 'winner' AND r.refund_cause IS NOT 'replaced' AND (r.status IN ('open','locked') OR ${REBOOKS_ON_CORRECTION_SQL})
     AND EXISTS (SELECT 1 FROM betting_tips t WHERE t.round_id = r.id)`).pluck().get(drawId) as Exclude<BetMarket, 'winner'> | undefined;
   if (market && (!ranksEveryTeam(result) || placementsConfirmed !== true))
-    throw new PointsError(`Für die ${TOP_MARKET_TITLES[market].replace(' ', '-')}-Wette bitte für jedes Team einen Punktestand eintragen.`);
+    throw new PointsError(`Für die ${TOP_MARKET_TITLES[market].replace(' ', '-')}-Wette bitte für jedes Team einen Punktestand eintragen.`,
+      409, PLACEMENTS_REQUIRED);
 }
 function competitionState(groupId: string, eventId: string, type: BetSource, id: string): CompetitionState {
   if (type === 'draw') {

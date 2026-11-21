@@ -619,7 +619,7 @@ test('large free-for-all Matches tip the top two from six and the top three from
     assert.equal((await tip(unrankedMarket.id, playerId, outcomeId, 5)).status, 200);
   const refused = await record(unranked.id, unrankedMarket);
   const placementError = 'Für die Top-2-Wette bitte für jedes Team einen Punktestand eintragen.';
-  assert.deepEqual([refused.status, refused.body.error], [409, placementError]);
+  assert.deepEqual([refused.status, refused.body.error, refused.body.code], [409, placementError, 'placements_required']);
   assert.equal(db.prepare('SELECT match_id FROM matchmaking_draws WHERE id=?').pluck().get(unranked.id), null);
   assert.equal((await automaticMarket(f, 'draw', unranked.id)).status, 'open');
   assert.deepEqual(f.players.slice(0, 2).map((id) => wallet(f.eventId, id).held), [5, 5]);

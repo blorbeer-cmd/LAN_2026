@@ -1327,6 +1327,28 @@ test('a six-team free-for-all Match tips the top two and records its result only
     await result.waitFor({ state: 'detached' });
     const lateSettled = (await api(`/api/points?eventId=${event.id}`)).rounds.find((row: { id: string }) => row.id === lateRound.id);
     assert.deepEqual([lateSettled.status, lateSettled.winners], ['settled', ['0', '1']], 'the late value decides the top two');
+
+    // With LAN points hidden the dialog cannot read the market, yet the
+    // server's refusal code still reopens it asking every team's score.
+    await api(`/api/events/${event.id}/points-visibility`, 'PATCH', { visible: false, revision: 1 });
+    await member.goto(`${server.baseUrl}/?eventId=${event.id}#matchmaking`);
+    await waitForPlayerData(member);
+    await navigate(member, 'matchmaking');
+    if (!await openDraws.evaluate((element) => (element as HTMLDetailsElement).open)) await openDraws.locator(':scope > summary').click();
+    await clickActionMenuEntry(member.locator(`#match-history-open [data-record-draw="${closing.id}"]`));
+    await result.waitFor();
+    assert.equal(await result.locator('[data-result-mode]').count(), 2, 'hidden points leave the dialog unaware of the tips');
+    await result.locator('[data-result-winners] .tournament-result-pick').first().click();
+    await result.locator('[data-result-save]').click();
+    await member.getByText('Inzwischen gibt es Platzierungstipps: Bitte für jedes Team einen Punktestand eintragen.', { exact: true }).last().waitFor();
+    await result.locator('[data-result-scores]:not([data-inactive])').waitFor();
+    assert.equal(await result.locator('[data-result-mode]').count(), 0);
+    assert.equal(await result.locator('#draw-result-score-0[required]').count(), 1);
+    for (const [index, score] of [10, 1, 9, 8, 7, 6].entries()) await result.locator(`#draw-result-score-${index}`).fill(String(score));
+    await result.locator('[data-result-save]').click();
+    await result.waitFor({ state: 'detached' });
+    const hiddenSettled = (await api(`/api/points?eventId=${event.id}`)).rounds.find((row: { id: string }) => row.id === closingRound.id);
+    assert.deepEqual([hiddenSettled.status, hiddenSettled.winners], ['settled', ['0', '2']]);
     assert.deepEqual(pageErrors, []);
   } finally {
     // The extra accounts take part in this event only.

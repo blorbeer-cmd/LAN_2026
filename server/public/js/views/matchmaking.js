@@ -553,8 +553,9 @@ function openDrawResultDialog(draw, ctx, { requirePlacements = false, enteredSco
           await api.matches.create({ gameId: draw.gameId, drawId: draw.id, teams: payloadTeams, winnerTeamIndex: winnerIndex, isDraw: winnerIndex === null, placementsConfirmed: complete });
         }
       } catch (error) {
-        // The server refuses a result without places once such tips exist.
-        if (!placements && error.status === 409 && await competitionNeedsPlacementsNow('draw', draw.id).catch(() => false)) return reopenForPlacements();
+        // The server refuses a result without places once such tips exist,
+        // with a code that works even while LAN points are hidden here.
+        if (!placements && error.code === 'placements_required') return reopenForPlacements();
         throw error;
       }
       if (!recorded) {
