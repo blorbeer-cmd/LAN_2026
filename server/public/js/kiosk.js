@@ -13,7 +13,12 @@ import { drawArcadeStreamCanvas } from './arcade/shared/arcadeStreamRenderer.js'
 import { installDomainIcons } from './domainIcons.js';
 import { snakeArenaLegendHtml } from './arcade/shared/snakeArenaLegend.js';
 import { emptyStateHtml } from './emptyState.js';
-import { kioskMusicQueueHtml, kioskMusicQueueKey } from './kioskMusic.js';
+import {
+  estimatedKioskMusicProgress,
+  kioskMusicQueueHtml,
+  kioskMusicQueueKey,
+  stabilizeKioskMusicSession,
+} from './kioskMusic.js';
 import { fitKioskLiveActive, kioskLiveActiveHtml, kioskLiveRowHtml } from './kioskLive.js';
 import { createKioskResultsPanel } from './kioskResults.js';
 import {
@@ -998,30 +1003,9 @@ function renderKioskLocalPlayback(element) {
   });
 }
 
-function estimatedMusicProgress(session, now = Date.now()) {
-  if (!session?.currentTrack) return 0;
-  const elapsed = session.isPlaying && session.playbackUpdatedAt ? now - session.playbackUpdatedAt : 0;
-  return Math.max(0, Math.min(Number(session.currentTrack.durationMs || 0), Number(session.progressMs || 0) + elapsed));
-}
-
 function musicDurationLabel(milliseconds) {
   const totalSeconds = Math.max(0, Math.floor(Number(milliseconds || 0) / 1000));
   return `${Math.floor(totalSeconds / 60)}:${String(totalSeconds % 60).padStart(2, '0')}`;
-}
-
-function stabilizedMusicSession(nextSession) {
-  if (!nextSession?.currentTrack) return nextSession;
-  const now = Date.now();
-  const incomingProgress = estimatedMusicProgress(nextSession, now);
-  const sameTrack = kioskMusicSession?.currentTrack?.uri === nextSession.currentTrack.uri;
-  const previousProgress = sameTrack ? estimatedMusicProgress(kioskMusicSession, now) : 0;
-  return {
-    ...nextSession,
-    progressMs: sameTrack && nextSession.isPlaying
-      ? Math.max(previousProgress, incomingProgress)
-      : incomingProgress,
-    playbackUpdatedAt: now,
-  };
 }
 
 function updateMusicBarProgress() {
@@ -1030,7 +1014,7 @@ function updateMusicBarProgress() {
   const bar = document.querySelector('.kiosk-music-progress > span');
   const time = document.querySelector('.kiosk-music-duration');
   if (!duration || !bar) return;
-  const progress = estimatedMusicProgress(session);
+  const progress = estimatedKioskMusicProgress(session);
   bar.style.transform = `scaleX(${progress / duration})`;
   if (time) time.textContent = `${musicDurationLabel(progress)} / ${musicDurationLabel(duration)}`;
 }
@@ -1051,7 +1035,7 @@ function scheduleMusicBarProgress() {
 
 function renderMusicBar(payload) {
   const element = document.getElementById('kiosk-music');
-  const session = stabilizedMusicSession(payload?.session);
+  const session = stabilizeKioskMusicSession(kioskMusicSession, payload?.session);
   kioskMusicSession = session ?? null;
   if (!session) {
     renderKioskLocalPlayback(element);
@@ -1059,7 +1043,7 @@ function renderMusicBar(payload) {
   }
   const track = session.currentTrack;
   const duration = Number(track?.durationMs || 0);
-  const progress = estimatedMusicProgress(session);
+  const progress = estimatedKioskMusicProgress(session);
   const request = (session.requests || []).find(
     (entry) => entry.status === 'playing' && entry.trackUri === track?.uri,
   );
@@ -1080,13 +1064,14 @@ function renderMusicBar(payload) {
     <span class="kiosk-music-current">
       ${track.imageUrl ? `<img class="kiosk-music-cover" src="${escapeHtml(track.imageUrl)}" alt="" />` : `<span class="kiosk-music-cover kiosk-music-placeholder">${icon('music')}</span>`}
       <span class="kiosk-music-copy">
-        <span class="muted">Jetzt läuft</span>
         <strong>${escapeHtml(track.name)}</strong>
-        <span class="muted">${escapeHtml(track.artist)}${request ? ` · gewünscht von ${escapeHtml(request.requestedByName)}` : ''}</span>
-      </span>
-      <span class="kiosk-music-progress-row">
-        <span class="kiosk-music-progress"><span style="transform:scaleX(${duration ? progress / duration : 0});"></span></span>
-        <span class="muted kiosk-music-duration">${musicDurationLabel(progress)} / ${musicDurationLabel(duration)}</span>
+        <span class="kiosk-music-meta">
+          <span class="muted kiosk-music-detail">${escapeHtml(track.artist)}${request ? ` · gewünscht von ${escapeHtml(request.requestedByName)}` : ''}</span>
+          <span class="kiosk-music-progress-row">
+            <span class="kiosk-music-progress"><span style="transform:scaleX(${duration ? progress / duration : 0});"></span></span>
+            <span class="muted kiosk-music-duration">${musicDurationLabel(progress)} / ${musicDurationLabel(duration)}</span>
+          </span>
+        </span>
       </span>
     </span>
     <span class="kiosk-music-next">${kioskMusicQueueHtml(session)}</span>` : `

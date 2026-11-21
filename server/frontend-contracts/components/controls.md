@@ -482,7 +482,6 @@ Die bisherige Ausnahme `legacy-secondary-modifier` ist in Paket 5 aufgelöst: De
 
 - `registry:checklist-task-title`: To-Do title opens the detail dialog: plain one-line text whose hit area covers the whole row, blue on row hover and struck through once done.
 - `registry:broadcast-table-open`: Durchsage message opens the detail dialog: plain one-line text whose hit area covers the whole row, blue on row hover and muted once past.
-- `registry:music-queue-open`: Jam request title opens the detail dialog: plain one-line text whose hit area covers the whole row, blue on row hover.
 - `registry:notification-center-open`: The whole notification text block is the link that opens its target and marks it read; it reads as text, not as a button.
 
 - `registry:game-catalog-suggest`: Spiel vorschlagen closes the catalog tab row; below --bp-sm it collapses to a 32 by 32px plus with the same accessible name.

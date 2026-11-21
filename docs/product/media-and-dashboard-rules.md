@@ -146,25 +146,25 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu TV-Kiosk, Jam
   requester and position. When a song ends and the identical song starts again from the
   beginning while a copy still waits, that copy becomes the playing request.
   Those requests follow Spotify's append-only queue in request order; reordering stays hidden
-  because Spotify exposes no reorder for its live queue. „Entfernen“ in a request's detail dialog
-  still works: the request leaves the queue immediately, and because Spotify cannot drop it from
-  its own queue, the Jam skips that song the moment Spotify starts it. While a playlist is active,
-  the header of „Als Nächstes“ carries a neutral „Playlist entfernen“ for every member, confirmed in
-  a red dialog. The song playing at that moment may finish; afterwards the waiting requests play,
-  or the Jam pauses when none wait. The playlist and its next-track preview leave app and kiosk at
-  once. The removal is remembered: should Spotify keep playing that playlist anyway (for example
-  after the controller lost its planned switch), the next playlist song counts as foreign playback
-  and is replaced by the waiting requests or paused. Of two parallel removals one wins, the other
-  receives `409`. Requests form a quiet table without column headers and
+  while a playlist is active because Spotify exposes no reorder for its live queue. Removing a
+  request still works: it leaves Respawn's queue immediately, and because Spotify cannot drop it
+  from its own queue, the Jam skips that song the moment Spotify starts it. An active playlist has
+  no separate remove action; it finishes naturally, is replaced by another explicitly confirmed
+  playlist, or ends with the Jam. Requests form a quiet table without column headers and
   with equal row heights: position, small artwork, title (shortened after 40 characters) above the
   artist, requester (the viewer's own name in bold) and duration; on phones the requester joins the
-  artist line. Their order is the shared queue order. Clicking a row opens a detail dialog with the
-  full title, album, requester, duration and position plus equally wide „Nach oben“, „Nach unten“
-  and „Entfernen“; every member may reorder or remove every request. On pointer devices two or more
-  queued requests can also be reordered through native drag-and-drop. Respawn persists that order and replaces the active Spotify URI context at the
-  current playback position so the visible order also becomes the actual playback order.
-  The kiosk reuses a single compact full-width music bar between the banner and the dashboard cards and shows current
-  track, progress and the actual next track without exposing controls or Spotify credentials. If
+  artist line. Their order is the shared queue order. Titles are static text. On fine-pointer
+  devices the complete request row is draggable without a permanent handle: dropping between rows
+  reorders it, and starting a drag reveals a fixed trash target that removes it on drop. Keyboard
+  users focus the row and use the arrow keys or Delete. Touch layouts expose one trailing management
+  action with the available „Nach oben“, „Nach unten“ and „Entfernen“ alternatives. Every member may remove
+  every request; when no playlist controls the order, every member may also reorder them. Respawn
+  persists that order and replaces the active Spotify URI context at the current playback position
+  so the visible order also becomes the actual playback order.
+  The kiosk reuses a single compact full-width music bar between the banner and the dashboard cards.
+  It uses smaller artwork and exactly two text lines per side: title above artist/requester, without
+  separate „Jetzt läuft“ or „Als Nächstes“ labels. Current progress and time share the metadata line.
+  The bar shows the actual next track without exposing controls or Spotify credentials. If
   Spotify has not exposed a next track yet, it shows the playlist's shuffle state, remaining count
   and waiting song requests instead of an empty request message. The fixed
   music bar offers one local setup action before a session when the Jam controller runs on that
@@ -194,6 +194,10 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu TV-Kiosk, Jam
   controller only after a required confirmation checkbox, with both actions side by side.
   Respawn's offline state therefore offers reconnection first and a new download only as a fallback.
   Controller requests have bounded timeouts and retry automatically after transient network errors.
+  Current playback is reported independently from the slower Spotify queue lookup, so queue latency
+  cannot hold the progress display back. A short Spotify status failure keeps the last successful
+  playback and connected state for 30 seconds; only a sustained outage shows the recovery message.
+  Spotify rate limits are retried after the advertised delay.
   Every group owner and admin can end the active Jam and then explicitly disconnect the controller
   through the collapsible „Verbindung verwalten“ card with a neutral „Entkoppeln“ and a red
   confirmation.

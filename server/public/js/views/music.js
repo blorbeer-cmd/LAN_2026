@@ -321,19 +321,20 @@ function nowPlayingHtml(session, canManageController = false) {
     </section>`;
 }
 
-function queueRowHtml({ position, imageUrl, name, artist, who, durationMs, requestId = null, draggable = false }) {
-  return `<div class="music-queue-row" role="row"${requestId ? ` data-music-request="${escapeHtml(requestId)}"` : ''}${draggable ? ' draggable="true"' : ''}>
-    ${draggable ? `<span class="music-queue-grip" aria-hidden="true" title="Ziehen zum Sortieren">${icon('gripVertical')}</span>` : ''}
+function queueRowHtml({ position, imageUrl, name, artist, who, durationMs, requestId = null, draggable = false, reorderable = false }) {
+  const keyboardHint = draggable
+    ? `${name}. ${reorderable ? 'Mit den Pfeiltasten verschieben, ' : ''}mit Entfernen löschen.`
+    : '';
+  return `<div class="music-queue-row${requestId ? ' music-queue-request' : ''}" role="row"${requestId ? ` data-music-request="${escapeHtml(requestId)}"` : ''}${draggable ? ` draggable="true" tabindex="0" aria-label="${escapeHtml(keyboardHint)}"` : ''}>
     <span class="music-queue-position" role="cell">${position}</span>
     <span role="cell">${coverHtml(imageUrl, 'music-queue-cover')}</span>
     <span class="music-track-main" role="cell">
-      ${requestId
-        ? `<button type="button" class="music-queue-open" data-music-detail="${escapeHtml(requestId)}" title="${escapeHtml(name)}">${escapeHtml(shortText(name))}</button>`
-        : `<span class="music-queue-title" title="${escapeHtml(name)}">${escapeHtml(shortText(name))}</span>`}
+      <span class="music-queue-title" title="${escapeHtml(name)}">${escapeHtml(shortText(name))}</span>
       <span class="music-meta music-queue-artist">${escapeHtml(artist)}<span class="music-queue-who-inline"> · ${who}</span></span>
     </span>
     <span class="music-meta music-queue-who" role="cell">${who}</span>
     <span class="music-meta music-queue-duration" role="cell">${durationMs ? durationLabel(durationMs) : ''}</span>
+    ${draggable ? `<button type="button" class="icon-btn" data-music-detail="${escapeHtml(requestId)}" aria-label="${escapeHtml(`${name} verwalten`)}" title="Songwunsch verwalten">${icon('moreHorizontal')}</button>` : ''}
   </div>`;
 }
 
@@ -366,7 +367,8 @@ function requestQueueHtml(session) {
   const playlistTracksAfterShown = remainingPlaylistTracks !== null
     ? Math.max(0, remainingPlaylistTracks - playlistTracksShown)
     : null;
-  const sortable = Boolean(getMyId()) && !playlistMode && queued.length > 1;
+  const manageable = Boolean(getMyId());
+  const sortable = manageable && !playlistMode && queued.length > 1;
   const rows = entries.map(({ track, request }, index) => queueRowHtml({
     position: index + 1,
     imageUrl: track.imageUrl,
@@ -375,20 +377,22 @@ function requestQueueHtml(session) {
     who: request ? personHtml(request.requestedByName, request.requestedBy) : 'Playlist',
     durationMs: track.durationMs,
     requestId: request?.id ?? null,
-    draggable: sortable && Boolean(request),
+    draggable: manageable && Boolean(request),
+    reorderable: sortable && Boolean(request),
   }));
   if (playlistTracksAfterShown) {
-    rows.push(`<div class="music-queue-row music-queue-more" role="row"><span role="cell"></span><span class="music-meta" role="cell">${playlistTracksAfterShown} ${playlistTracksAfterShown === 1 ? 'weiterer Titel' : 'weitere Titel'} aus der Playlist</span></div>`);
+    rows.push(`<div class="music-queue-row music-queue-more" role="row"><span role="cell"></span><span class="music-meta" role="cell">Noch ${playlistTracksAfterShown} Playlist-Titel</span></div>`);
   }
+  const draggable = manageable && entries.some(({ request }) => Boolean(request));
   return `
     <section class="card stack grouped-page-section" aria-labelledby="music-queue-title">
       <div class="grouped-page-section-title">
         <h2 id="music-queue-title">Als Nächstes</h2>
-        ${playlistMode && getMyId() ? '<button type="button" class="btn btn-sm" id="music-remove-playlist">Playlist entfernen</button>' : ''}
       </div>
       ${rows.length
-        ? `<div class="music-queue-list${sortable ? ' is-sortable' : ''}" role="table" aria-label="Als Nächstes">${rows.join('')}</div>`
+        ? `<div class="music-queue-list${draggable ? ' is-draggable' : ''}${sortable ? ' is-sortable' : ''}" role="table" aria-label="Als Nächstes">${rows.join('')}</div>`
         : emptyStateHtml('Noch keine Wünsche.')}
+      ${draggable ? `<div class="music-queue-trash" data-music-queue-trash hidden role="status" aria-live="polite">${icon('trash')}<strong>Hier ablegen zum Entfernen</strong></div>` : ''}
     </section>`;
 }
 
@@ -565,15 +569,8 @@ function openRequestDetail(requestId, ctx) {
         el.querySelector('[data-detail-remove]')?.addEventListener('click', async (event) => {
           const button = event.currentTarget;
           button.disabled = true;
-          try {
-            await api.music.removeRequest(getMyId(), requestId);
-            close();
-            invalidateMusic();
-            ctx.rerender();
-          } catch (error) {
-            showToast(error.message, { error: true });
-            button.disabled = false;
-          }
+          close();
+          await removeQueueRequest(requestId, ctx);
         });
       },
     },
@@ -590,26 +587,62 @@ async function saveQueueOrder(requestIds, ctx) {
   ctx.rerender();
 }
 
+async function removeQueueRequest(requestId, ctx) {
+  try {
+    await api.music.removeRequest(getMyId(), requestId);
+    showToast('Songwunsch entfernt.');
+  } catch (error) {
+    showToast(error.message, { error: true });
+  }
+  invalidateMusic();
+  ctx.rerender();
+}
+
 function wireQueue(container, ctx) {
   const list = container.querySelector('.music-queue-list[aria-label="Als Nächstes"]');
   if (!list) return;
   list.querySelectorAll('[data-music-detail]').forEach((button) => {
     button.addEventListener('click', () => openRequestDetail(button.dataset.musicDetail, ctx));
   });
-  if (!list.classList.contains('is-sortable')) return;
+  if (!list.classList.contains('is-draggable')) return;
   let draggedId = null;
+  const trash = container.querySelector('[data-music-queue-trash]');
   const currentIds = () => [...list.querySelectorAll('[data-music-request][draggable]')].map((row) => row.dataset.musicRequest);
+  const clearDragState = () => {
+    draggedId = null;
+    list.classList.remove('is-drag-active');
+    list.querySelectorAll('[data-music-request]').forEach((entry) => entry.classList.remove('is-dragging', 'is-drag-target'));
+    if (trash) {
+      trash.hidden = true;
+      trash.classList.remove('is-over');
+    }
+  };
   list.querySelectorAll('[data-music-request][draggable]').forEach((row) => {
     row.addEventListener('dragstart', (event) => {
       draggedId = row.dataset.musicRequest;
       row.classList.add('is-dragging');
+      list.classList.add('is-drag-active');
+      if (trash) trash.hidden = false;
       event.dataTransfer.effectAllowed = 'move';
       event.dataTransfer.setData('text/plain', draggedId);
     });
-    row.addEventListener('dragend', () => {
-      draggedId = null;
-      list.querySelectorAll('[data-music-request]').forEach((entry) => entry.classList.remove('is-dragging', 'is-drag-target'));
+    row.addEventListener('dragend', clearDragState);
+    row.addEventListener('keydown', (event) => {
+      if (event.key === 'Delete' || event.key === 'Backspace') {
+        event.preventDefault();
+        void removeQueueRequest(row.dataset.musicRequest, ctx);
+        return;
+      }
+      if (!list.classList.contains('is-sortable') || !['ArrowUp', 'ArrowDown'].includes(event.key)) return;
+      const ids = currentIds();
+      const index = ids.indexOf(row.dataset.musicRequest);
+      const target = event.key === 'ArrowUp' ? index - 1 : index + 1;
+      if (target < 0 || target >= ids.length) return;
+      event.preventDefault();
+      [ids[index], ids[target]] = [ids[target], ids[index]];
+      void saveQueueOrder(ids, ctx);
     });
+    if (!list.classList.contains('is-sortable')) return;
     row.addEventListener('dragover', (event) => {
       if (!draggedId || draggedId === row.dataset.musicRequest) return;
       event.preventDefault();
@@ -629,6 +662,19 @@ function wireQueue(container, ctx) {
       ids.splice(targetIndex + (after ? 1 : 0), 0, sourceId);
       void saveQueueOrder(ids, ctx);
     });
+  });
+  trash?.addEventListener('dragover', (event) => {
+    if (!draggedId) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'move';
+    trash.classList.add('is-over');
+  });
+  trash?.addEventListener('dragleave', () => trash.classList.remove('is-over'));
+  trash?.addEventListener('drop', (event) => {
+    event.preventDefault();
+    const requestId = draggedId || event.dataTransfer.getData('text/plain');
+    clearDragState();
+    if (requestId) void removeQueueRequest(requestId, ctx);
   });
 }
 
@@ -822,25 +868,6 @@ function wireSession(container, ctx) {
     } catch (error) {
       showToast(error.message, { error: true });
     }
-  });
-  container.querySelector('#music-remove-playlist')?.addEventListener('click', async () => {
-    const playlist = cache?.session?.playbackContext;
-    if (!playlist) return;
-    const confirmed = await confirmDialog(
-      cache.session.currentTrack
-        ? 'Der laufende Titel spielt zu Ende. Danach folgen die Wünsche, ohne Wünsche pausiert der Jam.'
-        : 'Danach folgen die Wünsche, ohne Wünsche pausiert der Jam.',
-      { title: `Playlist „${playlist.name}“ entfernen?`, confirmText: 'Entfernen', danger: true },
-    );
-    if (!confirmed) return;
-    try {
-      await api.music.removePlaylist(getMyId());
-      showToast('Playlist entfernt.');
-    } catch (error) {
-      showToast(error.message, { error: true });
-    }
-    invalidateMusic();
-    ctx.rerender();
   });
   container.querySelector('#music-end')?.addEventListener('click', async () => {
     const confirmed = await confirmDialog(
