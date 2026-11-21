@@ -27,6 +27,7 @@ import { requireGroupEventAccess, resolveRequestGroupEventScope } from '../group
 import { requireGroupRole } from '../groupAuthorization';
 import { requireRecentReauthentication } from '../sessions';
 import { writeAdminAudit } from '../adminAudit';
+import { assertDrawLineup, DRAW_LINEUP_CHANGED, DRAW_LINEUP_CHANGED_CODE, DrawLineupChangedError, isDrawLineup } from '../drawLineup';
 
 export const matchmakingRouter = Router();
 
@@ -815,18 +816,24 @@ matchmakingRouter.post('/draws/:id/shuffle', (req, res) => {
 });
 
 // POST /api/matchmaking/draws/:id/players - adds an event participant who is
-// not in the lineup yet to an open draw. Body: { playerId, teamIndex? };
+// not in the lineup yet to an open draw. Body: { playerId, teamIndex?, drawLineup? };
 // without teamIndex the player joins the team with the fewest players, ties
-// going to the lower skill total and then to the first such team. Check and
+// going to the lower skill total and then to the first such team. A chosen
+// team is a position in the lineup the dialog showed, so the dialog sends that
+// lineup along: a draw reshuffled or edited since answers 409
+// draw_lineup_changed instead of placing the player into a different team. Check and
 // write run in one immediate transaction, so of two parallel additions of the
 // same player exactly one wins and the other sees the new state (409).
 matchmakingRouter.post('/draws/:id/players', (req, res) => {
-  const { playerId, teamIndex } = req.body ?? {};
+  const { playerId, teamIndex, drawLineup } = req.body ?? {};
   if (typeof playerId !== 'string' || !/^[A-Za-z0-9_-]{1,64}$/.test(playerId)) {
     return res.status(400).json({ error: 'playerId ist ungültig.' });
   }
   if (teamIndex !== undefined && teamIndex !== null && (!Number.isInteger(teamIndex) || teamIndex < 0)) {
     return res.status(400).json({ error: 'teamIndex ist ungültig.' });
+  }
+  if (drawLineup !== undefined && !isDrawLineup(drawLineup)) {
+    return res.status(400).json({ error: 'drawLineup ist ungültig.' });
   }
   const groupId = req.group!.id;
   const existing = db.prepare('SELECT id, event_id, game_id FROM matchmaking_draws WHERE id = ? AND group_id = ?')
@@ -840,31 +847,39 @@ matchmakingRouter.post('/draws/:id/players', (req, res) => {
     .get(playerId) as PlayerRow | undefined;
   if (!player) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
 
-  withBettingAccounting(existing.event_id, () => {
-    const row = loadOpenDrawForEdit(existing.id);
-    const teams = JSON.parse(row.teams) as DrawTeamSnapshot[];
-    if (teams.some((team) => team.players.some((p) => p.id === playerId))) {
-      throw new PointsError(`${player.name} ist bereits in dieser Auslosung.`);
+  try {
+    withBettingAccounting(existing.event_id, () => {
+      const row = loadOpenDrawForEdit(existing.id);
+      const teams = JSON.parse(row.teams) as DrawTeamSnapshot[];
+      if (drawLineup) assertDrawLineup(existing.id, drawLineup as string[][]);
+      if (teams.some((team) => team.players.some((p) => p.id === playerId))) {
+        throw new PointsError(`${player.name} ist bereits in dieser Auslosung.`);
+      }
+      if (typeof teamIndex === 'number' && teamIndex >= teams.length) throw new PointsError('teamIndex ist ungültig.', 400);
+      const skillTotal = (team: DrawTeamSnapshot) => totalRatingOf(team.players);
+      const target = typeof teamIndex === 'number'
+        ? teamIndex
+        : teams.reduce((best, team, index) => {
+          const current = teams[best];
+          if (team.players.length !== current.players.length) return team.players.length < current.players.length ? index : best;
+          return skillTotal(team) < skillTotal(current) ? index : best;
+        }, 0);
+      const rating = db.prepare('SELECT rating FROM skills WHERE game_id = ? AND player_id = ?')
+        .pluck().get(existing.game_id, playerId) as number | undefined;
+      const team = teams[target];
+      team.players.push({ ...player, rating: rating ?? null });
+      // Same rule as a move: older drafts without a snapshot keep no total.
+      team.totalRating = row.source === 'draft' && !team.skillSnapshot ? 0 : totalRatingOf(team.players);
+      const seatConflicts = row.seat_pairs_considered > 0 ? applySeatConflicts(groupId, existing.event_id, teams) : 0;
+      db.prepare('UPDATE matchmaking_draws SET teams = ?, seat_conflicts = ? WHERE id = ?')
+        .run(JSON.stringify(teams), seatConflicts, existing.id);
+    });
+  } catch (error) {
+    if (error instanceof DrawLineupChangedError) {
+      return res.status(409).json({ error: DRAW_LINEUP_CHANGED, code: DRAW_LINEUP_CHANGED_CODE });
     }
-    if (typeof teamIndex === 'number' && teamIndex >= teams.length) throw new PointsError('teamIndex ist ungültig.', 400);
-    const skillTotal = (team: DrawTeamSnapshot) => totalRatingOf(team.players);
-    const target = typeof teamIndex === 'number'
-      ? teamIndex
-      : teams.reduce((best, team, index) => {
-        const current = teams[best];
-        if (team.players.length !== current.players.length) return team.players.length < current.players.length ? index : best;
-        return skillTotal(team) < skillTotal(current) ? index : best;
-      }, 0);
-    const rating = db.prepare('SELECT rating FROM skills WHERE game_id = ? AND player_id = ?')
-      .pluck().get(existing.game_id, playerId) as number | undefined;
-    const team = teams[target];
-    team.players.push({ ...player, rating: rating ?? null });
-    // Same rule as a move: older drafts without a snapshot keep no total.
-    team.totalRating = row.source === 'draft' && !team.skillSnapshot ? 0 : totalRatingOf(team.players);
-    const seatConflicts = row.seat_pairs_considered > 0 ? applySeatConflicts(groupId, existing.event_id, teams) : 0;
-    db.prepare('UPDATE matchmaking_draws SET teams = ?, seat_conflicts = ? WHERE id = ?')
-      .run(JSON.stringify(teams), seatConflicts, existing.id);
-  });
+    throw error;
+  }
 
   const draw = loadDrawView(existing.id);
   broadcast(Events.matchmakingDrawsChanged, draw, { groupId, eventId: deliveryEventId(existing.event_id) });

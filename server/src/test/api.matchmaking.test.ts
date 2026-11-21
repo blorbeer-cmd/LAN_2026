@@ -1047,3 +1047,68 @@ test('parallel: a lineup change and a result from the old lineup never both take
   assert.equal(Boolean(row.match_id), recorded.status === 201);
   assert.equal(storedLineup(draw.body.id).flat().includes(playerIds[3]), added.status === 200);
 });
+
+test('POST /api/tournaments refuses teams from a dialog that shows an outdated draw lineup', async () => {
+  const game = await request(app).post('/api/games').send({ name: 'Stale Tournament Dialog' });
+  const draw = await request(app).post('/api/matchmaking')
+    .send({ gameId: game.body.id, playerIds: playerIds.slice(0, 3), teamCount: 2 });
+  const opened = teamIds(draw.body.teams);
+  const createTournament = (lineup: unknown, teams: string[][], withDraw = true) => request(app).post('/api/tournaments').send({
+    gameId: game.body.id, format: 'single_elimination', ...(withDraw ? { drawId: draw.body.id } : {}), drawLineup: lineup,
+    teams: teams.map((ids) => ({ playerIds: ids })),
+  });
+
+  assert.equal((await createTournament('x', opened)).status, 400);
+  assert.equal((await createTournament(opened, opened, false)).status, 400, 'drawLineup only makes sense together with drawId');
+
+  assert.equal((await addPlayer(draw.body.id, { playerId: playerIds[3] })).status, 200);
+  const stale = await createTournament(opened, opened);
+  assert.equal(stale.status, 409);
+  assert.equal(stale.body.code, 'draw_lineup_changed');
+  const open = db.prepare('SELECT tournament_id FROM matchmaking_draws WHERE id = ?').get(draw.body.id) as { tournament_id: string | null };
+  assert.equal(open.tournament_id, null, 'a refused tournament leaves the draw open');
+
+  const current = storedLineup(draw.body.id);
+  assert.equal((await createTournament(current, current)).status, 201);
+});
+
+test('POST /api/matchmaking/draws/:id/players refuses a chosen team from an outdated lineup', async () => {
+  const game = await request(app).post('/api/games').send({ name: 'Stale Team Choice' });
+  const draw = await request(app).post('/api/matchmaking')
+    .send({ gameId: game.body.id, playerIds: playerIds.slice(0, 4), teamCount: 2 });
+  const opened = teamIds(draw.body.teams);
+  const late = await request(app).post('/api/players').send({ name: 'Team Choice Arrival' });
+
+  assert.equal((await addPlayer(draw.body.id, { playerId: late.body.id, teamIndex: 0, drawLineup: [[1]] })).status, 400);
+  // Another device reshuffles between opening and saving the dialog.
+  assert.equal((await shuffleDraw(draw.body.id)).status, 200);
+  const shuffled = storedLineup(draw.body.id);
+  const stale = await addPlayer(draw.body.id, { playerId: late.body.id, teamIndex: 0, drawLineup: opened });
+  assert.equal(stale.status, 409);
+  assert.equal(stale.body.code, 'draw_lineup_changed');
+  assert.deepEqual(storedLineup(draw.body.id), shuffled);
+
+  const fresh = await addPlayer(draw.body.id, { playerId: late.body.id, teamIndex: 0, drawLineup: shuffled });
+  assert.equal(fresh.status, 200);
+  assert.deepEqual(teamIds(fresh.body.teams)[0], [...shuffled[0], late.body.id]);
+});
+
+test('parallel: a lineup change and a tournament from the old lineup never both take effect', async () => {
+  const game = await request(app).post('/api/games').send({ name: 'Lineup Tournament Race' });
+  const draw = await request(app).post('/api/matchmaking')
+    .send({ gameId: game.body.id, playerIds: playerIds.slice(0, 3), teamCount: 2 });
+  const opened = teamIds(draw.body.teams);
+  const [added, created] = await Promise.all([
+    addPlayer(draw.body.id, { playerId: playerIds[3] }),
+    request(app).post('/api/tournaments').send({
+      gameId: game.body.id, format: 'single_elimination', drawId: draw.body.id, drawLineup: opened,
+      teams: opened.map((ids) => ({ playerIds: ids })),
+    }),
+  ]);
+  assert.equal([added.status, created.status].filter((status) => status < 300).length, 1,
+    `exactly one side wins: add ${added.status}, tournament ${created.status}`);
+  assert.equal(Math.max(added.status, created.status), 409);
+  const row = db.prepare('SELECT tournament_id FROM matchmaking_draws WHERE id = ?').get(draw.body.id) as { tournament_id: string | null };
+  assert.equal(Boolean(row.tournament_id), created.status === 201);
+  assert.equal(storedLineup(draw.body.id).flat().includes(playerIds[3]), added.status === 200);
+});

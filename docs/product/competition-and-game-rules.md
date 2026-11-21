@@ -155,8 +155,10 @@ Die Spielberechnung übernimmt die Platzregel des Zielkonzepts
   instead, so the teams always change. A reshuffled Captain Draft or rematch becomes a regular
   balanced draw. The card keeps its creator, server details and tip link; open tips react to the
   new lineup like to any player move. Both actions are refused once a result or a tournament
-  exists for the draw. A result dialog opened before the lineup changed on another device cannot
-  save the outdated teams: it closes, Match reloads and a notice asks to reopen the draw.
+  exists for the draw. A dialog opened before the lineup changed on another device cannot act on
+  the outdated teams: „Ergebnis eintragen“, „Turnier erstellen“ and „Spieler hinzufügen“ with a
+  chosen team close, Match reloads and a notice asks to reopen the draw („Automatisch“ always uses
+  the current teams).
   A balanced draw never leaves a team empty, even when all ratings are equal.
   Draw teams have no stored name; cards, the team picker, the result dialog and the history derive it
   from the current lineup with the same rule, so a player move renames affected teams immediately.

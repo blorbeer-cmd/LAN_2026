@@ -14,7 +14,7 @@ import { db } from '../db';
 import { isSuggestionGame, SUGGESTION_GAME_ERROR } from './gameSelection';
 import { broadcast, Events } from '../realtime';
 import { applySeatConflicts, buildTeamsSnapshot } from './matchmaking';
-import { lineupKey } from '../matchmaking';
+import { assertDrawLineup, DRAW_LINEUP_CHANGED, DRAW_LINEUP_CHANGED_CODE, DrawLineupChangedError, isDrawLineup } from '../drawLineup';
 import { requireGroupRole, resolveGroupResource } from '../groupAuthorization';
 import { competitionPlayersBelongToGroup } from '../competitionScope';
 import { requireGroupEventAccess, resolveRequestGroupEventScope } from '../groupEventScope';
@@ -35,17 +35,6 @@ interface DrawLinkRow {
 }
 
 class DrawAlreadyClaimedError extends Error {}
-class DrawLineupChangedError extends Error {}
-
-const DRAW_LINEUP_CHANGED = 'Die Teams dieser Auslosung wurden inzwischen geändert. Bitte die Auslosung neu öffnen.';
-
-// The lineup a result dialog was opened with: player ids per team. Bounded
-// like the teams themselves so a malformed body cannot blow up the check.
-function isDrawLineup(value: unknown): value is string[][] {
-  return Array.isArray(value) && value.length >= 1 && value.length <= 64 && value.every((team) =>
-    Array.isArray(team) && team.length <= 64 && team.every((id) => typeof id === 'string' && id.length >= 1 && id.length <= 64));
-}
-
 interface TeamInput {
   playerIds: string[];
   // Both optional and independent of winnerTeamIndex/each other: a game with
@@ -246,13 +235,7 @@ matchesRouter.post('/', (req, res) => {
   };
   try {
     withBettingAccounting(eventId, () => {
-      if (drawId && drawLineup) {
-        const currentTeams = db.prepare('SELECT teams FROM matchmaking_draws WHERE id = ?').pluck().get(drawId) as string | undefined;
-        const current = currentTeams
-          ? (JSON.parse(currentTeams) as Array<{ players: Array<{ id: string }> }>).map((team) => team.players.map((player) => player.id))
-          : [];
-        if (lineupKey(current) !== lineupKey(drawLineup as string[][])) throw new DrawLineupChangedError();
-      }
+      if (drawId && drawLineup) assertDrawLineup(drawId, drawLineup as string[][]);
       db.prepare('INSERT INTO matches (id, game_id, event_id, played_at, result, group_id, created_by, recorded_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').run(
         row.id,
         row.game_id,
@@ -311,7 +294,7 @@ matchesRouter.post('/', (req, res) => {
       return res.status(409).json({ error: 'Für diese Auslosung wurde bereits ein Ergebnis erfasst.' });
     }
     if (error instanceof DrawLineupChangedError) {
-      return res.status(409).json({ error: DRAW_LINEUP_CHANGED, code: 'draw_lineup_changed' });
+      return res.status(409).json({ error: DRAW_LINEUP_CHANGED, code: DRAW_LINEUP_CHANGED_CODE });
     }
     throw error;
   }

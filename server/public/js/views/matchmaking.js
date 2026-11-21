@@ -531,6 +531,9 @@ function openDrawServerDialog(draw, ctx) {
 // needs only the player.
 function openDrawAddPlayerDialog(draw, ctx) {
   const candidates = drawAddCandidates(draw);
+  // A chosen team is a position in this lineup, so it travels along and the
+  // server refuses it if the draw was reshuffled or edited meanwhile.
+  const drawLineup = draw.teams.map((team) => team.players.map((player) => player.id));
   const options = candidates.map((player) => ({ value: player.id, label: player.name }));
   const teamNames = draw.teams.map((team, index) => defaultDrawTeamName(draw, team, index));
   const { close, el } = openModal('Spieler hinzufügen', `
@@ -565,15 +568,20 @@ function openDrawAddPlayerDialog(draw, ctx) {
     const submit = event.currentTarget.querySelector('[type="submit"]');
     submit.disabled = true;
     try {
-      applyUpdatedDraw(await api.matchmaking.addDrawPlayer(draw.id, {
-        playerId: player.id,
-        teamIndex: teamValue === '' ? undefined : Number(teamValue),
-      }));
+      applyUpdatedDraw(await api.matchmaking.addDrawPlayer(draw.id, teamValue === ''
+        ? { playerId: player.id }
+        : { playerId: player.id, teamIndex: Number(teamValue), drawLineup }));
       close();
       ctx.rerender();
       showToast(`${player.name} hinzugefügt.`);
     } catch (err) {
-      submit.disabled = false;
+      if (err.code === 'draw_lineup_changed') {
+        close();
+        invalidateMatchmakingHistory();
+        await ctx.refresh();
+      } else {
+        submit.disabled = false;
+      }
       showToast(err.message, { error: true });
     }
   });
@@ -732,6 +740,8 @@ function openDrawTournamentDialog(draw) {
             playerIds: team.players.map((player) => player.id),
           })),
           drawId: draw.id,
+          // The teams shown here; a lineup changed elsewhere is refused.
+          drawLineup: draw.teams.map((team) => team.players.map((player) => player.id)),
         });
         close();
         if (state.lastMatchmaking?.id === draw.id) state.lastMatchmaking = { ...state.lastMatchmaking, tournamentId: created.id, tournamentName: created.name };
@@ -740,6 +750,12 @@ function openDrawTournamentDialog(draw) {
           detail: { view: 'tournaments', localRoute: { kind: 'detail', id: created.id } },
         }));
       } catch (err) {
+        // The card already follows the newer lineup live; reopening the
+        // dialog starts from it.
+        if (err.code === 'draw_lineup_changed') {
+          close();
+          invalidateMatchmakingHistory();
+        }
         showToast(err.message, { error: true });
       }
     });
