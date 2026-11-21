@@ -2294,6 +2294,15 @@ input[type='number']::-webkit-inner-spin-button {
   align-items: center;
   gap: var(--space-3);
 }
+/* A web address inside user-written text (Durchsage, Info entry), made
+   clickable by linkifyHtml(); long URLs wrap instead of widening the page. */
+.text-link {
+  color: var(--accent);
+  overflow-wrap: anywhere;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: var(--space-1);
+}
 .row-between {
   display: flex;
   align-items: center;

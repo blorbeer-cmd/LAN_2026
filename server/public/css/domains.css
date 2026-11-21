@@ -2761,7 +2761,9 @@ input.food-order-price-input {
 /* Keep the copy action beside its field on narrow dialogs. */
 .matchmaking-draw-server-field {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr);
+  grid-auto-columns: auto;
+  grid-auto-flow: column;
 }
 
 /* Active lobbies: flat hairline rows inside one card. The credentials sit

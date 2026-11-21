@@ -27,7 +27,10 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Sitzstatus, B
   breaks shown as „ · “), the sender (one's own name bold), a short state text („Bis 07:43 Uhr“,
   „Beendet …“, „Abgelaufen …“) and a fixed action column with a neutral „Beenden“ for one's own
   running broadcasts. The whole row opens a detail dialog with the full message, its line breaks,
-  sender and times, where the creator can also end it. The Kiosk banner shows the message on up to
+  sender and times, where the creator can also end it. Web addresses in the message
+  (`https://…`, `http://…`, `www.…`) are links there that open in a new tab; trailing sentence
+  punctuation stays text. The table preview, notifications and the Kiosk banner keep plain text,
+  because their whole surface is already one action or read-only. The Kiosk banner shows the message on up to
   two lines.
 - **Newsticker** — The Broadcast screen starts with ten generated headlines. It adds one new
   headline after a randomly selected interval from three to ten minutes. All screens for the same
