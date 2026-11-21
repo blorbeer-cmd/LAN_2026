@@ -1248,6 +1248,38 @@ test('a six-team free-for-all Match tips the top two and records its result only
     await result.waitFor({ state: 'detached' });
     const settled = await raceStatus();
     assert.deepEqual([settled.status, settled.winners], ['settled', ['0', '2']], 'all six places decide the top two');
+
+    // Closing the dialog while that market check is still underway keeps it closed.
+    const closingGame = await api('/api/games', 'POST', { name: 'Top-2-Abbruch' });
+    const closing = await api('/api/matchmaking', 'POST', { gameId: closingGame.id, playerIds: field, teamCount: field.length });
+    const closingRound = (await api(`/api/points?eventId=${event.id}`)).rounds.find((row: { sourceId: string }) => row.sourceId === closing.id);
+    await clickActionMenuEntry(member.locator(`#match-history-open [data-record-draw="${closing.id}"]`));
+    await result.waitFor();
+    for (const [session, outcomeId] of [[bob.cookie, '0'], [cookie, '1']] as const)
+      await api(`/api/points/rounds/${closingRound.id}/tip?eventId=${event.id}`, 'PUT', { outcomeId, stake: 2 }, session);
+    let releaseCheck!: () => void;
+    const checkHeld = new Promise<void>((resolve) => {
+      // Deliberate latency as stimulus: hold the market check until the dialog is closed.
+      void member.route(`**/api/points?eventId=${event.id}`, async (route) => {
+        resolve();
+        await new Promise<void>((release) => { releaseCheck = release; });
+        await route.continue();
+      });
+    });
+    await result.locator('[data-result-winners] .tournament-result-pick').first().click();
+    await result.locator('[data-result-save]').click();
+    await checkHeld;
+    await member.keyboard.press('Escape');
+    await result.waitFor({ state: 'detached' });
+    const checked = member.waitForResponse((response) => response.url().includes(`/api/points?eventId=${event.id}`));
+    releaseCheck();
+    await checked;
+    await member.unroute(`**/api/points?eventId=${event.id}`);
+    // Negative window: the released check must not reopen the dialog. Its
+    // response is already delivered, so 500 ms covers parsing it and the
+    // synchronous reopen it would trigger.
+    await assert.rejects(result.waitFor({ state: 'attached', timeout: 500 }), /Timeout/);
+    assert.equal((await api(`/api/points?eventId=${event.id}`)).rounds.find((row: { id: string }) => row.id === closingRound.id).status, 'open');
     assert.deepEqual(pageErrors, []);
   } finally {
     // The extra accounts take part in this event only.

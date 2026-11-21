@@ -632,6 +632,21 @@ test('large free-for-all Matches tip the top two from six and the top three from
   assert.deepEqual([correction.status, correction.body.error], [409, placementError],
     'a correction cannot drop the places a settled top-two market was paid on');
   assert.equal((await automaticMarket(f, 'draw', unranked.id)).status, 'settled');
+  // Both tipped teams in the top two refund the pool, which a correction can
+  // still settle: its places cannot be replaced by a bare winner either.
+  const bothIn = await ffa(everyone.slice(2, 8));
+  const bothInMarket = await automaticMarket(f, 'draw', bothIn.id);
+  for (const [playerId, outcomeId] of [[f.players[0], '0'], [f.players[1], '1']] as const)
+    assert.equal((await tip(bothInMarket.id, playerId, outcomeId, 3)).status, 200);
+  const bothInResult = await record(bothIn.id, bothInMarket, [1, 2, 3, 4, 5, 6]);
+  assert.equal(bothInResult.status, 201);
+  const bothInRefund = await automaticMarket(f, 'draw', bothIn.id);
+  assert.deepEqual([bothInRefund.status, bothInRefund.rebooksOnCorrection], ['refunded', true]);
+  const bareWinner = await request(app).patch(`/api/matches/${bothInResult.body.id}`).send({
+    teams: bothInRefund.outcomes.map((o) => ({ playerIds: o.playerIds })), winnerTeamIndex: 0,
+    bettingCorrection: { reason: 'Nur Sieger', revisions: [{ id: bothInRefund.id, revision: bothInRefund.revision }] } });
+  assert.deepEqual([bareWinner.status, bareWinner.body.error], [409, placementError]);
+
   // A tip racing a winner-only result: either the tip lands first and the
   // result is refused, or the result closes the market and the tip is refused.
   const racing = await ffa(everyone.slice(0, 6));

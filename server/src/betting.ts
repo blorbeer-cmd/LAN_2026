@@ -144,10 +144,12 @@ function ranksEveryTeam(result: MatchForScoring): boolean {
 // Called inside the result write. Once a draw's top-two or top-three market
 // holds tips, a result without every team's place would refund them, also
 // when the tips arrived while a result dialog was already open. The write is
-// refused instead; a result with complete ranks settles the market.
+// refused instead; a result with complete ranks settles the market. Refunds a
+// correction can still settle count as well, so places cannot be swapped for
+// a bare winner afterwards.
 export function assertPlacementResult(drawId: string, result: MatchForScoring): void {
   const market = db.prepare(`SELECT r.market FROM betting_rounds r WHERE r.source_type = 'draw' AND r.source_id = ?
-    AND r.market != 'winner' AND r.refund_cause IS NOT 'replaced' AND r.status IN ('open','locked','settled')
+    AND r.market != 'winner' AND r.refund_cause IS NOT 'replaced' AND (r.status IN ('open','locked') OR ${REBOOKS_ON_CORRECTION_SQL})
     AND EXISTS (SELECT 1 FROM betting_tips t WHERE t.round_id = r.id)`).pluck().get(drawId) as Exclude<BetMarket, 'winner'> | undefined;
   if (market && !ranksEveryTeam(result))
     throw new PointsError(`Für die ${TOP_MARKET_TITLES[market].replace(' ', '-')}-Wette bitte für jedes Team einen Punktestand eintragen.`);

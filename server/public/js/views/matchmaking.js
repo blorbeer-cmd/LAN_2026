@@ -528,8 +528,10 @@ function openDrawResultDialog(draw, ctx, { requirePlacements = false, enteredSco
     onSave: async ({ mode, scores, ranks, winnerIndex }) => {
       // Placement tips that arrived after opening need every team's score:
       // reopen the dialog in that mode instead of saving a winner-only result.
-      // Typed values carry over as entered; an empty field stays empty.
+      // Typed values carry over as entered; an empty field stays empty. A
+      // dialog closed while the market was being checked stays closed.
       const reopenForPlacements = () => {
+        if (!el.isConnected) return false;
         const enteredScores = mode === 'score' ? [...el.querySelectorAll('[data-result-score]')].map((input) => input.value) : null;
         close();
         showToast('Inzwischen gibt es Platzierungstipps: Bitte für jedes Team einen Punktestand eintragen.', { error: true });
