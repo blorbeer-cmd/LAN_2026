@@ -128,13 +128,13 @@ Die Spielberechnung übernimmt die Platzregel des Zielkonzepts
   The title and accessible label retain the full term „Skill-Level“.
   Unplayed draws and running tournaments of every game have their own „Ohne Ergebnis“ section above „Historie“. It starts collapsed and builds
   its cards only when opened. Each unplayed game is also a collapsed tile that can be opened
-  independently to show its teams and player moves. Recorded matches and completed tournaments share the „Historie“ for the selected game. Until a
-  game is picked, Match opens on the catalog game of the most recent entry „Historie“ lists — a
+  independently to show its teams and player moves. Recorded matches and completed tournaments share the „Historie“, which lists all games by
+  default and is narrowed only by its own „Spiel“ filter, never by the game picker that prepares the next draw. Until a
+  game is picked, the picker opens on the catalog game of the most recent entry „Historie“ lists — a
   recorded draw or a completed tournament, not a round of a running one (the first catalog game
-  only when there is none yet), so a newly added, unplayed game never hides the
-  Historie. Saving the result of an unplayed draw selects that draw's game. „Historie“ starts
-  collapsed. The shared „Alle | Matches | Turniere“ filter row sits above „Ohne Ergebnis“ and applies
-  to open draws, running tournaments and completed history. The running overview above setup is
+  only when there is none yet), so a newly added, unplayed game is never preselected. Saving the result of an unplayed draw selects that draw's game. „Historie“ starts
+  collapsed. The shared filter menu sits above „Ohne Ergebnis“: „Art“ (Alle | Matches | Turniere) applies
+  to open draws, running tournaments and completed history, while „Spiel“ narrows only the completed „Historie“. The running overview above setup is
   independent of these filters and always shows every running tournament.
   The independent „Meine“ toggle combines with each type and shows only entries whose teams include
   the signed-in player, regardless of who created them. It also scopes older Match pages before
@@ -295,8 +295,7 @@ Die Spielberechnung übernimmt die Platzregel des Zielkonzepts
   `public/js/state.js`, enforced server-side by `src/routes/gameSelection.ts`), which is what keeps
   those pickers short. Demoting a game must not strand what it already produced, so
   `gamesWithHistory()` adds back every game that already carries data wherever a picker also
-  scopes existing records: the Rangliste's game filter and the Teams view's game select, whose
-  one control also scopes the Historie below it. Such a game stays visible but cannot start
+  scopes existing records: the Rangliste's game filter and the Teams view's game select. Such a game stays visible but cannot start
   anything new — the Teams view disables „Teams auslosen“/„Draft starten“ with the usual red
   warning tooltip naming the reason, and „Ergebnis eintragen“ preselects a different game and
   says why in a toast instead of silently swapping it. The one action that stays open is
