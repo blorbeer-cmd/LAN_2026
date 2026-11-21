@@ -432,8 +432,8 @@ test('Jam controller asks Spotify only after changes and song ends and waits out
         device: { id: 'device-1' },
         context: { type: 'playlist', uri: 'spotify:playlist:playlist-1' },
         is_playing: playing,
-        // Shortly before the end, so the controller plans a check after it.
-        progress_ms: 9_800,
+        // One second before the end, so the controller plans a check after it.
+        progress_ms: 9_000,
       }));
       return;
     }
@@ -500,25 +500,29 @@ test('Jam controller asks Spotify only after changes and song ends and waits out
   assert.equal(heartbeats[5].playerRequests, 1, 'idle heartbeats must not ask Spotify again');
   assert.equal(Object.hasOwn(heartbeats[5], 'playback'), false);
   assert.equal(heartbeats[5].connectionStatus.spotify, 'connected');
-  assert.equal(queueReads, 1, 'the first playlist state reads the queue once');
+  // The queue read follows its heartbeat on another connection: wait for it.
+  await waitFor(() => queueReads === 1);
 
   // A playback command is checked at once, even without a running Jam.
   nextCommand = { id: 'command-1', type: 'pause', payload: { deviceId: 'device-1' } };
   await waitFor(() => commandResults[0]);
   assert.equal(commandResults[0].ok, true);
-  await waitFor(() => playerRequests === 2, 2_000);
+  await waitFor(() => playerRequests === 2);
 
   // A Jam starts: checked at once, then again only after the song end.
   playing = true;
   sessionActive = true;
   // Every requested check also rereads the queue: after the command and now.
-  await waitFor(() => playerRequests === 3 && queueReads === 3, 2_000);
+  await waitFor(() => playerRequests === 3 && queueReads === 3);
   const afterJamStart = heartbeats.length;
-  await heartbeatsAfter(afterJamStart + 6);
+  // Three 50 ms heartbeats stay well inside the 2.5 s until the song-end check.
+  await heartbeatsAfter(afterJamStart + 3);
   assert.equal(playerRequests, 3, 'a running Jam does not ask Spotify at the heartbeat rate');
-  await waitFor(() => playerRequests === 4, 4_000);
+  // Paused after the song end: no further song-end checks race the steps below.
+  playing = false;
+  // The heartbeat carrying the song-end check arrives after Spotify's answer.
+  await waitFor(() => heartbeats.find((heartbeat) => heartbeat.playerRequests === 4 && heartbeat.playback), 5_000);
   const afterSongEnd = heartbeats.length;
-  assert.ok(heartbeats[afterSongEnd - 1].playback, 'the check after the song end reports playback');
   // Negative window: a queue read starts right after its heartbeat, so three
   // further 50 ms heartbeats leave ample time for one to arrive.
   await heartbeatsAfter(afterSongEnd + 3);
@@ -527,7 +531,7 @@ test('Jam controller asks Spotify only after changes and song ends and waits out
   // A queued request changes Spotify's queue and is checked at once.
   nextCommand = { id: 'command-2', type: 'queueTrack', payload: { uri: 'spotify:track:track-2', deviceId: 'device-1' } };
   await waitFor(() => commandResults[1]);
-  await waitFor(() => playerRequests === 5 && queueReads === 4, 2_000);
+  await waitFor(() => playerRequests === 5 && queueReads === 4);
 
   // A long Spotify block is named and waited out instead of hammered.
   blockSpotify = true;
@@ -663,5 +667,5 @@ test('Jam controller forwards browser player reports instead of asking Spotify',
 
   // A stopped browser player hands over to Spotify at once.
   assert.equal((await report({ deviceId: 'browser-device', state: null })).status, 204);
-  await waitFor(() => playerRequests === 2, 2_000);
+  await waitFor(() => playerRequests === 2);
 });
