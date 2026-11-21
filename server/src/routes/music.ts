@@ -37,6 +37,10 @@ musicRouter.use((req, res, next) => {
 const PAIRING_TTL_MS = 10 * 60 * 1000;
 const PLAYLIST_SEARCH_TTL_MS = 10 * 60 * 1000;
 const MAX_CACHED_PLAYLISTS = 200;
+// Search results already carry every detail of a song wish. Remembering them
+// spares one Spotify lookup per wish against the shared Spotify quota.
+const TRACK_SEARCH_TTL_MS = 10 * 60 * 1000;
+const MAX_CACHED_TRACKS = 500;
 const CONTROLLER_SCRIPT_PATH = path.join(__dirname, '..', '..', 'scripts', 'jam-controller.mjs');
 
 interface MusicSessionRow {
@@ -109,6 +113,7 @@ interface MusicRequestPayload {
 type AsyncRoute = (req: Request, res: Response) => Promise<void | Response>;
 
 const playlistSearchCache = new Map<string, CachedPlaylist>();
+const trackSearchCache = new Map<string, { groupId: string; track: PublicTrack; expiresAt: number }>();
 const recoveringSessionIds = new Set<string>();
 
 function asyncRoute(handler: AsyncRoute): RequestHandler {
@@ -231,6 +236,35 @@ function cachedPlaylist(groupId: string, playlistId: string): PublicPlaylist | n
   prunePlaylistSearchCache();
   const cached = playlistSearchCache.get(playlistCacheKey(groupId, playlistId));
   return cached?.groupId === groupId ? cached.playlist : null;
+}
+
+function pruneTrackSearchCache(now = Date.now()): void {
+  for (const [key, entry] of trackSearchCache) {
+    if (entry.expiresAt <= now) trackSearchCache.delete(key);
+  }
+  while (trackSearchCache.size > MAX_CACHED_TRACKS) {
+    const oldestKey = trackSearchCache.keys().next().value as string | undefined;
+    if (!oldestKey) break;
+    trackSearchCache.delete(oldestKey);
+  }
+}
+
+function rememberTracks(groupId: string, tracks: PublicTrack[]): void {
+  const expiresAt = Date.now() + TRACK_SEARCH_TTL_MS;
+  pruneTrackSearchCache();
+  for (const track of tracks) {
+    const key = `${groupId}:${track.id}`;
+    // Re-inserting keeps the most recent results last for the size limit.
+    trackSearchCache.delete(key);
+    trackSearchCache.set(key, { groupId, track, expiresAt });
+  }
+  pruneTrackSearchCache();
+}
+
+function cachedTrack(groupId: string, trackId: string): PublicTrack | null {
+  pruneTrackSearchCache();
+  const cached = trackSearchCache.get(`${groupId}:${trackId}`);
+  return cached?.groupId === groupId ? cached.track : null;
 }
 
 function parseStoredContext(json: string | null): Record<string, unknown> | null {
@@ -562,6 +596,7 @@ export function parseSpotifyLink(query: string): { kind: 'track' | 'playlist'; i
 async function searchSpotifyLink(groupId: string, link: { kind: 'track' | 'playlist'; id: string }) {
   if (link.kind === 'track') {
     const track = validTrack(await issueMusicControllerCommand(groupId, 'track', { trackId: link.id }));
+    if (track) rememberTracks(groupId, [track]);
     return { tracks: track ? [track] : [], playlists: [] as PublicPlaylist[] };
   }
   let data: unknown;
@@ -594,6 +629,7 @@ musicRouter.get('/search', asyncRoute(async (req, res) => {
     .map(validPlaylist)
     .filter((playlist): playlist is PublicPlaylist => Boolean(playlist));
   rememberPlaylists(req.group!.id, playlists);
+  rememberTracks(req.group!.id, tracks);
   res.json({ tracks, playlists });
 }));
 
@@ -637,7 +673,8 @@ musicRouter.post('/requests', ...withBodyPlayerIdentity, asyncRoute(async (req, 
   if (!player || !session) return res.status(404).json({ error: 'Jam nicht gefunden.' });
   const trackId = req.body?.trackId;
   if (typeof trackId !== 'string' || !/^[A-Za-z0-9]{22}$/.test(trackId)) return res.status(400).json({ error: 'Ungültiger Spotify-Titel.' });
-  const track = validTrack(await issueMusicControllerCommand(req.group!.id, 'track', { trackId }));
+  const track = cachedTrack(req.group!.id, trackId)
+    ?? validTrack(await issueMusicControllerCommand(req.group!.id, 'track', { trackId }));
   if (!track) return res.status(404).json({ error: 'Spotify-Titel nicht gefunden.' });
   const requestId = nanoid();
   // The same song may wait several times (migration 139).
