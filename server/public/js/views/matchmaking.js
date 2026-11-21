@@ -1596,6 +1596,9 @@ export function renderMatchmaking(container, ctx) {
     avoidAdjacentOpponents = Boolean(gameById(selectedGameId)?.considerSeatNeighborsDefault);
   }
 
+  // A deleted game vanishes from the filter's options; keep the effective
+  // filter in sync so Historie never filters by an id nobody can see or clear.
+  if (historyGameFilter && !gamesWithHistory().some((game) => game.id === historyGameFilter)) historyGameFilter = '';
   if ((historyForGameId !== historyGameFilter || historyStale) && !historyLoading) {
     loadHistory(historyGameFilter, ctx);
   }
