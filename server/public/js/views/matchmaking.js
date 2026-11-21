@@ -525,7 +525,7 @@ function openDrawResultDialog(draw, ctx, { requirePlacements = false, enteredSco
     teams,
     mode,
     requireAllScores: placements,
-    onSave: async ({ mode, scores, ranks, winnerIndex }) => {
+    onSave: async ({ mode, scores, ranks, winnerIndex, complete }) => {
       // Placement tips that arrived after opening need every team's score:
       // reopen the dialog in that mode instead of saving a winner-only result.
       // Typed values carry over as entered; an empty field stays empty. A
@@ -539,6 +539,8 @@ function openDrawResultDialog(draw, ctx, { requirePlacements = false, enteredSco
         return false;
       };
       if (!placements && await competitionNeedsPlacementsNow('draw', draw.id).catch(() => false)) return reopenForPlacements();
+      // A dialog closed while the market was being checked saves nothing.
+      if (!el.isConnected) return false;
       const payloadTeams = draw.teams.map((team, index) => ({
         playerIds: team.players.map((player) => player.id),
         score: mode === 'score' ? scores[index] : null,
@@ -546,9 +548,9 @@ function openDrawResultDialog(draw, ctx, { requirePlacements = false, enteredSco
       }));
       try {
         if (recorded) {
-          await api.matches.update(draw.matchId, { teams: payloadTeams, winnerTeamIndex: winnerIndex, isDraw: winnerIndex === null, ...correction.payload(el) });
+          await api.matches.update(draw.matchId, { teams: payloadTeams, winnerTeamIndex: winnerIndex, isDraw: winnerIndex === null, placementsConfirmed: complete, ...correction.payload(el) });
         } else {
-          await api.matches.create({ gameId: draw.gameId, drawId: draw.id, teams: payloadTeams, winnerTeamIndex: winnerIndex, isDraw: winnerIndex === null });
+          await api.matches.create({ gameId: draw.gameId, drawId: draw.id, teams: payloadTeams, winnerTeamIndex: winnerIndex, isDraw: winnerIndex === null, placementsConfirmed: complete });
         }
       } catch (error) {
         // The server refuses a result without places once such tips exist.

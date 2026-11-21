@@ -102,11 +102,13 @@ export function wireResultForm(root, { teams, mode = 'winner', allowDraw = true,
       }
       const winnerIndex = resultWinnerIndex(scores);
       if (!allowDraw && winnerIndex === null) return showToast('In dieser K.-o.-Runde ist kein Unentschieden möglich.', { error: true });
-      result = { mode: currentMode, scores, ranks: resultRanks(scores), winnerIndex };
+      // `complete` tells callers that no empty field was read as 0, so the
+      // ranks rest on a value entered for every team.
+      result = { mode: currentMode, scores, ranks: resultRanks(scores), winnerIndex, complete: missingResultScores(raw).length === 0 };
     } else {
       const selected = entry.querySelector('input[type="radio"]:checked');
       if (!selected) return showToast('Bitte ein Siegerteam oder Unentschieden auswählen.', { error: true });
-      result = { mode: currentMode, scores: teams.map(() => null), ranks: teams.map(() => null), winnerIndex: Number(selected.value) === -1 ? null : Number(selected.value) };
+      result = { mode: currentMode, scores: teams.map(() => null), ranks: teams.map(() => null), winnerIndex: Number(selected.value) === -1 ? null : Number(selected.value), complete: false };
     }
     saveButton.disabled = true;
     try {

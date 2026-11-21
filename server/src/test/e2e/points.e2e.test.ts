@@ -1249,37 +1249,84 @@ test('a six-team free-for-all Match tips the top two and records its result only
     const settled = await raceStatus();
     assert.deepEqual([settled.status, settled.winners], ['settled', ['0', '2']], 'all six places decide the top two');
 
-    // Closing the dialog while that market check is still underway keeps it closed.
+    // Deliberate latency as stimulus: hold one kind of request until released.
+    const hold = (pattern: string, method: string) => {
+      let release!: () => void;
+      const held = new Promise<void>((resolve) => {
+        void member.route(pattern, async (route) => {
+          if (route.request().method() !== method) return route.continue();
+          resolve();
+          await new Promise<void>((done) => { release = done; });
+          await route.continue();
+        });
+      });
+      return { held, release: () => release() };
+    };
+    const pointsCheck = `**/api/points?eventId=${event.id}`;
+    const roundStatus = async (id: string) => (await api(`/api/points?eventId=${event.id}`)).rounds.find((row: { id: string }) => row.id === id).status;
+    const resultPosts: string[] = [];
+    member.on('request', (request) => { if (request.method() === 'POST' && request.url().includes('/api/matches')) resultPosts.push(request.url()); });
+
+    // Closing the dialog while the market check before saving is still
+    // underway saves nothing and does not reopen it, with or without tips.
     const closingGame = await api('/api/games', 'POST', { name: 'Top-2-Abbruch' });
     const closing = await api('/api/matchmaking', 'POST', { gameId: closingGame.id, playerIds: field, teamCount: field.length });
     const closingRound = (await api(`/api/points?eventId=${event.id}`)).rounds.find((row: { sourceId: string }) => row.sourceId === closing.id);
-    await clickActionMenuEntry(member.locator(`#match-history-open [data-record-draw="${closing.id}"]`));
-    await result.waitFor();
-    for (const [session, outcomeId] of [[bob.cookie, '0'], [cookie, '1']] as const)
-      await api(`/api/points/rounds/${closingRound.id}/tip?eventId=${event.id}`, 'PUT', { outcomeId, stake: 2 }, session);
-    let releaseCheck!: () => void;
-    const checkHeld = new Promise<void>((resolve) => {
-      // Deliberate latency as stimulus: hold the market check until the dialog is closed.
-      void member.route(`**/api/points?eventId=${event.id}`, async (route) => {
-        resolve();
-        await new Promise<void>((release) => { releaseCheck = release; });
-        await route.continue();
-      });
+    const closeDuringCheck = async (whileOpen: () => Promise<void> = async () => {}) => {
+      await clickActionMenuEntry(member.locator(`#match-history-open [data-record-draw="${closing.id}"]`));
+      await result.waitFor();
+      await whileOpen();
+      await result.locator('[data-result-winners] .tournament-result-pick').first().click();
+      const check = hold(pointsCheck, 'GET');
+      const posted = resultPosts.length;
+      await result.locator('[data-result-save]').click();
+      await check.held;
+      await member.keyboard.press('Escape');
+      await result.waitFor({ state: 'detached' });
+      const checked = member.waitForResponse((response) => response.url().includes(`/api/points?eventId=${event.id}`));
+      check.release();
+      await checked;
+      await member.unroute(pointsCheck);
+      // Negative window: the released check must neither reopen the dialog nor
+      // send the result. Its response is already delivered, so 500 ms covers
+      // parsing it and the request or reopen it would start right away.
+      await assert.rejects(result.waitFor({ state: 'attached', timeout: 500 }), /Timeout/);
+      assert.equal(resultPosts.length, posted, 'a closed dialog sends no result');
+      assert.equal(await roundStatus(closingRound.id), 'open');
+    };
+    await closeDuringCheck();
+    await closeDuringCheck(async () => {
+      for (const [session, outcomeId] of [[bob.cookie, '0'], [cookie, '1']] as const)
+        await api(`/api/points/rounds/${closingRound.id}/tip?eventId=${event.id}`, 'PUT', { outcomeId, stake: 2 }, session);
     });
-    await result.locator('[data-result-winners] .tournament-result-pick').first().click();
+
+    // Tips accepted after that check but before the result write: the server
+    // refuses scores whose empty field was read as 0, and the dialog reopens
+    // with the typed values, the empty field still empty.
+    const lateGame = await api('/api/games', 'POST', { name: 'Top-2-Nachzügler' });
+    const late = await api('/api/matchmaking', 'POST', { gameId: lateGame.id, playerIds: field, teamCount: field.length });
+    const lateRound = (await api(`/api/points?eventId=${event.id}`)).rounds.find((row: { sourceId: string }) => row.sourceId === late.id);
+    await clickActionMenuEntry(member.locator(`#match-history-open [data-record-draw="${late.id}"]`));
+    await result.waitFor();
+    await result.locator('[data-result-mode="score"]').click();
+    for (const [index, score] of [[0, 10], [2, 8], [3, 7], [4, 6], [5, 5]] as const) await result.locator(`#draw-result-score-${index}`).fill(String(score));
+    const write = hold('**/api/matches', 'POST');
     await result.locator('[data-result-save]').click();
-    await checkHeld;
-    await member.keyboard.press('Escape');
+    await write.held;
+    for (const [session, outcomeId] of [[bob.cookie, '0'], [cookie, '2']] as const)
+      await api(`/api/points/rounds/${lateRound.id}/tip?eventId=${event.id}`, 'PUT', { outcomeId, stake: 2 }, session);
+    write.release();
+    await member.getByText('Inzwischen gibt es Platzierungstipps: Bitte für jedes Team einen Punktestand eintragen.', { exact: true }).last().waitFor();
+    await member.unroute('**/api/matches');
+    await result.locator('[data-result-scores]:not([data-inactive])').waitFor();
+    assert.equal(await result.locator('[data-result-mode]').count(), 0);
+    assert.deepEqual(await Promise.all([0, 1].map((index) => result.locator(`#draw-result-score-${index}`).inputValue())), ['10', '']);
+    assert.equal(await roundStatus(lateRound.id), 'open', 'the refused write recorded nothing');
+    await result.locator('#draw-result-score-1').fill('20');
+    await result.locator('[data-result-save]').click();
     await result.waitFor({ state: 'detached' });
-    const checked = member.waitForResponse((response) => response.url().includes(`/api/points?eventId=${event.id}`));
-    releaseCheck();
-    await checked;
-    await member.unroute(`**/api/points?eventId=${event.id}`);
-    // Negative window: the released check must not reopen the dialog. Its
-    // response is already delivered, so 500 ms covers parsing it and the
-    // synchronous reopen it would trigger.
-    await assert.rejects(result.waitFor({ state: 'attached', timeout: 500 }), /Timeout/);
-    assert.equal((await api(`/api/points?eventId=${event.id}`)).rounds.find((row: { id: string }) => row.id === closingRound.id).status, 'open');
+    const lateSettled = (await api(`/api/points?eventId=${event.id}`)).rounds.find((row: { id: string }) => row.id === lateRound.id);
+    assert.deepEqual([lateSettled.status, lateSettled.winners], ['settled', ['0', '1']], 'the late value decides the top two');
     assert.deepEqual(pageErrors, []);
   } finally {
     // The extra accounts take part in this event only.

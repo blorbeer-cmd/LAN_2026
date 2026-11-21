@@ -190,7 +190,12 @@ ausdrücklich eingetragenen Wert; 0 ist dabei ein gültiger Wert. Gehen die erst
 während der Dialog schon offen ist, öffnet er sich beim Speichern in diesem Modus neu und behält
 bereits eingetippte Werte. Der Server lehnt ein Ergebnis oder eine Ergebniskorrektur ohne
 vollständige Platzierung in diesem Fall mit 409 ab („Für die Top-2-Wette bitte für jedes Team einen
-Punktestand eintragen.“). Ohne Tipps erstattet ein reines Siegerergebnis die leere Wette; eine
+Punktestand eintragen.“). Vollständige Ränge genügen dafür nicht: Die Schnittstelle verlangt
+zusätzlich `placementsConfirmed: true`, das der Dialog nur sendet, wenn wirklich jedes Feld
+ausgefüllt ist. So kann ein leeres, als 0 gelesenes Feld auch dann keine Wette entscheiden, wenn
+die ersten Tipps erst während des Speicherns eingehen; der Dialog öffnet sich dann im Pflichtmodus
+neu. Wird ein Dialog geschlossen, während er vor dem Speichern den Wettstand prüft, speichert er
+nichts. Ohne Tipps erstattet ein reines Siegerergebnis die leere Wette; eine
 mit dem Grund „Keine vollständige Platzierung eingetragen“ erstattete Wette rechnet eine spätere
 Ergebniskorrektur mit Platzierung regulär ab.
 

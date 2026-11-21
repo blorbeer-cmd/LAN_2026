@@ -581,10 +581,11 @@ test('large free-for-all Matches tip the top two from six and the top three from
   };
   const tip = (roundId: string, playerId: string, outcomeId: string, stake: number) => request(app)
     .put(`/api/points/rounds/${roundId}/tip`).set('x-test-player-id', playerId).send({ outcomeId, stake });
-  const record = (drawId: string, round: ReturnType<typeof roundView>, ranks?: number[]) => request(app).post('/api/matches').send({
+  const record = (drawId: string, round: ReturnType<typeof roundView>, ranks?: number[], confirmed = true) => request(app).post('/api/matches').send({
     gameId: f.gameId, drawId, winnerTeamIndex: 0,
     teams: round.outcomes.filter((o) => o.playerIds.length).map((o, index) =>
-      ({ playerIds: o.playerIds, ...(ranks ? { score: 100 - ranks[index], rank: ranks[index] } : {}) })) });
+      ({ playerIds: o.playerIds, ...(ranks ? { score: 100 - ranks[index], rank: ranks[index] } : {}) })),
+    ...(ranks && confirmed ? { placementsConfirmed: true } : {}) });
   for (const [size, market] of [[5, 'winner'], [6, 'top2'], [8, 'top2'], [9, 'top3']] as const)
     assert.equal((await automaticMarket(f, 'draw', (await ffa(everyone.slice(0, size))).id)).market, market, `${size} teams`);
 
@@ -622,6 +623,9 @@ test('large free-for-all Matches tip the top two from six and the top three from
   assert.equal(db.prepare('SELECT match_id FROM matchmaking_draws WHERE id=?').pluck().get(unranked.id), null);
   assert.equal((await automaticMarket(f, 'draw', unranked.id)).status, 'open');
   assert.deepEqual(f.players.slice(0, 2).map((id) => wallet(f.eventId, id).held), [5, 5]);
+  // Complete ranks without the writer's confirmation that every value was
+  // entered (an empty field read as 0) are refused as well.
+  assert.deepEqual([(await record(unranked.id, unrankedMarket, [1, 3, 2, 4, 5, 6], false)).status], [409]);
   const ranked = await record(unranked.id, unrankedMarket, [1, 3, 2, 4, 5, 6]);
   assert.equal(ranked.status, 201);
   const paid = await automaticMarket(f, 'draw', unranked.id);
