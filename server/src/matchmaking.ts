@@ -221,3 +221,59 @@ export function balanceTeams(
 
   return teams.map((t) => t.ids);
 }
+
+// Order-independent identity of a lineup: which players play together,
+// regardless of team order or order within a team.
+export function lineupKey(teamIdLists: string[][]): string {
+  return JSON.stringify(teamIdLists.map((ids) => [...ids].sort().join(',')).sort());
+}
+
+// "Neu mischen" for an existing lineup: a different split of the same players
+// into the same number of teams. The balanced draw is retried first, since
+// its shuffled ties usually yield another equally fair split. When the
+// ratings admit only one balanced split, the fairest lineup reachable by
+// swapping two players of different teams is used instead (a random one of
+// the equally fair swaps), so a reshuffle still changes the teams. Returns
+// null only when no other split exists at all (every team a single player).
+export function reshuffleTeams(
+  players: PlayerRating[],
+  current: string[][],
+  avoidPairs: SeatPair[] = [],
+  attempts = 30
+): string[][] | null {
+  const currentKey = lineupKey(current);
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    const candidate = balanceTeams(players, current.length, avoidPairs);
+    if (lineupKey(candidate) !== currentKey) return candidate;
+  }
+
+  const ratingById = new Map(players.map((p) => [p.id, p.rating]));
+  const relevantPairs = avoidPairs.filter(([a, b]) => ratingById.has(a) && ratingById.has(b));
+  const ratingOf = (id: string) => ratingById.get(id) ?? 0;
+  let bestScore = Infinity;
+  let best: string[][][] = [];
+  for (let i = 0; i < current.length; i++) {
+    for (let j = i + 1; j < current.length; j++) {
+      for (const a of current[i]) {
+        for (const b of current[j]) {
+          const swapped = current.map((ids, index) =>
+            index === i ? ids.map((id) => (id === a ? b : id)) : index === j ? ids.map((id) => (id === b ? a : id)) : [...ids]
+          );
+          // Swapping the only players of two single-player teams changes nothing.
+          if (lineupKey(swapped) === currentKey) continue;
+          const score = draftScore(
+            swapped.map((ids) => ({ ids, sum: ids.reduce((sum, id) => sum + ratingOf(id), 0) })),
+            relevantPairs
+          );
+          if (score < bestScore - 1e-9) {
+            bestScore = score;
+            best = [swapped];
+          } else if (Math.abs(score - bestScore) <= 1e-9) {
+            best.push(swapped);
+          }
+        }
+      }
+    }
+  }
+  return best.length ? best[Math.floor(Math.random() * best.length)] : null;
+}

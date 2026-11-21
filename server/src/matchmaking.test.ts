@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { computeTeamCount, balanceTeams, countSeatConflicts, type PlayerRating } from './matchmaking';
+import { computeTeamCount, balanceTeams, countSeatConflicts, lineupKey, reshuffleTeams, type PlayerRating } from './matchmaking';
 
 test('computeTeamCount defaults to 2 when nothing else forces more', () => {
   assert.equal(computeTeamCount(undefined, 6, 5), 2);
@@ -139,4 +139,32 @@ test('balanceTeams with no avoidPairs behaves exactly as before (default param)'
   const teams = balanceTeams(players, 2);
   assert.deepEqual(teams.map((t) => t.length).sort(), [2, 2]);
   assert.deepEqual(teams.flat().sort(), ['a', 'b', 'c', 'd']);
+});
+
+test('reshuffleTeams falls back to the fairest swap when the ratings allow only one balanced split', () => {
+  const players: PlayerRating[] = [
+    { id: 'a', rating: 5 },
+    { id: 'b', rating: 4 },
+    { id: 'c', rating: 1 },
+    { id: 'd', rating: 0 },
+  ];
+  const current = balanceTeams(players, 2);
+  assert.equal(lineupKey(current), lineupKey([['a', 'd'], ['b', 'c']]));
+  // Every balanced re-run repeats the current split; of the swaps, a<->b and
+  // c<->d both give the same 4:6 lineup, the others an 1:9 one.
+  assert.equal(lineupKey(reshuffleTeams(players, current)!), lineupKey([['a', 'c'], ['b', 'd']]));
+});
+
+test('reshuffleTeams returns a different split of the same players and team count', () => {
+  const players: PlayerRating[] = ['a', 'b', 'c', 'd', 'e', 'f'].map((id) => ({ id, rating: 3 }));
+  const current = [['a', 'b', 'c'], ['d', 'e', 'f']];
+  const next = reshuffleTeams(players, current)!;
+  assert.notEqual(lineupKey(next), lineupKey(current));
+  assert.equal(next.length, 2);
+  assert.deepEqual(next.flat().sort(), ['a', 'b', 'c', 'd', 'e', 'f']);
+});
+
+test('reshuffleTeams reports when no other split exists', () => {
+  const players: PlayerRating[] = [{ id: 'a', rating: 5 }, { id: 'b', rating: 1 }];
+  assert.equal(reshuffleTeams(players, [['a'], ['b']]), null);
 });

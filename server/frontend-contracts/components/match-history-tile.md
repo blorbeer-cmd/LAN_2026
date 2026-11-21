@@ -32,7 +32,7 @@ deren Tippdialog bündelt Turniersieger und bereits angelegte Spieltipps.
 
 ## 5. Erlaubte Anpassungen
 
-Aufrufer dürfen Spielname, Zeit, Ergebnistext und Aktionen liefern. Der Pfeil steht ganz links
+Aufrufer dürfen Spielname, Zeit, Ergebnistext, die Zeile „Ausgelost von …“ und Aktionen liefern. Der Pfeil steht ganz links
 im Aufklappbutton, vor Titel und Metadaten; Aktionen stehen getrennt rechts und werden nie darin verschachtelt.
 
 ## 6. Komponenteneigene Invarianten
