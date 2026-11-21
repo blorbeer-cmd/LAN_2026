@@ -430,12 +430,11 @@ async function fixture(config: object = {}, visible = true) {
   assert.equal(game.status, 201);
   return { eventId: event.id, players, gameId: game.body.id };
 }
-async function automaticMarket(f: { eventId: string }, sourceType: string, sourceId: string,
-  market = 'winner'): Promise<ReturnType<typeof roundView>> {
+async function automaticMarket(f: { eventId: string }, sourceType: string, sourceId: string): Promise<ReturnType<typeof roundView>> {
   const response = await request(app).get(`/api/points?eventId=${f.eventId}`);
   assert.equal(response.status, 200);
-  const found = response.body.rounds.find((row: { sourceType: string; sourceId: string; market: string }) =>
-    row.sourceType === sourceType && row.sourceId === sourceId && row.market === market);
+  const found = response.body.rounds.find((row: { sourceType: string; sourceId: string }) =>
+    row.sourceType === sourceType && row.sourceId === sourceId);
   assert.ok(found, `automatic market missing: ${sourceType}/${sourceId}`);
   return found;
 }
@@ -568,80 +567,68 @@ test('creators decide match betting, tournament markets open automatically, and 
     .send({ outcomeId: opened.outcomes[0].id, stake: 1 })).status, 409, 'ended LANs retain results but accept no new tips');
 });
 
-test('free-for-all Matches add podium and last-place markets that settle on complete ranks and close together', async () => {
+test('large free-for-all Matches tip the top two from six and the top three from nine teams, settling on complete ranks', async () => {
   const f = await fixture();
-  const extra = (await request(app).post('/api/players').send({ name: `Points ${sequence}-extra` })).body.id as string;
-  const everyone = [TEST_ADMIN_ID, ...f.players, extra];
+  const extras: string[] = [];
+  for (let i = 0; i < 5; i++) extras.push((await request(app).post('/api/players').send({ name: `Points ${sequence}-field-${i}` })).body.id);
+  const everyone = [TEST_ADMIN_ID, ...f.players, ...extras];
   setParticipants(f.eventId, everyone);
-  setActiveEventForPlayer(extra, f.eventId);
+  for (const id of extras) setActiveEventForPlayer(id, f.eventId);
   const ffa = async (playerIds: string[]) => {
     const draw = await request(app).post('/api/matchmaking').send({ gameId: f.gameId, playerIds, teamCount: playerIds.length });
     assert.equal(draw.status, 200, JSON.stringify(draw.body));
-    return draw.body.id as string;
+    return draw.body as { id: string; teams: Array<{ players: Array<{ id: string }> }> };
   };
-  const markets = async (drawId: string) => (await request(app).get(`/api/points?eventId=${f.eventId}`)).body.rounds
-    .filter((row: { sourceId: string; replaced: boolean }) => row.sourceId === drawId && !row.replaced)
-    .map((row: ReturnType<typeof roundView>) => row.market).sort();
-  const small = await ffa(everyone.slice(0, 3));
-  assert.deepEqual(await markets(small), ['last', 'winner'], 'three sides offer the last place, not the podium');
-  const drawId = await ffa(everyone);
-  assert.deepEqual(await markets(drawId), ['last', 'podium', 'winner']);
-  const winner = await automaticMarket(f, 'draw', drawId);
-  const podium = await automaticMarket(f, 'draw', drawId, 'podium');
-  const last = await automaticMarket(f, 'draw', drawId, 'last');
-  assert.equal(podium.outcomes.some((outcome) => outcome.id === '__draw__'), false, 'placement markets offer no draw');
-  db.prepare("UPDATE betting_rounds SET created_at = created_at - ? WHERE event_id = ? AND source_type = 'draw'")
-    .run(DRAW_NOTICE_DELAY_MS, f.eventId);
-  sweepBetting();
-  const notices = db.prepare(`SELECT target_id AS target, body FROM push_log WHERE notification_type='betting-open'
-    AND event_id=? AND target_id IN (?,?,?)`).all(f.eventId, winner.id, podium.id, last.id);
-  assert.deepEqual(notices, [{ target: winner.id, body: 'Sieger, Podium und Rote Laterne. Auch Mitspieler können tippen.' }],
-    'the markets of one Match share one notice');
   const tip = (roundId: string, playerId: string, outcomeId: string, stake: number) => request(app)
     .put(`/api/points/rounds/${roundId}/tip`).set('x-test-player-id', playerId).send({ outcomeId, stake });
-  for (const [roundId, playerId, outcomeId, stake] of [
-    [podium.id, f.players[0], '0', 10], [podium.id, f.players[1], '4', 10], [podium.id, f.players[2], '3', 4],
-    [last.id, f.players[0], '4', 6], [last.id, extra, '0', 6],
-  ] as const) assert.equal((await tip(roundId, playerId, outcomeId, stake)).status, 200);
-  const action = (kind: 'lock' | 'reopen') => request(app).post(`/api/points/rounds/${winner.id}/${kind}`)
-    .set('x-test-player-id', f.players[0]).send({});
-  assert.deepEqual((await Promise.all([action('lock'), action('lock')])).map((response) => response.status).sort(), [200, 409]);
-  for (const market of ['winner', 'podium', 'last'])
-    assert.equal((await automaticMarket(f, 'draw', drawId, market)).status, 'locked', `starting the Match closes the ${market} tips`);
-  assert.equal((await tip(podium.id, f.players[0], '1', 10)).status, 409);
-  assert.deepEqual((await Promise.all([action('reopen'), action('reopen')])).map((response) => response.status).sort(), [200, 409]);
-  for (const market of ['winner', 'podium', 'last'])
-    assert.equal((await automaticMarket(f, 'draw', drawId, market)).status, 'open', `reopening the Match reopens the ${market} tips`);
-  assert.equal(db.prepare(`SELECT COUNT(*) FROM admin_log WHERE action='betting_round_reopened'
-    AND target_id IN (?,?,?)`).pluck().get(winner.id, podium.id, last.id), 3, 'each reopened market is audited once');
-  assert.equal((await request(app).post(`/api/points/rounds/${winner.id}/lock`).set('x-test-player-id', f.players[0]).send({})).status, 200);
+  const record = (drawId: string, round: ReturnType<typeof roundView>, ranks?: number[]) => request(app).post('/api/matches').send({
+    gameId: f.gameId, drawId, winnerTeamIndex: 0,
+    teams: round.outcomes.filter((o) => o.playerIds.length).map((o, index) =>
+      ({ playerIds: o.playerIds, ...(ranks ? { score: 100 - ranks[index], rank: ranks[index] } : {}) })) });
+  for (const [size, market] of [[5, 'winner'], [6, 'top2'], [8, 'top2'], [9, 'top3']] as const)
+    assert.equal((await automaticMarket(f, 'draw', (await ffa(everyone.slice(0, size))).id)).market, market, `${size} teams`);
 
-  // Ranks 1, 2, 3, 3, 5: a shared third place is on the podium.
-  const ranks = [1, 2, 3, 3, 5];
-  const result = await request(app).post('/api/matches').send({ gameId: f.gameId, drawId,
-    teams: winner.outcomes.filter((o) => o.playerIds.length).map((o, index) => ({ playerIds: o.playerIds, score: 10 - index, rank: ranks[index] })),
-    winnerTeamIndex: 0 });
-  assert.equal(result.status, 201, JSON.stringify(result.body));
-  const settledPodium = await automaticMarket(f, 'draw', drawId, 'podium');
-  const settledLast = await automaticMarket(f, 'draw', drawId, 'last');
-  assert.deepEqual([settledPodium.status, settledPodium.winners], ['settled', ['0', '1', '2', '3']]);
-  assert.deepEqual([settledLast.status, settledLast.winners], ['settled', ['4']]);
-  assert.equal((await automaticMarket(f, 'draw', drawId)).status, 'refunded', 'the untipped winner market is refunded');
-  // Podium: 14 winning against 10 losing points, so 10 change hands; last place: 6 against 6.
-  assert.deepEqual([...f.players, extra].map((id) => wallet(f.eventId, id).total), [113, 90, 103, 94]);
-  assert.ok(loadNewsInput(DEFAULT_GROUP_ID, f.eventId, Date.now()).facts.some((fact) => fact.kind === 'betting' && fact.text.startsWith('Rote Laterne: ')));
+  const six = await ffa(everyone.slice(0, 6));
+  const top2 = await automaticMarket(f, 'draw', six.id);
+  assert.match(top2.title, / · Top 2$/);
+  assert.equal(top2.outcomes.some((outcome) => outcome.id === '__draw__'), false, 'top markets offer no draw');
+  for (const [playerId, outcomeId, stake] of [[f.players[0], '0', 10], [f.players[1], '5', 10], [f.players[2], '2', 4]] as const)
+    assert.equal((await tip(top2.id, playerId, outcomeId, stake)).status, 200);
+  // Ranks 1, 2, 2, 4, 5, 6: a shared second place is in the top two.
+  assert.equal((await record(six.id, top2, [1, 2, 2, 4, 5, 6])).status, 201);
+  const settled = await automaticMarket(f, 'draw', six.id);
+  assert.deepEqual([settled.status, settled.winners], ['settled', ['0', '1', '2']]);
+  // 14 winning against 10 losing points: 10 change hands, the remainder goes to the larger fraction.
+  assert.deepEqual(f.players.map((id) => wallet(f.eventId, id).total), [107, 90, 103]);
+  assert.ok(loadNewsInput(DEFAULT_GROUP_ID, f.eventId, Date.now()).facts.some((fact) => fact.kind === 'betting' && fact.text.startsWith('Top 2: ')));
 
-  const winnerOnly = await ffa(everyone);
-  const unranked = await automaticMarket(f, 'draw', winnerOnly, 'podium');
+  const nine = await ffa(everyone);
+  const top3 = await automaticMarket(f, 'draw', nine.id);
+  for (const [playerId, outcomeId] of [[f.players[0], '0'], [f.players[1], '4']] as const)
+    assert.equal((await tip(top3.id, playerId, outcomeId, 5)).status, 200);
+  assert.equal((await record(nine.id, top3, [1, 2, 3, 3, 5, 6, 7, 8, 9])).status, 201);
+  assert.deepEqual((await automaticMarket(f, 'draw', nine.id)).winners, ['0', '1', '2', '3'], 'a shared third place is in the top three');
+  assert.deepEqual(f.players.slice(0, 2).map((id) => wallet(f.eventId, id).total), [112, 85]);
+
+  const unranked = await ffa(everyone.slice(0, 6));
+  const unrankedMarket = await automaticMarket(f, 'draw', unranked.id);
   for (const [playerId, outcomeId] of [[f.players[0], '0'], [f.players[1], '1']] as const)
-    assert.equal((await tip(unranked.id, playerId, outcomeId, 5)).status, 200);
-  const sides = (await automaticMarket(f, 'draw', winnerOnly)).outcomes.filter((o) => o.playerIds.length);
-  assert.equal((await request(app).post('/api/matches').send({ gameId: f.gameId, drawId: winnerOnly,
-    teams: sides.map((o) => ({ playerIds: o.playerIds })), winnerTeamIndex: 0 })).status, 201);
-  const refunded = await automaticMarket(f, 'draw', winnerOnly, 'podium');
+    assert.equal((await tip(unrankedMarket.id, playerId, outcomeId, 5)).status, 200);
+  assert.equal((await record(unranked.id, unrankedMarket)).status, 201);
+  const refunded = await automaticMarket(f, 'draw', unranked.id);
   assert.deepEqual([refunded.status, refunded.refundReason], ['refunded', 'Keine vollständige Platzierung eingetragen'],
-    'a winner-only result places nobody else and refunds the podium');
-  assert.deepEqual([f.players[0], f.players[1]].map((id) => wallet(f.eventId, id).total), [113, 90]);
+    'a winner-only result places nobody else and refunds the top-two market');
+  assert.deepEqual(f.players.slice(0, 2).map((id) => wallet(f.eventId, id).total), [112, 85]);
+
+  // Removing the only player of a team removes that team: six become five
+  // teams and the top-two market gives way to a winner market.
+  const shrinking = await ffa(everyone.slice(0, 6));
+  const before = await automaticMarket(f, 'draw', shrinking.id);
+  assert.equal((await request(app).delete(`/api/matchmaking/draws/${shrinking.id}/players/${shrinking.teams[5].players[0].id}`)).status, 200);
+  assert.deepEqual(db.prepare('SELECT status,refund_cause AS cause FROM betting_rounds WHERE id=?').get(before.id),
+    { status: 'refunded', cause: 'replaced' });
+  const after = await automaticMarket(f, 'draw', shrinking.id);
+  assert.deepEqual([after.market, after.status, after.outcomes.filter((o) => o.playerIds.length).length], ['winner', 'open', 5]);
 });
 
 test('manual betting closure can be reopened before play without changing money; rights, deadlines and races remain guarded', async () => {

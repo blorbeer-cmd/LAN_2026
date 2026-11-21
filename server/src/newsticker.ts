@@ -491,22 +491,21 @@ function loadBettingFacts(groupId: string, eventId: string, names: Map<string, s
   const rounds = db.prepare(`SELECT * FROM betting_rounds WHERE group_id = ? AND event_id = ?
     AND ((status = 'open' AND notice_sent = 1 AND created_at >= ?) OR (status = 'settled' AND settled_at >= ?))
     ORDER BY COALESCE(settled_at, created_at) DESC`).all(groupId, eventId, now - NEWSTICKER_FRESH_MS, now - NEWSTICKER_FRESH_MS) as BettingRound[];
-  // The winner market announces a Match; its placement markets only report their settlement.
-  return rounds.filter((round) => round.status !== 'open' || round.market === 'winner').map((round): NewsFact => {
+  return rounds.map((round): NewsFact => {
     const outcomes = JSON.parse(round.outcomes) as BetOutcome[];
     const label = (o: BetOutcome) => o.playerIds.some((id) => !names.has(id)) ? 'Anonymes Team' : o.label;
     const tips = db.prepare('SELECT outcome_id, stake FROM betting_tips WHERE round_id = ?').all(round.id) as
       Array<{ outcome_id: string; stake: number }>;
-    const results = round.result_key === null ? [] : round.market === 'winner' ? [round.result_key] : round.result_key.split(',');
+    const top = round.market === 'top2' ? 'Top 2' : round.market === 'top3' ? 'Top 3' : null;
+    const results = round.result_key === null ? [] : top ? round.result_key.split(',') : [round.result_key];
     const winner = outcomes.find((o) => o.id === round.result_key);
     const pot = tips.reduce((sum, t) => sum + t.stake, 0);
     const wrong = tips.filter((t) => !results.includes(t.outcome_id)).length;
-    const placed = outcomes.filter((o) => results.includes(o.id)).map(label).join(', ');
     const text = round.status === 'open'
       ? round.source_type === 'tournament'
         ? `Wetten offen: Turniersieger · ${round.title}`
-        : `Wetten offen: ${outcomes.filter((o) => o.playerIds.length).map(label).join(' gegen ')}`
-      : `${round.market === 'podium' ? `Podium: ${placed}` : round.market === 'last' ? `Rote Laterne: ${placed}`
+        : `Wetten offen${top ? ` (${top})` : ''}: ${outcomes.filter((o) => o.playerIds.length).map(label).join(' gegen ')}`
+      : `${top ? `${top}: ${outcomes.filter((o) => results.includes(o.id)).map(label).join(', ')}`
         : `${winner ? label(winner) : 'Unentschieden'}${winner?.id === '__draw__' ? '' : ' gewinnt'}`}, ${wrong} von ${tips.length} lagen daneben, Topf ${pot} P.`;
     return { kind: 'betting', key: `betting:${round.id}:${round.revision}:${round.status}:${text}`,
       at: round.settled_at ?? round.created_at, text, meta: round.title,

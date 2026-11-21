@@ -18,8 +18,8 @@ test('pools distribute existing stakes exactly, refund invalid rounds, and alloc
   ], 'blue').values()], [4, 2, 5, 2], 'gains and losses are proportional across all losing outcomes');
   assert.deepEqual([...distributePool(tips, null).values()], [10, 30, 20]);
   assert.deepEqual([...distributePool(tips, 'unknown').values()], [10, 30, 20]);
-  const podium = [...tips, { ...tips[2], id: 'd', outcomeId: 'green', stake: 10, createdAt: 4, sequence: 4 }];
-  assert.deepEqual([...distributePool(podium, ['blue', 'green']).values()], [14, 42, 0, 14],
+  const topTwo = [...tips, { ...tips[2], id: 'd', outcomeId: 'green', stake: 10, createdAt: 4, sequence: 4 }];
+  assert.deepEqual([...distributePool(topTwo, ['blue', 'green']).values()], [14, 42, 0, 14],
     'several winning outcomes share the losing stakes by stake');
   assert.deepEqual([...distributePool(tips, ['blue', 'red']).values()], [10, 30, 20], 'a pool without losers is refunded');
   assert.deepEqual([...distributePool(tips, []).values()], [10, 30, 20]);

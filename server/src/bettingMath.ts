@@ -27,7 +27,7 @@ function allocate(amount: number, tips: PoolTip[]): Map<string, number> {
 }
 
 // `winner` names the single winning outcome, or for placement markets
-// (podium, last place) every outcome that wins together.
+// (top two, top three) every outcome that wins together.
 export function distributePool(
   tips: PoolTip[], winner: string | readonly string[] | null, policy: BettingPayoutPolicy = 'stake_cap_v1',
 ): Map<string, number> {

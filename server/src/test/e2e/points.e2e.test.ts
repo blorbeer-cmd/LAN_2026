@@ -1181,57 +1181,43 @@ test('poll and event-start travel awards update the open personal journal live',
   }
 });
 
-test('a free-for-all Match offers the last place beside the winner and the tip dialog moves between its markets', async () => {
-  const event = await api('/api/events', 'POST', { name: 'Laternen-LAN', eventType: 'lan', startsAt: Date.now(), endsAt: Date.now() + 86_400_000 });
-  await api(`/api/events/${event.id}/participants`, 'PUT', { playerIds: [myId, alice.id, bob.id] });
-  for (const session of [cookie, alice.cookie, bob.cookie]) {
+test('a six-team free-for-all Match tips the top two in the tip dialog', async () => {
+  const extras = [];
+  for (let index = 0; index < 3; index++) extras.push(await createE2EAccount(server.baseUrl, cookie, `Points Field ${index}`));
+  const field = [myId, alice.id, bob.id, ...extras.map((account) => account.id)];
+  const event = await api('/api/events', 'POST', { name: 'Top-2-LAN', eventType: 'lan', startsAt: Date.now(), endsAt: Date.now() + 86_400_000 });
+  await api(`/api/events/${event.id}/participants`, 'PUT', { playerIds: field });
+  for (const session of [cookie, alice.cookie, bob.cookie, ...extras.map((account) => account.cookie)]) {
     await api(`/api/events/${event.id}/invitation/accept`, 'POST', {}, session);
     await api('/api/me/active-event', 'PUT', { eventId: event.id }, session);
   }
   try {
     await api(`/api/events/${event.id}/points-visibility`, 'PATCH', { visible: true, revision: 0 });
-    const draw = await api('/api/matchmaking', 'POST', { gameId: pointsGame.id, playerIds: [myId, alice.id, bob.id], teamCount: 3 });
-    const markets = (await api(`/api/points?eventId=${event.id}`)).rounds.filter((row: { sourceId: string }) => row.sourceId === draw.id);
-    assert.deepEqual(markets.map((row: { market: string }) => row.market).sort(), ['last', 'winner'], 'three sides add the last place, not the podium');
-    const winner = markets.find((row: { market: string }) => row.market === 'winner');
-    const last = markets.find((row: { market: string }) => row.market === 'last');
-    const label = (round: { outcomes: Array<{ label: string; playerIds: string[] }> }, playerId: string) =>
-      round.outcomes.find((outcome) => outcome.playerIds.includes(playerId))!.label;
+    const draw = await api('/api/matchmaking', 'POST', { gameId: pointsGame.id, playerIds: field, teamCount: field.length });
+    const round = (await api(`/api/points?eventId=${event.id}`)).rounds.find((row: { sourceId: string }) => row.sourceId === draw.id);
+    assert.equal(round.market, 'top2');
+    const choice = round.outcomes.find((outcome: { playerIds: string[] }) => outcome.playerIds.includes(bob.id));
     await member.goto(`${server.baseUrl}/?eventId=${event.id}#points`);
     await waitForPlayerData(member);
     await navigate(member, 'points');
     await openSection(member, 'tips'); await openSection(member, 'tips-untipped');
-    await member.locator(`[data-tip-round="${winner.id}"]`).click();
-    const dialog = member.getByRole('dialog');
-    await member.getByRole('dialog', { name: 'Sieger tippen', exact: true }).waitFor();
-    assert.deepEqual(await dialog.locator('[data-tip-market] option').allTextContents(),
-      ['Sieger · Tipps offen', 'Rote Laterne (Letzter) · Tipps offen']);
-    await dialog.getByRole('radiogroup').getByText(label(winner, bob.id), { exact: true }).click();
+    await member.locator(`[data-tip-round="${round.id}"]`).click();
+    const dialog = member.getByRole('dialog', { name: 'Top 2 tippen', exact: true });
+    await dialog.waitFor();
+    await dialog.getByText('Kommt in die Top 2', { exact: true }).waitFor();
+    assert.equal(await dialog.locator('input[name="outcomeId"][value="__draw__"]').count(), 0, 'the top-two market offers no draw');
+    assert.equal(await dialog.locator('input[name="outcomeId"]').count(), 6);
+    await dialog.getByRole('radiogroup').getByText(choice.label, { exact: true }).click();
     await dialog.locator('[name="stake"]').fill('3');
-    await dialog.getByRole('button', { name: 'Speichern & weiter', exact: true }).click();
-    await member.getByRole('dialog', { name: 'Rote Laterne tippen', exact: true }).waitFor();
-    await dialog.getByText('Wird Letzter', { exact: true }).waitFor();
-    assert.equal(await dialog.locator('input[name="outcomeId"][value="__draw__"]').count(), 0, 'the last place offers no draw');
-    await dialog.getByRole('radiogroup').getByText(label(last, myId), { exact: true }).click();
-    await dialog.locator('[name="stake"]').fill('2');
     await dialog.getByRole('button', { name: 'Tipp speichern', exact: true }).click();
     await member.locator('.modal-backdrop').waitFor({ state: 'detached' });
+    await member.getByText(`Tipp gespeichert: ${choice.label}, 3 P.`, { exact: true }).waitFor();
     const saved = (await api(`/api/points?eventId=${event.id}`, 'GET', undefined, alice.cookie)).rounds
-      .filter((row: { sourceId: string }) => row.sourceId === draw.id);
-    const tipOf = (market: string) => saved.find((row: { market: string }) => row.market === market).mine;
-    assert.deepEqual([tipOf('winner').stake, tipOf('last').stake], [3, 2]);
-    assert.equal(label(winner, bob.id), winner.outcomes.find((o: { id: string }) => o.id === tipOf('winner').outcomeId).label);
-    assert.equal(label(last, myId), last.outcomes.find((o: { id: string }) => o.id === tipOf('last').outcomeId).label);
-    await openSection(member, 'tips-pending');
-    await member.locator(`[data-tip-round="${last.id}"]`).click();
-    await member.getByRole('dialog', { name: 'Rote Laterne tippen', exact: true }).waitFor();
-    await dialog.locator('[data-tip-market]').selectOption(winner.id);
-    await member.getByRole('dialog', { name: 'Sieger tippen', exact: true }).waitFor();
-    assert.equal(await dialog.locator(`input[name="outcomeId"][value="${tipOf('winner').outcomeId}"]`).isChecked(), true,
-      'switching the market shows its own saved tip');
-    await member.keyboard.press('Escape');
+      .find((row: { id: string }) => row.id === round.id);
+    assert.deepEqual([saved.mine.outcomeId, saved.mine.stake], [choice.id, 3]);
     assert.deepEqual(pageErrors, []);
   } finally {
+    // The extra accounts take part in this event only.
     for (const session of [cookie, alice.cookie, bob.cookie]) await api('/api/me/active-event', 'PUT', { eventId }, session);
   }
 });

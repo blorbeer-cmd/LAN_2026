@@ -514,11 +514,11 @@ function openDrawResultDialog(draw, ctx) {
   const hasValues = recorded && draw.teams.some((team) => team.score != null);
   const teams = draw.teams.map((team, index) => ({ name: defaultDrawTeamName(draw, team, index), players: team.players.map((player) => player.name) }));
   const correction = competitionCorrection('draw', draw.id);
-  // Podium and last-place tips need every team's place, which only point totals give.
+  // Top-two and top-three tips need every team's place, which only point totals give.
   const placements = competitionNeedsPlacements('draw', draw.id);
   const mode = placements || hasValues ? 'score' : 'winner';
   const { close, el } = openModal('Ergebnis', `
-    <div class="muted result-dialog-subtitle">${escapeHtml(draw.gameName)} · ${draw.teams.length} Teams${placements ? ' · Punktestand für Podium und Rote Laterne' : ''}</div>
+    <div class="muted result-dialog-subtitle">${escapeHtml(draw.gameName)} · ${draw.teams.length} Teams${placements ? ' · Punktestand für die Platzierungswette' : ''}</div>
     ${recorded ? correction.html : ''}
     ${resultFormHtml({ teams, prefix: 'draw-result', mode, fixedMode: placements, winnerIndex: recorded && !hasValues ? draw.winnerTeamIndex ?? (draw.isDraw ? -1 : undefined) : undefined, scores: draw.teams.map((team) => team.score) })}`);
   wireResultForm(el, {
