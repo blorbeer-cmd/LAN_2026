@@ -147,7 +147,8 @@ Die Spielberechnung übernimmt die Platzregel des Zielkonzepts
   from the current lineup with the same rule, so a player move renames affected teams immediately.
   The winning team carries the green „Win“ chip and an accessible group label, the losing teams
   are muted and a drawn result shows „Remis“. Card actions sit in the card header: an open draw
-  offers a neutral „+“ for a single result and, rightmost, „Turnier erstellen“ (the primary
+  offers „i“ for server details, a neutral „+“ for a single result and, rightmost,
+  „Turnier erstellen“ (the primary
   gradient on the fresh draw, neutral in the open section); a recorded draw offers a pencil before „Rematch“;
   every open or recorded game card offers admins and owners a trash action with confirmation; regular members see no delete controls, including on the tournament detail page. Removing a recorded draw removes its linked result from the ranking. A tournament tile offers „Turnier“ and, for admins and owners, a trash action using the existing tournament delete behavior; already recorded tournament matches remain in the ranking, and the confirmation explains this. Its expanded state shows tournament teams,
   players and available standings or match totals. A participating player's game title is bold in a collapsed Match tile; only their name is bold in expanded teams. Open draws show every player's skill. Completed tournament headers show the winning team with „Win“ and the tournament name; team details use the same compact place numbers as Match teams in the team-name line, including the finalist's second place, with an explicit place label in the title and accessible name. The number replaces the extra Win chip inside the team card; table points stay beside the team name. With a played third-place match, the semifinal losers carry places 3 and 4 the same way. Knockout exits without a distinct place appear in the context line below the players. The result pencil precedes „Rematch“; tournament actions
@@ -199,6 +200,12 @@ Die Spielberechnung übernimmt die Platzregel des Zielkonzepts
   wins and the other receives `409`. All devices update after the commit.
   Successful seat-neighbor grouping stays silent; a note appears only when requested seat neighbors
   still had to be placed in opposing teams.
+  An open draw has one „i“ action („Server und Passwort“) in its header, available even when
+  the draw is collapsed and before any values are saved. Every event participant can open it
+  to view, copy and edit the optional „Server“ (at most 100 characters) and „Passwort“ (at most
+  60 characters). „Speichern“ shares the values with the other participants. Clearing a field
+  removes its value. The action is available until the draw has a result or becomes a tournament
+  (the API then returns `409`).
 - **Player skill display** — `skillDisplay.js` renders the shared activity icon plus the selected
   game's skill value. Teams and Tournaments reuse it in participant selection, drawn-team previews,
   live drafts and tournament detail teams; history shows the team sum (current for tournaments and old drafts without a snapshot). The icon's tooltip and accessible label
