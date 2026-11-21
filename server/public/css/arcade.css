@@ -749,11 +749,46 @@
   max-width: none;
 }
 .tetris-primary-board {
+  --tetris-next-width: calc(2 * var(--space-8));
   flex: 1 1 50%;
   min-width: 0;
+  display: flex;
+  justify-content: center;
 }
 .tetris-primary-board > .tetris-board-col {
+  max-width: calc(var(--arcade-h-budget) / 2 + var(--tetris-next-width) + var(--space-2));
+}
+.arcade-game-shell.is-ended .tetris-primary-board > .tetris-board-col {
+  max-width: calc(var(--arcade-h-budget) / 2);
+}
+.tetris-primary-playfield {
   width: 100%;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+.tetris-next {
+  box-sizing: border-box;
+  flex: 0 0 var(--tetris-next-width);
+  display: grid;
+  justify-items: center;
+  gap: var(--space-1);
+  padding: var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  line-height: var(--control-line-height);
+  text-align: center;
+}
+.tetris-next.is-empty {
+  visibility: hidden;
+}
+.tetris-next canvas {
+  display: block;
+  width: 100%;
+  height: auto;
 }
 .tetris-opponent-grid {
   flex: 1 1 50%;
@@ -1046,9 +1081,8 @@
   justify-content: center;
 }
 .arcade-game-shell .tetris-primary-board .tetris-canvas-wrap {
-  /* The primary Arena board uses half the height budget, so it stays visibly
-     larger than the opponent boards while the layout still fits vertically. */
   width: min(100%, calc(var(--arcade-h-budget) / 2));
+  min-width: 0;
 }
 .arcade-game-shell .tetris-canvas {
   width: 100%;
@@ -1056,9 +1090,7 @@
   max-width: 100%;
 }
 .arcade-game-shell .tetris-opponent-grid .tetris-canvas-wrap {
-  /* Three Arena opponents share the other half of the row. Tie their width
-     to the same height budget instead of letting them ignore it. */
-  width: min(100%, calc(var(--arcade-h-budget) / 3));
+  width: min(100%, calc(var(--tetris-opponent-h-budget, var(--arcade-h-budget) * 2 / 3) / 2));
 }
 .arcade-game-shell .tetris-opponent-grid.is-spectator .tetris-canvas-wrap {
   /* Spectators see four equal boards without a dedicated primary board. */
@@ -1178,7 +1210,7 @@ html:root.arcade-fullscreen .arcade-scoreboard-score {
     align-items: center;
   }
   .tetris-primary-board {
-    width: min(100%, calc(var(--space-8) * 6));
+    width: 100%;
   }
   .tetris-opponent-grid,
   .tetris-opponent-grid.is-spectator {

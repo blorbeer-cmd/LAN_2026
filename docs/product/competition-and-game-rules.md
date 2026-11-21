@@ -379,7 +379,9 @@ Die Spielberechnung übernimmt die Platzregel des Zielkonzepts
   Match ist nicht mehr verfügbar.“, and match actions answer „Keine Verbindung zum Server.“ while
   the connection is down.
 - **Game specifics** — Tetris Duell keeps two equal boards; Arena accepts three to eight players
-  and keeps the local board large beside a grid of opponent boards. Pong and Blobby Volley offer
+  and fits the local board independently of the opponent grid and the Arena summary. The local
+  board shows the shape and color of the next piece beside it during play, including in fullscreen.
+  Pong and Blobby Volley offer
   Duell and Doppel; Doppel lobbies have two teams with two seats, Pong Doppel defaults to 21 points
   and follows Atari's Pong-4 lanes. Snake Classic is exactly one against one; Snake Arena accepts
   three to eight players, shrinks its safe zone and keeps eliminated players in the strip as

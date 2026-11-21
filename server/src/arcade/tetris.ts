@@ -222,6 +222,10 @@ function serializeState(match: TetrisMatch, state: PlayerState) {
     sources.set(packet.sourcePlayerId, current);
     return sources;
   }, new Map<string, { playerId: string; name: string; lines: number }>()).values()];
+  const next = previewTypes(match, state, 2);
+  const nextPiece = match.mode === 'arena' && isTargetableTetrisPlayer(state)
+    ? { type: next[0], cells: pieceCells(spawnPiece(next[0])), color: pieceColor(next[0]) }
+    : null;
   return {
     playerId: state.ref.id,
     name: state.ref.name,
@@ -229,7 +233,8 @@ function serializeState(match: TetrisMatch, state: PlayerState) {
     current: state.current
       ? { cells: pieceCells(state.current), color: pieceColor(state.current.type) }
       : null,
-    next: previewTypes(match, state, 2),
+    next,
+    ...(match.mode === 'arena' ? { nextPiece } : {}),
     score: state.score,
     lines: state.lines,
     level: state.level,
