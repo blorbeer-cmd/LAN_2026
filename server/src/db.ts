@@ -6179,6 +6179,17 @@ registerMigration({ version: 140, name: 'store optional server details on open m
     db.exec('ALTER TABLE matchmaking_draws ADD COLUMN server_password TEXT');
 } });
 
+registerMigration({ version: 141, name: 'remember whether a betting round tips the winner or a top group', up: () => {
+  // A free Match with a large field tips its top two or top three instead of
+  // the winner. Every existing round tips a winner; a source keeps one
+  // current round whatever its kind.
+  const columns = db.prepare('PRAGMA table_info(betting_rounds)').all() as Array<{ name: string }>;
+  if (!columns.some((column) => column.name === 'market')) {
+    db.exec(`ALTER TABLE betting_rounds ADD COLUMN market TEXT NOT NULL DEFAULT 'winner'
+      CHECK(market IN ('winner','top2','top3'))`);
+  }
+} });
+
 runRegisteredMigrations();
 
 // The active default-group role is the source of truth for instance admin

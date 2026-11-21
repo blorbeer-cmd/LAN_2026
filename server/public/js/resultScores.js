@@ -10,6 +10,12 @@ export function parseResultScores(rawValues) {
   return values.map((value) => (value === '' ? 0 : Number(value)));
 }
 
+// Fields left empty. A result that decides placement bets needs every
+// team's value, so there an empty field must not count as 0; an entered 0 is valid.
+export function missingResultScores(rawValues) {
+  return rawValues.flatMap((raw, index) => (String(raw ?? '').trim() === '' ? [index] : []));
+}
+
 // Raw value of a number input for parseResultScores(): text the browser
 // rejected reads as '' in `value`, which must not silently become 0.
 export function resultScoreInputValue(input) {

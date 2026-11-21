@@ -22,6 +22,15 @@ import { writeAdminAudit } from './adminAudit';
 
 export type BetSource = 'draw' | 'tournament_match' | 'tournament';
 export const DRAW_BET_OUTCOME = '__draw__';
+// A free Match carries one market whose kind follows the size of its field:
+// up to five teams tip the winner, from six the top two, from nine the top
+// three (product decision). Tournaments always tip winners.
+export type BetMarket = 'winner' | 'top2' | 'top3';
+const TOP_PLACES: Record<Exclude<BetMarket, 'winner'>, number> = { top2: 2, top3: 3 };
+const TOP_MARKET_TITLES: Record<Exclude<BetMarket, 'winner'>, string> = { top2: 'Top 2', top3: 'Top 3' };
+export function drawMarketFor(sides: number): BetMarket {
+  return sides >= 9 ? 'top3' : sides >= 6 ? 'top2' : 'winner';
+}
 export interface BetOutcome {
   id: string;
   label: string;
@@ -44,6 +53,7 @@ export interface BettingRound {
   created_at: number;
   notice_sent: number;
   payout_policy: BettingPayoutPolicy;
+  market: BetMarket;
   // Why an automatically refunded round was refunded: 'result' keeps it
   // correctable, 'replaced' lets the unchanged source open a fresh round.
   refund_cause: RefundCause;
@@ -59,11 +69,25 @@ interface TipRow {
   created_at: number;
   sequence: number;
 }
-interface SourceState {
+interface CompetitionState {
   title: string;
   outcomes: BetOutcome[];
   finished: boolean;
   winner: string | null;
+  // Place per outcome when the result ranks every side; null otherwise.
+  places: Map<string, number> | null;
+  invalid: boolean;
+  started: boolean;
+}
+interface SourceState {
+  title: string;
+  outcomes: BetOutcome[];
+  finished: boolean;
+  // Every outcome that wins this market; null while undecided or when the
+  // result cannot decide it, which refunds the market.
+  winners: string[] | null;
+  // Why a finished source decides no winner, when that differs from the result itself.
+  undecidedReason: string | null;
   invalid: boolean;
   started: boolean;
 }
@@ -94,7 +118,48 @@ function tournamentOutcomes(id: string): BetOutcome[] {
       .all(id) as Array<{ id: string; name: string; player_ids: string }>
   ).map((t) => ({ id: t.id, label: t.name, playerIds: JSON.parse(t.player_ids) }));
 }
-export function betSourceState(groupId: string, eventId: string, type: BetSource, id: string): SourceState {
+export function betSourceState(groupId: string, eventId: string, type: BetSource, id: string,
+  market: BetMarket = 'winner'): SourceState {
+  const { winner, places, ...source } = competitionState(groupId, eventId, type, id);
+  if (market === 'winner') return { ...source, winners: winner === null ? null : [winner], undecidedReason: null };
+  const sides = source.outcomes.filter((outcome) => outcome.id !== DRAW_BET_OUTCOME);
+  const ranked = places && sides.every((side) => places.has(side.id));
+  // Ties count inclusively: everyone sharing the last counted place is in.
+  const winners = source.finished && ranked ? sides.filter((side) => places!.get(side.id)! <= TOP_PLACES[market]).map((side) => side.id) : null;
+  return {
+    ...source,
+    title: `${source.title} · ${TOP_MARKET_TITLES[market]}`,
+    outcomes: sides,
+    winners,
+    undecidedReason: source.finished && !ranked ? 'Keine vollständige Platzierung eingetragen' : null,
+    invalid: source.invalid || type !== 'draw',
+  };
+}
+// Only a rank for every team places them all. A winner-only result or a draw
+// flag over partial ranks does not; a draw of everyone is equal ranks.
+function ranksEveryTeam(result: MatchForScoring): boolean {
+  return result.teams.every((team) => Number.isInteger(team.rank) && team.rank! >= 1);
+}
+// Called inside the result write. Once a draw's top-two or top-three market
+// holds tips, a result without every team's place would refund them, also
+// when the tips arrived while a result dialog was already open. The write is
+// refused instead; a result with complete ranks settles the market. Refunds a
+// correction can still settle count as well, so places cannot be swapped for
+// a bare winner afterwards. Ranks alone do not prove that every team's value
+// was entered — a form may read an empty field as 0 — so the writer also
+// confirms that (`placementsConfirmed`), checked in the same write as the tips.
+// Error code of that refusal. The result dialog reopens asking every team's
+// score on it, also while LAN points are hidden from its viewer.
+export const PLACEMENTS_REQUIRED = 'placements_required';
+export function assertPlacementResult(drawId: string, result: MatchForScoring, placementsConfirmed: unknown): void {
+  const market = db.prepare(`SELECT r.market FROM betting_rounds r WHERE r.source_type = 'draw' AND r.source_id = ?
+    AND r.market != 'winner' AND r.refund_cause IS NOT 'replaced' AND (r.status IN ('open','locked') OR ${REBOOKS_ON_CORRECTION_SQL})
+    AND EXISTS (SELECT 1 FROM betting_tips t WHERE t.round_id = r.id)`).pluck().get(drawId) as Exclude<BetMarket, 'winner'> | undefined;
+  if (market && (!ranksEveryTeam(result) || placementsConfirmed !== true))
+    throw new PointsError(`Für die ${TOP_MARKET_TITLES[market].replace(' ', '-')}-Wette bitte für jedes Team einen Punktestand eintragen.`,
+      409, PLACEMENTS_REQUIRED);
+}
+function competitionState(groupId: string, eventId: string, type: BetSource, id: string): CompetitionState {
   if (type === 'draw') {
     const draw = db
       .prepare(
@@ -118,6 +183,7 @@ export function betSourceState(groupId: string, eventId: string, type: BetSource
       : null;
     const placements = data ? computeMatchPlacements(data) : null;
     const winners = placements?.flatMap((placement, index) => placement.place === 1 ? [String(index)] : []) ?? [];
+    const ranked = Boolean(data && placements && ranksEveryTeam(data));
     const mismatch =
       data &&
       JSON.stringify(data.teams.map((t) => [...t.playerIds].sort())) !==
@@ -128,6 +194,7 @@ export function betSourceState(groupId: string, eventId: string, type: BetSource
       started: Boolean(result),
       finished: Boolean(result),
       winner: winners.length > 1 ? DRAW_BET_OUTCOME : winners[0] ?? null,
+      places: ranked ? new Map(placements!.map((placement, index) => [String(index), placement.place])) : null,
       invalid: Boolean(!draw.betting_allowed || draw.tournament_id || mismatch),
     };
   }
@@ -168,6 +235,7 @@ export function betSourceState(groupId: string, eventId: string, type: BetSource
       started: fixture.played_at !== null,
       finished: Boolean(fixture.winner_team_id || fixture.is_draw),
       winner: fixture.is_draw && allowsDraw ? DRAW_BET_OUTCOME : fixture.winner_team_id,
+      places: null,
       invalid: Boolean(fixture.is_bye || tournament.ended_early),
     };
   }
@@ -195,6 +263,7 @@ export function betSourceState(groupId: string, eventId: string, type: BetSource
     title: `${tournament.name} · Gesamtsieger`,
     outcomes: teams,
     winner,
+    places: null,
     started: fixtures.some((m) => !m.is_bye && m.played_at !== null) || Boolean(db.prepare(`SELECT 1
       FROM betting_rounds r JOIN tournament_matches m ON m.id=r.source_id
       WHERE r.source_type='tournament_match' AND m.tournament_id=? AND r.locked_at IS NOT NULL LIMIT 1`).get(tournament.id)),
@@ -307,7 +376,9 @@ export function createBettingRound(
     requirePointsVisible(eventId);
     requirePointsOpen(eventId);
     requireActiveBettingEvent(eventId);
-    const source = betSourceState(groupId, eventId, type, sourceId);
+    const lineup = betSourceState(groupId, eventId, type, sourceId);
+    const market = type === 'draw' ? drawMarketFor(lineup.outcomes.filter((o) => o.id !== DRAW_BET_OUTCOME).length) : 'winner';
+    const source = market === 'winner' ? lineup : betSourceState(groupId, eventId, type, sourceId, market);
     if (
       source.started ||
       source.finished ||
@@ -327,8 +398,8 @@ export function createBettingRound(
     }
     const roundId = nanoid();
     db.prepare(
-      `INSERT INTO betting_rounds (id,group_id,event_id,source_type,source_id,title,outcomes,status,closes_at,created_by,created_at)
-      VALUES (?,?,?,?,?,?,?,'open',?,?,?)`,
+      `INSERT INTO betting_rounds (id,group_id,event_id,source_type,source_id,title,outcomes,status,closes_at,created_by,created_at,market)
+      VALUES (?,?,?,?,?,?,?,'open',?,?,?,?)`,
     ).run(
       roundId,
       groupId,
@@ -340,6 +411,7 @@ export function createBettingRound(
       closesAt,
       actorId,
       Date.now(),
+      market,
     );
     return roundId;
   }).immediate();
@@ -456,6 +528,7 @@ export function roundView(round: BettingRound, playerId: string) {
     eventId: round.event_id,
     sourceType: round.source_type,
     sourceId: round.source_id,
+    market: round.market,
     tournament: tournamentContext(round),
     title: round.title,
     status: round.status,
@@ -465,6 +538,7 @@ export function roundView(round: BettingRound, playerId: string) {
     settledAt: round.settled_at,
     revision: round.revision,
     result: round.result_key,
+    winners: resultOutcomes(round),
     replaced: round.refund_cause === 'replaced',
     rebooksOnCorrection: rebooksOnCorrection(round, tips),
     reopenBlockedReason: bettingReopenBlockedReason(round),
@@ -534,34 +608,46 @@ function closeRound(round: BettingRound, now: number, refundInvalidPool = true):
       round.id,
     );
 }
-// The winner a settlement would pay, or null when the pool must be refunded.
-function payingWinner(tips: TipRow[], winner: string | null): string | null {
-  return winner !== null && tips.some((t) => t.outcome_id === winner) && new Set(tips.map((t) => t.outcome_id)).size >= 2
-    ? winner
+// The result key a settlement would pay — the winning outcome, or for a
+// top-two or top-three market every winning outcome — or null when the pool
+// must be refunded because it has no tip on either side of the result.
+function payingResult(tips: TipRow[], winners: readonly string[] | null): string | null {
+  if (!winners?.length) return null;
+  const winning = new Set(winners);
+  return tips.some((t) => winning.has(t.outcome_id)) && tips.some((t) => !winning.has(t.outcome_id))
+    ? [...winning].sort().join(',')
     : null;
+}
+function resultOutcomes(round: BettingRound): string[] {
+  if (round.result_key === null) return [];
+  return round.market === 'winner' ? [round.result_key] : round.result_key.split(',');
 }
 // Without tips a changed lineup simply updates the offered sides; the round,
 // its link and its notification remain valid.
 function rewriteUntippedRound(round: BettingRound, source: SourceState): boolean {
   const sides = source.outcomes.filter((outcome) => outcome.id !== DRAW_BET_OUTCOME);
   if (tipsFor(round.id).length || sides.length < 2 || sides.some((side) => !side.playerIds.length)) return false;
+  // A field that grows or shrinks past a threshold needs another kind of
+  // market; the round is replaced instead of rewritten.
+  if (round.source_type === 'draw' && drawMarketFor(sides.length) !== round.market) return false;
   db.prepare('UPDATE betting_rounds SET title = ?, outcomes = ? WHERE id = ?')
     .run(source.title, JSON.stringify(source.outcomes), round.id);
   return true;
 }
 function settleRound(
   round: BettingRound,
-  winner: string | null,
+  winners: readonly string[] | null,
   reason: string,
   now: number,
   actorId: string | null = null,
   refundCause: RefundCause = null,
 ): void {
   const tips = tipsFor(round.id);
-  const valid = payingWinner(tips, winner) !== null;
+  const result = payingResult(tips, winners);
+  const valid = result !== null;
   const payouts = distributePool(
     tips.map((t) => ({ id: t.id, stake: t.stake, outcomeId: t.outcome_id, createdAt: t.created_at, sequence: t.sequence })),
-    valid ? winner : null,
+    valid ? winners : null,
     round.payout_policy,
   );
   for (const tip of tips) {
@@ -570,7 +656,7 @@ function settleRound(
   }
   db.prepare('UPDATE betting_rounds SET status = ?, result_key = ?, settled_at = ?, refund_cause = ? WHERE id = ?').run(
     valid ? 'settled' : 'refunded',
-    valid ? winner : null,
+    result,
     now,
     valid ? null : refundCause,
     round.id,
@@ -601,7 +687,7 @@ export function reconcileBetting(eventId?: string, publish = true): BettingRound
       if (!['open', 'locked'].includes(round.status)) continue;
       let source: SourceState;
       try {
-        source = betSourceState(round.group_id, round.event_id, round.source_type, round.source_id);
+        source = betSourceState(round.group_id, round.event_id, round.source_type, round.source_id, round.market);
       } catch (e) {
         if (!(e instanceof PointsError)) throw e;
         // Also covers a fixture whose opponents were cleared by a corrected
@@ -634,7 +720,7 @@ export function reconcileBetting(eventId?: string, publish = true): BettingRound
         round = getBettingRound(round.group_id, round.event_id, round.id);
       }
       if (round.status === 'locked' && source.finished) {
-        settleRound(round, source.winner, 'Spielergebnis', Date.now(), null, 'result');
+        settleRound(round, source.winners, source.undecidedReason ?? 'Spielergebnis', Date.now(), null, 'result');
         changed.push(round);
       }
     }
@@ -767,7 +853,7 @@ export function lockBettingRound(round: BettingRound): void {
     requirePointsOpen(round.event_id);
     const fresh = getBettingRound(round.group_id, round.event_id, round.id);
     if (fresh.status !== 'open') throw new PointsError('Diese Runde ist bereits geschlossen.');
-    const source = betSourceState(round.group_id, round.event_id, round.source_type, round.source_id);
+    const source = betSourceState(round.group_id, round.event_id, round.source_type, round.source_id, round.market);
     if (source.started || source.invalid || sourceChanged(round, source))
       throw new PointsError('Der Wettbewerb hat bereits begonnen oder wurde geändert.');
     if (round.source_type === 'tournament_match') {
@@ -798,7 +884,7 @@ function bettingReopenBlockedReason(round: BettingRound): string | null {
     return 'Bereits abgerechnete Einsätze bleiben auch nach einer Ergebniskorrektur unveränderlich.';
   if (round.closes_at > 0 && round.closes_at <= Date.now())
     return 'Der festgelegte Tippschluss ist bereits vorbei.';
-  const source = betSourceState(round.group_id, round.event_id, round.source_type, round.source_id);
+  const source = betSourceState(round.group_id, round.event_id, round.source_type, round.source_id, round.market);
   if (source.started || source.finished || source.invalid || sourceChanged(round, source))
     return 'Der Wettbewerb hat bereits begonnen oder wurde geändert.';
   return null;
@@ -962,7 +1048,7 @@ export function rebookCorrectedRounds(rounds: BettingRound[], correction: Bettin
   for (const round of rounds) {
     let source: SourceState | null = null;
     try {
-      source = betSourceState(round.group_id, round.event_id, round.source_type, round.source_id);
+      source = betSourceState(round.group_id, round.event_id, round.source_type, round.source_id, round.market);
     } catch (error) {
       if (!(error instanceof PointsError)) throw error;
     }
@@ -971,7 +1057,7 @@ export function rebookCorrectedRounds(rounds: BettingRound[], correction: Bettin
     // until the corrected result can actually pay a tipped winner.
     const unchanged = voided
       ? round.status === 'refunded'
-      : source!.finished && payingWinner(tipsFor(round.id), source!.winner) === round.result_key;
+      : source!.finished && payingResult(tipsFor(round.id), source!.winners) === round.result_key;
     if (unchanged) continue;
     requirePointsAdmin(round.group_id, correction.actorId);
     db.prepare(
@@ -983,7 +1069,7 @@ export function rebookCorrectedRounds(rounds: BettingRound[], correction: Bettin
     if (voided)
       settleRound(fresh, null, `Korrektur: ${correction.reason}`, Date.now(), correction.actorId);
     else if (source!.finished)
-      settleRound(fresh, source!.winner, `Korrektur: ${correction.reason}`, Date.now(), correction.actorId, 'result');
+      settleRound(fresh, source!.winners, `Korrektur: ${correction.reason}`, Date.now(), correction.actorId, 'result');
     else bookBettingMarket(fresh.group_id, fresh.event_id, fresh.id, `Korrektur: ${correction.reason}`, correction.actorId);
     // If a corrected semifinal reopens the tournament, the unchanged outright
     // pool waits for the new final with its original, immutable stakes.

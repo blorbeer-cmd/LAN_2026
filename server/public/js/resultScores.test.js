@@ -1,10 +1,15 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { parseResultScores, resultScoreInputValue } from './resultScores.js';
+import { missingResultScores, parseResultScores, resultScoreInputValue } from './resultScores.js';
 
 test('parseResultScores counts an empty field as its placeholder 0', () => {
   assert.deepEqual(parseResultScores(['3', '']), [3, 0]);
   assert.deepEqual(parseResultScores([' ', '2.5', '0']), [0, 2.5, 0]);
+});
+
+test('missingResultScores names empty fields and accepts an entered 0', () => {
+  assert.deepEqual(missingResultScores(['10', '', '8', ' ', '0', 'invalid']), [1, 3]);
+  assert.deepEqual(missingResultScores(['0', '0']), []);
 });
 
 test('parseResultScores rejects a dialog where nothing was entered', () => {
