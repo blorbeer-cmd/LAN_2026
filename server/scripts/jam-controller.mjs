@@ -441,13 +441,48 @@ function base64url(buffer) {
   return Buffer.from(buffer).toString('base64url');
 }
 
+const NETWORK_ERROR_REASONS = {
+  ETIMEDOUT: 'Zeitüberschreitung beim Verbindungsaufbau, das Netzwerk ist langsam oder überlastet',
+  UND_ERR_CONNECT_TIMEOUT: 'Zeitüberschreitung beim Verbindungsaufbau, das Netzwerk ist langsam oder überlastet',
+  UND_ERR_HEADERS_TIMEOUT: 'Der Server antwortet nicht rechtzeitig',
+  ENOTFOUND: 'Adresse nicht gefunden, DNS oder Internetverbindung prüfen',
+  EAI_AGAIN: 'Adresse gerade nicht auflösbar, DNS oder Internetverbindung prüfen',
+  ECONNREFUSED: 'Verbindung abgelehnt, der Dienst läuft dort nicht',
+  ECONNRESET: 'Verbindung unterbrochen',
+  UND_ERR_SOCKET: 'Verbindung unterbrochen',
+  EPIPE: 'Verbindung unterbrochen',
+  ENETUNREACH: 'Netzwerk nicht erreichbar, ist das Gerät online?',
+  EHOSTUNREACH: 'Gerät nicht erreichbar, ist das Gerät online?',
+  ENETDOWN: 'Netzwerk ist getrennt',
+};
+
+function hostOf(url) {
+  try { return new URL(url).host; } catch { return String(url); }
+}
+
+// Node's fetch only says "fetch failed"; the useful reason sits in error.cause,
+// for several addresses (IPv4/IPv6) inside an AggregateError.
+function describeNetworkError(url, error) {
+  const cause = error?.cause;
+  const code = cause?.code || cause?.errors?.find((entry) => entry?.code)?.code || null;
+  const host = hostOf(url);
+  const reason = (code && NETWORK_ERROR_REASONS[code])
+    || (code && /CERT|UNABLE_TO_VERIFY_LEAF_SIGNATURE/.test(code) ? 'Das TLS-Zertifikat ist ungültig' : null)
+    || (code && /SSL|TLS/.test(code) ? 'TLS-Verbindung fehlgeschlagen, stimmen http/https und Port in der Adresse?' : null)
+    || cause?.message
+    || error?.message
+    || 'Unbekannter Netzwerkfehler';
+  return `${host} nicht erreichbar: ${reason}${code ? ` (${code})` : ''}.`;
+}
+
 async function fetchWithTimeout(url, options = {}, timeoutMs = REQUEST_TIMEOUT_MS) {
   const abort = new AbortController();
   const timer = setTimeout(() => abort.abort(), timeoutMs);
   try {
     return await fetch(url, { ...options, signal: abort.signal });
   } catch (error) {
-    if (error?.name === 'AbortError') throw new Error(`Zeitüberschreitung nach ${Math.ceil(timeoutMs / 1_000)} Sekunden.`);
+    if (error?.name === 'AbortError') throw new Error(`${hostOf(url)} antwortet nicht: Zeitüberschreitung nach ${Math.ceil(timeoutMs / 1_000)} Sekunden.`);
+    if (error instanceof TypeError && error.cause) throw new Error(describeNetworkError(url, error), { cause: error });
     throw error;
   } finally {
     clearTimeout(timer);

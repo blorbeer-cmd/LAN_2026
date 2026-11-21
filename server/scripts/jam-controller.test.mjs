@@ -693,3 +693,57 @@ test('Jam controller forwards browser player reports instead of asking Spotify',
   assert.equal((await report({ deviceId: 'browser-device', state: null })).status, 204);
   await waitFor(() => playerRequests === 2);
 });
+
+test('Jam controller logs the host and reason when a connection fails', async (t) => {
+  const storeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'respawn-jam-network-'));
+  // Bind and release ports so nothing listens there: connections are refused.
+  const ports = [];
+  for (let i = 0; i < 2; i += 1) {
+    const probe = http.createServer();
+    ports.push(await listen(probe));
+    await new Promise((resolve) => probe.close(resolve));
+  }
+  const [controllerPort, respawnPort] = ports;
+  // A plain HTTP server behind an https:// address fails the TLS handshake.
+  const plainHttp = http.createServer((req, res) => res.end());
+  const spotifyPort = await listen(plainHttp);
+
+  fs.writeFileSync(path.join(storeDir, 'jam-controller.json'), JSON.stringify({
+    respawnBaseUrl: `http://127.0.0.1:${respawnPort}`,
+    label: 'LAN-Musik-PC',
+    clientId: 'spotify-client',
+    controllerId: 'controller-1',
+    controllerToken: 'controller-token',
+    groupId: 'group-1',
+    spotifyDisplayName: 'LAN DJ',
+    accessTokenSpotify: 'spotify-token',
+    refreshToken: 'refresh-token',
+    expiresAt: Date.now() + 10 * 60_000,
+  }));
+
+  let output = '';
+  const controller = spawn(process.execPath, [SCRIPT], {
+    env: {
+      ...process.env,
+      JAM_CONTROLLER_PORT: String(controllerPort),
+      JAM_CONTROLLER_STORE_DIR: storeDir,
+      JAM_CONTROLLER_REQUEST_TIMEOUT_MS: '1000',
+      JAM_CONTROLLER_SPOTIFY_API_BASE_URL: `https://127.0.0.1:${spotifyPort}/v1`,
+      JAM_CONTROLLER_NO_OPEN: '1',
+    },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  controller.stdout.on('data', (chunk) => { output += chunk; });
+  controller.stderr.on('data', (chunk) => { output += chunk; });
+
+  t.after(() => {
+    controller.kill('SIGTERM');
+    plainHttp.close();
+    fs.rmSync(storeDir, { recursive: true, force: true });
+  });
+
+  const refused = (port) => `127.0.0.1:${port} nicht erreichbar: Verbindung abgelehnt, der Dienst läuft dort nicht (ECONNREFUSED).`;
+  await waitFor(() => output.includes(`[Jam] Heartbeat: ${refused(respawnPort)}`)
+    && output.includes(`[Jam] Spotify-Status: 127.0.0.1:${spotifyPort} nicht erreichbar: TLS-Verbindung fehlgeschlagen, stimmen http/https und Port in der Adresse? (ERR_SSL_WRONG_VERSION_NUMBER).`));
+  assert.doesNotMatch(output, /fetch failed/);
+});
