@@ -467,7 +467,8 @@ function describeNetworkError(url, error) {
   const code = cause?.code || cause?.errors?.find((entry) => entry?.code)?.code || null;
   const host = hostOf(url);
   const reason = (code && NETWORK_ERROR_REASONS[code])
-    || (code && /CERT|SSL|TLS/i.test(code) ? 'Das TLS-Zertifikat ist ungültig' : null)
+    || (code && /CERT|UNABLE_TO_VERIFY_LEAF_SIGNATURE/.test(code) ? 'Das TLS-Zertifikat ist ungültig' : null)
+    || (code && /SSL|TLS/.test(code) ? 'TLS-Verbindung fehlgeschlagen, stimmen http/https und Port in der Adresse?' : null)
     || cause?.message
     || error?.message
     || 'Unbekannter Netzwerkfehler';
