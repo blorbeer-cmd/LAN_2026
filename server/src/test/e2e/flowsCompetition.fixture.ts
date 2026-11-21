@@ -1185,7 +1185,36 @@ flowTest('matchmaking Historie marks a recorded draw as Unentschieden', async ()
   }
   await drawToggle.click();
   assert.doesNotMatch(await openDraw.innerText(), /10\.0\.0\.5|zocken123/);
-  await clickActionMenuEntry(page.locator('#match-history-open [data-record-draw]').first());
+
+  // A live refresh between focusing a menu entry and choosing it rebuilds the
+  // card. The keyboard user keeps the open menu and the focused entry; the
+  // test never reopens the menu itself.
+  const recordEntry = openDraw.locator('[data-record-draw]');
+  const drawId = (await recordEntry.getAttribute('data-record-draw'))!;
+  const actionMenu = openDraw.locator(`[data-action-menu="match-open-${drawId}"]`);
+  await actionMenu.locator(':scope > summary').focus();
+  await page.keyboard.press('Enter');
+  await recordEntry.waitFor();
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('Tab');
+  assert.equal(await recordEntry.evaluate((entry) => document.activeElement === entry), true);
+  await actionMenu.evaluate((menu) => { (menu as HTMLElement).dataset.beforeRefresh = 'true'; });
+  const refresh = await fetch(`${BASE_URL}/api/matchmaking/draws/${drawId}/server`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json', cookie: adminCookie },
+    body: JSON.stringify({ serverAddress: '10.0.0.5:27015', serverPassword: 'zocken123' }),
+  });
+  assert.equal(refresh.status, 200, await refresh.text());
+  await page.waitForFunction((id) => {
+    const menu = document.querySelector(`[data-action-menu="match-open-${id}"]`);
+    return menu instanceof HTMLElement && !menu.dataset.beforeRefresh;
+  }, drawId);
+  assert.equal(await actionMenu.evaluate((menu) => (menu as HTMLDetailsElement).open), true,
+    'the rebuilt menu stays open');
+  assert.equal(await recordEntry.isVisible(), true, 'the rebuilt entry stays reachable');
+  assert.equal(await recordEntry.evaluate((entry) => document.activeElement === entry), true,
+    'keyboard focus stays on the chosen entry');
+  await page.keyboard.press('Enter');
 
   const panelHeight = await page.locator('.modal .result-mode-panels').evaluate((element) => element.getBoundingClientRect().height);
   const pickHeights = await page.locator('.modal .tournament-result-pick').evaluateAll((picks) =>

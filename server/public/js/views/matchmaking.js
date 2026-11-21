@@ -412,7 +412,7 @@ function renderDrawCard(draw, { editable: editableInput, showGame = false, colla
         `<button type="button" class="btn btn-sm" data-rematch-draw="${draw.id}">Rematch</button>`,
       ]),
     collapsible && isGroupAdmin() ? `<button type="button" class="btn btn-sm btn-danger" data-delete-draw="${draw.id}">Auslosung löschen</button>` : '',
-  ], `${keyPrefix}-${draw.id}`);
+  ], `${keyPrefix}-${inTournament ? 'tournament' : editable ? 'open' : 'result'}-${draw.id}`);
 
   if (collapsible) {
     const meta = `<span class="muted">${formatDateTime(draw.generatedAt)}</span>
@@ -984,7 +984,9 @@ function wireHistoryItemToggles(container, ctx) {
 
 // One "Aktion" menu bundles a match card's general actions; a single action
 // stays a direct button. It floats like the "Wetten" menu, so collapsed tiles
-// and scrolling sections never clip it.
+// and scrolling sections never clip it. The key names the card's state, so a
+// menu kept open across a live refresh never reopens on a draw that has since
+// been recorded or turned into a tournament.
 function drawActionMenuHtml(draw, actions, key) {
   return actionMenuHtml(actions, `Aktion: ${draw.gameName}`, { key, floating: true });
 }
@@ -1003,7 +1005,7 @@ function historyMatchHtml(draw) {
     `<button type="button" class="btn btn-sm" data-edit-draw-result="${draw.id}">Ergebnis bearbeiten</button>`,
     `<button type="button" class="btn btn-sm" data-rematch-draw="${draw.id}">Rematch</button>`,
     isGroupAdmin() ? `<button type="button" class="btn btn-sm btn-danger" data-delete-draw="${draw.id}">Match löschen</button>` : '',
-  ], `match-${draw.id}`);
+  ], `match-result-${draw.id}`);
   const order = draw.teams.map((team, index) => ({ team, index })).sort((a, b) => {
     if (a.team.rank != null || b.team.rank != null) return (a.team.rank ?? Infinity) - (b.team.rank ?? Infinity) || a.index - b.index;
     return Number(b.index === draw.winnerTeamIndex) - Number(a.index === draw.winnerTeamIndex) || a.index - b.index;

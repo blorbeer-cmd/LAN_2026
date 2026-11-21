@@ -21,19 +21,45 @@ export function actionMenuHtml(actions, label, { key = null, inlineMax = 1, summ
 }
 
 let controller;
+// A live re-render replaces a keyed menu while someone is using it. The open
+// menu's key and its focused entry outlive that replacement, so the rebuilt
+// menu reopens with the same entry focused instead of silently closing. Some
+// views build parts of their markup only after the render (lazy sections), so
+// the memory waits for the next wiring of the same view rather than expiring
+// when one wiring does not contain the menu. Closing the menu by any user path
+// forgets it.
+let remembered = null;
+
+function viewOf(container) {
+  return (container.closest('#view-container') ?? container).dataset.view ?? null;
+}
+
+// The entry's first data attribute identifies it across renders; entries
+// without one (or that no longer exist) fall back to the trigger.
+function entrySelector(element) {
+  if (element.matches('.action-menu > summary')) return ':scope > summary';
+  const attribute = [...element.attributes].find((item) => item.name.startsWith('data-') && item.value);
+  return attribute ? `[${attribute.name}="${CSS.escape(attribute.value)}"]` : ':scope > summary';
+}
 
 export function wireActionMenus(container) {
   controller?.abort();
   controller = new AbortController();
   const { signal } = controller;
   const menus = [...container.querySelectorAll('.action-menu')];
+  const view = viewOf(container);
+  if (remembered && remembered.view !== view) remembered = null;
   const anchors = new WeakMap();
+  const forget = (menu) => {
+    if (remembered && remembered.key === menu.dataset.actionMenu) remembered = null;
+  };
   const hidePanel = (menu) => {
     const panel = menu.querySelector('.action-menu-panel');
     if (panel.hidePopover && panel.matches(':popover-open')) panel.hidePopover();
   };
   const markCard = (menu, open) => menu.closest('.card')?.classList.toggle('has-open-action-menu', open);
   const closeMenu = (menu, restoreFocus = false) => {
+    forget(menu);
     menu.open = false;
     hidePanel(menu);
     markCard(menu, false);
@@ -57,10 +83,40 @@ export function wireActionMenus(container) {
       if (menu.open) placeFloatingMenu(menu);
       else hidePanel(menu);
       markCard(menu, menu.open);
+      const key = menu.dataset.actionMenu;
+      if (menu.open && key) {
+        const focused = menu.contains(document.activeElement) ? entrySelector(document.activeElement) : null;
+        remembered = { view, key, entry: remembered?.key === key ? remembered.entry ?? focused : focused };
+      }
+      else if (!menu.open && menu.isConnected) forget(menu);
+    }, { signal });
+    menu.addEventListener('focusin', (event) => {
+      if (remembered?.key === menu.dataset.actionMenu && event.target instanceof Element) {
+        remembered.entry = entrySelector(event.target);
+      }
+    }, { signal });
+    menu.addEventListener('focusout', (event) => {
+      // Moving focus to another control ends the remembered focus; focus
+      // that is lost because the menu was removed has no related target.
+      if (remembered?.key === menu.dataset.actionMenu && event.relatedTarget instanceof Element
+        && !menu.contains(event.relatedTarget)) remembered.entry = null;
     }, { signal });
     menu.querySelector('.action-menu-panel').addEventListener('click', (event) => {
       if (event.target.closest('button.btn:not(:disabled):not([aria-disabled="true"])')) closeMenu(menu, true);
     }, { signal, capture: true });
+  }
+  const restored = remembered && menus.find((menu) => menu.dataset.actionMenu === remembered.key);
+  if (restored) {
+    // Show the floating panel synchronously, so a focus restore that runs
+    // right after this render can reach its entries.
+    restored.open = true;
+    placeFloatingMenu(restored);
+    markCard(restored, true);
+    const active = document.activeElement;
+    const focusLost = !active || active === document.body || !active.isConnected;
+    if (remembered.entry && focusLost) {
+      (restored.querySelector(remembered.entry) ?? restored.querySelector(':scope > summary'))?.focus({ preventScroll: true });
+    }
   }
   document.addEventListener('pointerdown', (event) => {
     if (event.target instanceof Element && event.target.closest('.action-menu')) return;

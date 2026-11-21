@@ -310,7 +310,7 @@ test('real LAN account, automatic orga credits, own-game betting notification, h
   await freshBetting.getByRole('button', { name: 'Jetzt tippen', exact: true }).waitFor();
   assert.equal(await freshBetting.locator('[data-action-menu]').count(), 0, 'a single tip action is a direct button with its state label');
   assert.equal(await freshBetting.locator('[data-lock-round]').count(), 0, 'starting the match is no betting entry next to the tip');
-  assert.equal(await member.locator(`[data-action-menu="match-fresh-${draw.id}"] [data-lock-round="${round.id}"]`).textContent(), 'Spiel starten',
+  assert.equal(await member.locator(`[data-action-menu="match-fresh-open-${draw.id}"] [data-lock-round="${round.id}"]`).textContent(), 'Spiel starten',
     'players start the match from the general match actions');
   await member.locator(`[data-draw-card="${draw.id}"] [data-betting-summary="${round.id}"]`).getByText('Tipps offen', { exact: true }).waitFor();
   assert.equal(await member.locator('.history-details').evaluate((element) => (element as HTMLDetailsElement).open), true);

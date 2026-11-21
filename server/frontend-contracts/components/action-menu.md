@@ -94,6 +94,14 @@ Eine dauerhaft geöffnete, verschachtelte oder mehrspaltige Variante existiert n
   entfernt.
 - Das modulweite Wiring bricht die Listener des zuvor verdrahteten Containers ab. Damit bleiben
   nach Viewwechsel oder Re-Render keine konkurrierenden Dokumentlistener aktiv.
+- Ein offenes Menü mit `key` bleibt über einen Live-Re-Render desselben Views geöffnet, auch wenn
+  ein Abschnitt seine Karten erst nach dem Rendern aufbaut. Das Wiring zeigt das schwebende Panel
+  sofort an, damit die Fokuswiederherstellung den fokussierten Eintrag erreicht; ist der Fokus
+  durch den Neuaufbau verloren gegangen, setzt das Wiring ihn auf denselben Eintrag (über sein
+  erstes `data-*`-Attribut) oder, falls dieser nicht mehr existiert, auf den Trigger. Schließen
+  über Aktionswahl, Escape, Außen-Pointer oder Trigger beendet dieses Gedächtnis; ein anderer View
+  verwirft es. Aufrufer wählen den `key` so, dass er den fachlichen Zustand benennt, wenn ein
+  geänderter Zustand andere Einträge bedeutet (Matchkarten: offen, erfasst, Turnier).
 
 Registry-Bezüge: `action-menu-trigger`, `action-menu-entry`, `button`, `button-small` und
 `button-meaning` in [component-registry.mjs](../component-registry.mjs).
@@ -108,7 +116,8 @@ Registry-Bezüge: `action-menu-trigger`, `action-menu-entry`, `button`, `button-
 - Schließen über Außen-Pointer, Escape oder aktive Aktionswahl;
 - sekundäre und destruktive Einträge;
 - vorhandener deaktivierter Eintrag;
-- erneuter View-Render mit neu verdrahtetem Container.
+- erneuter View-Render mit neu verdrahtetem Container;
+- Live-Re-Render bei geöffnetem Menü mit erhaltenem Fokus auf Eintrag oder Trigger.
 
 ## 8. Accessibility
 
@@ -138,6 +147,9 @@ Registry-Bezüge: `action-menu-trigger`, `action-menu-entry`, `button`, `button-
   Aktionswahl-Fokusrückgabe, Außen-Pointer ohne Fokusverschiebung und erneutes Wiring nach Re-Render.
 - `public/js/actionMenu.test.js` prüft die Grenze zwischen direkten Einträgen und Menü samt
   `inlineMax`, `key` und escaptem Label.
+- `src/test/e2e/flowsCompetition.fixture.ts` öffnet das „Aktion“-Menü einer offenen Auslosung per
+  Tastatur, löst zwischen Fokussieren und Aktivieren einen Live-Refresh aus und prüft ohne
+  erneutes Öffnen, dass Menü und Fokus erhalten bleiben und Enter den Eintrag ausführt.
 - `src/test/e2e/eventWorkspaceSwitch.e2e.test.ts` prüft an einer allgemeinen Eventkarte ohne
   Tracking, dass „Bearbeiten“ und ein neutrales „Beenden“ ohne Menü direkt im Kopf stehen.
 - Bei 320×568 und 390×844 bleibt das Panel innerhalb des Viewports; bei 512×384 und 720×450
