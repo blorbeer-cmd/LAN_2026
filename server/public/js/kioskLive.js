@@ -42,10 +42,12 @@ export function kioskLiveActiveHtml(players) {
 
 // Keeps the one-line strip readable once it is on screen. In this order:
 // the smallest groups give way first and are summed up in a compact "+N"
-// pill; the largest game's whole name comes before that pill; and a name
-// too long even on its own shortens, but never below about six characters
-// next to its count. Runs again only for a fresh paint or a new strip
-// width, so an unchanged board leaves the strip alone.
+// pill; the largest game always stays, with its whole name wherever it
+// fits beside that pill. Otherwise only its name shortens, never below about
+// six characters next to its count, so the "+N" pill keeps the other games
+// counted; it gives way only where even that minimum does not fit. Runs
+// again only for a fresh paint or a new strip width, so an unchanged board
+// leaves the strip alone.
 export function fitKioskLiveActive(container) {
   const strip = container.querySelector('.kiosk-live-active');
   if (!strip) return;
@@ -78,13 +80,14 @@ export function fitKioskLiveActive(container) {
     more.hidden = false;
   }
   if (overflows()) {
-    more.hidden = true;
-    if (overflows()) {
-      pills[0].classList.add('is-squeezed');
-      if (shown < pills.length) {
-        more.hidden = false;
-        if (overflows() || !largestNameReadable()) more.hidden = true;
-      }
+    // Only the largest game is left and it does not fit whole, either on its
+    // own or beside "+N". Shortening its name keeps the other games counted;
+    // the label gives way only where the name would become unreadable.
+    pills[0].classList.add('is-squeezed');
+    if (!more.hidden && (overflows() || !largestNameReadable())) {
+      more.hidden = true;
+      pills[0].classList.remove('is-squeezed');
+      if (overflows()) pills[0].classList.add('is-squeezed');
     }
   }
   strip.dataset.fittedWidth = width;
