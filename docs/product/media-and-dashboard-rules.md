@@ -31,9 +31,11 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu TV-Kiosk, Jam
   names each running game with its player count (people icon plus number, „N Spieler“ as accessible
   name), largest group first; it is omitted while nobody plays and never wraps: game names stay
   whole, games that do not fit, the smallest groups first, are summed up in one compact „+N“ label
-  („N weitere Spiele“ as accessible name). The largest game's whole name comes before that label;
-  only a largest game too long on its own shortens its name, never below about six characters next
-  to its count. Each player row shows an avatar, name, and status marker: a glowing green diamond for
+  („N weitere Spiele“ as accessible name). The largest game always stays and keeps its whole name
+  wherever it fits beside that label. Otherwise only its name shortens, never below about six
+  characters next to its count, so the label keeps every other running game counted; the label
+  gives way only where even that shortest name would not fit beside it. Each player row shows an
+  avatar, name, and status marker: a glowing green diamond for
   „Spielt“, a filled blue circle for „Online“, an amber ring for „Pause“ and a hollow grey ring for
   „Offline“. In forced colors, the diamond and circle remain filled, the pause ring is dashed and
   the offline ring is solid. The German state stays available as the marker's accessible name and tooltip. The roster
