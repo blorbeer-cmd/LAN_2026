@@ -152,9 +152,15 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu TV-Kiosk, Jam
   Those requests follow Spotify's append-only queue in request order; reordering stays hidden
   while a playlist is active because Spotify exposes no reorder for its live queue. Removing a
   request still works: it leaves Respawn's queue immediately, and because Spotify cannot drop it
-  from its own queue, the Jam skips that song the moment Spotify starts it. An active playlist has
-  no separate remove action; it finishes naturally, is replaced by another explicitly confirmed
-  playlist, or ends with the Jam. Requests form a quiet table without column headers and
+  from its own queue, the Jam skips that song the moment Spotify starts it. While a playlist is
+  active, the header of „Als Nächstes“ carries a neutral „Playlist beenden“ for every member,
+  confirmed in a red dialog. The song playing at that moment may finish; afterwards the waiting
+  requests play in their order, or the Jam pauses when none wait. The playlist and its preview
+  leave app and kiosk at once. The end is remembered: should Spotify keep playing that playlist
+  anyway, the next playlist song counts as foreign playback and is replaced by the waiting requests
+  or paused. Of two parallel ends one wins, the other receives `409`. Otherwise a playlist
+  finishes naturally, is replaced by another explicitly confirmed playlist, or ends with the Jam.
+  Requests form a quiet table without column headers and
   with equal row heights: position, small artwork, title (shortened after 40 characters) above the
   artist, requester (the viewer's own name in bold) and duration; on phones the requester joins the
   artist line. Their order is the shared queue order. Titles are static text. On fine-pointer

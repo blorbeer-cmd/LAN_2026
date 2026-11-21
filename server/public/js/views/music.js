@@ -388,6 +388,7 @@ function requestQueueHtml(session) {
     <section class="card stack grouped-page-section" aria-labelledby="music-queue-title">
       <div class="grouped-page-section-title">
         <h2 id="music-queue-title">Als Nächstes</h2>
+        ${playlistMode && manageable ? '<button type="button" class="btn btn-sm" id="music-end-playlist">Playlist beenden</button>' : ''}
       </div>
       ${rows.length
         ? `<div class="music-queue-list${draggable ? ' is-draggable' : ''}${sortable ? ' is-sortable' : ''}" role="table" aria-label="Als Nächstes">${rows.join('')}</div>`
@@ -868,6 +869,26 @@ function wireSession(container, ctx) {
     } catch (error) {
       showToast(error.message, { error: true });
     }
+  });
+  container.querySelector('#music-end-playlist')?.addEventListener('click', async () => {
+    const playlist = cache?.session?.playbackContext;
+    if (!playlist) return;
+    const after = queuedRequests(cache.session).length
+      ? 'Danach folgen die Wünsche.'
+      : 'Ohne Wünsche pausiert der Jam danach.';
+    const confirmed = await confirmDialog(
+      cache.session.currentTrack ? `Der laufende Titel spielt zu Ende. ${after}` : after,
+      { title: `Playlist „${playlist.name}“ beenden?`, confirmText: 'Playlist beenden', danger: true },
+    );
+    if (!confirmed) return;
+    try {
+      await api.music.removePlaylist(getMyId());
+      showToast('Playlist beendet.');
+    } catch (error) {
+      showToast(error.message, { error: true });
+    }
+    invalidateMusic();
+    ctx.rerender();
   });
   container.querySelector('#music-end')?.addEventListener('click', async () => {
     const confirmed = await confirmDialog(

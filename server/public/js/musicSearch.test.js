@@ -214,7 +214,29 @@ test('music queue shows the remaining playlist tracks separately from requests',
   assert.match(html, /Noch 3 Playlist-Titel/);
   assert.match(html, /Playlist LAN &lt;Playlist&gt; startet auf LAN Boxen\./);
   assert.doesNotMatch(html, /Noch keine Wünsche/);
-  assert.doesNotMatch(html, /draggable|music-remove-playlist/);
+  assert.doesNotMatch(html, /draggable|music-end-playlist/);
+});
+
+test('music queue lets members end a running playlist while requests wait behind it', () => {
+  const session = {
+    currentTrack: null,
+    playbackContext: { name: 'LAN Mix', remainingTrackCount: 12, addedByName: 'DJ Bob', nextTrack: null },
+    requests: [{
+      id: 'req-1', status: 'queued', trackUri: 'spotify:track:A', name: 'Wunsch', artist: 'Band',
+      requestedBy: 'p-2', requestedByName: 'Kim', durationMs: 180_000, imageUrl: null,
+    }],
+    hostPlayerId: 'p-9',
+    isPlaying: true,
+    deviceName: 'LAN Boxen',
+    progressMs: 0,
+    playbackUpdatedAt: null,
+  };
+  const member = asPlayer('p-1', () => musicActiveSessionHtml({ warning: null, session }));
+  assert.match(member, /<h2 id="music-queue-title">Als Nächstes<\/h2>\s*<button type="button" class="btn btn-sm" id="music-end-playlist">Playlist beenden<\/button>/);
+  assert.match(member, /data-music-request="req-1"/);
+
+  const withoutPlaylist = asPlayer('p-1', () => musicActiveSessionHtml({ warning: null, session: { ...session, playbackContext: null } }));
+  assert.doesNotMatch(withoutPlaylist, /music-end-playlist/);
 });
 
 test('music controller recovery distinguishes Spotify login from a transient outage', () => {
