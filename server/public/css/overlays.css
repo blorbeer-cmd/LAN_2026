@@ -1318,7 +1318,9 @@ button.seating-seat {
     user-select: none;
   }
 }
-.music-queue-trash {
+/* Shared drop target at the bottom edge while something removable is dragged:
+   Jam requests and players dragged out of a Match lineup. */
+.drag-remove-zone {
   position: fixed;
   z-index: 25;
   left: 50%;
@@ -1335,10 +1337,10 @@ button.seating-seat {
   box-shadow: var(--shadow);
   color: var(--text);
 }
-.music-queue-trash[hidden] {
+.drag-remove-zone[hidden] {
   display: none;
 }
-.music-queue-trash.is-over {
+.drag-remove-zone.is-over {
   background: var(--danger-bg);
   color: var(--danger);
 }
