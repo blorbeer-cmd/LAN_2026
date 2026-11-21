@@ -1159,7 +1159,7 @@ flowTest('matchmaking Historie marks a recorded draw as Unentschieden', async ()
   try {
     await page.setViewportSize({ width: 1024, height: viewport.height });
     const serverInfo = openDraw.locator('[data-draw-server-info]');
-    assert.equal(await serverInfo.innerText(), 'Server und Passwort');
+    assert.equal((await serverInfo.textContent())?.trim(), 'Server und Passwort');
     await openActionMenuOf(serverInfo);
     await serverInfo.press('Enter');
     const serverDialog = page.getByRole('dialog', { name: 'Server und Passwort' });
