@@ -144,12 +144,29 @@ Die Spielberechnung übernimmt die Platzregel des Zielkonzepts
   game, time, result and actions in its header. Expanding a match shows teams by place without changing their
   stored indices, and each team's skill sum beside its name, never individual player skills. A fresh draw appears under the heading „Neue Auslosung“; a
   finished Captain Draft becomes the fresh draw on every device the same way.
+  Every Match card names who created its lineup in the meta line: „Ausgelost von <Name>“, for a
+  finished Captain Draft „Draft von <Name>“ and for a rematch „Rematch von <Name>“; a removed
+  account leaves the line out. „Spieler hinzufügen“ opens a compact dialog with a searchable
+  „Spieler“ picker of event participants not yet in the lineup and a „Team“ select whose default
+  „Automatisch“ puts the player into the team with the fewest players (the lower skill sum on a
+  tie). „Neu mischen“ asks for confirmation and then redistributes the same players into the same
+  number of teams, balanced with their current skill (and seat neighbors, if the draw considered
+  them); when the ratings allow only one balanced split it takes the fairest swap of two players
+  instead, so the teams always change. A reshuffled Captain Draft or rematch becomes a regular
+  balanced draw. The card keeps its creator, server details and tip link; open tips react to the
+  new lineup like to any player move. Both actions are refused once a result or a tournament
+  exists for the draw. A dialog opened before the lineup changed on another device cannot act on
+  the outdated teams: „Ergebnis eintragen“, „Turnier erstellen“ and „Spieler hinzufügen“ with a
+  chosen team close, Match reloads and a notice asks to reopen the draw („Automatisch“ always uses
+  the current teams).
+  A balanced draw never leaves a team empty, even when all ratings are equal.
   Draw teams have no stored name; cards, the team picker, the result dialog and the history derive it
   from the current lineup with the same rule, so a player move renames affected teams immediately.
   The winning team carries the green „Win“ chip and an accessible group label, the losing teams
   are muted and a drawn result shows „Remis“. Card actions sit in the card header. General match
   actions share one „Aktion“ menu, kept separate from the „Wetten“ menu beside it: an open draw
-  offers „Server und Passwort“, „Ergebnis eintragen“, „Turnier erstellen“ and, while its tips are
+  offers „Server und Passwort“, „Ergebnis eintragen“, „Spieler hinzufügen“ (only while an event
+  participant is not in the lineup yet), „Neu mischen“, „Turnier erstellen“ and, while its tips are
   open, „Spiel starten“; a recorded draw offers „Ergebnis bearbeiten“ and „Rematch“;
   every open or recorded game card offers admins and owners a red delete entry („Auslosung löschen“,
   „Match löschen“) with confirmation; regular members see no delete controls, including on the tournament detail page. A single remaining action stays a direct button. Removing a recorded draw removes its linked result from the ranking. A tournament tile offers „Turnier“ and, for admins and owners, a trash action using the existing tournament delete behavior; already recorded tournament matches remain in the ranking, and the confirmation explains this. Its expanded state shows tournament teams,
@@ -379,7 +396,9 @@ Die Spielberechnung übernimmt die Platzregel des Zielkonzepts
   Match ist nicht mehr verfügbar.“, and match actions answer „Keine Verbindung zum Server.“ while
   the connection is down.
 - **Game specifics** — Tetris Duell keeps two equal boards; Arena accepts three to eight players
-  and keeps the local board large beside a grid of opponent boards. Pong and Blobby Volley offer
+  and fits the local board independently of the opponent grid and the Arena summary. The local
+  board shows the shape and color of the next piece beside it during play, including in fullscreen.
+  Pong and Blobby Volley offer
   Duell and Doppel; Doppel lobbies have two teams with two seats, Pong Doppel defaults to 21 points
   and follows Atari's Pong-4 lanes. Snake Classic is exactly one against one; Snake Arena accepts
   three to eight players, shrinks its safe zone and keeps eliminated players in the strip as

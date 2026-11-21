@@ -16,6 +16,7 @@ import {
   balanceTeams,
   computeTeamCount,
   countSeatConflicts,
+  reshuffleTeams,
   seatConflictNeighbors,
   type PlayerRating,
   type SeatPair,
@@ -26,6 +27,7 @@ import { requireGroupEventAccess, resolveRequestGroupEventScope } from '../group
 import { requireGroupRole } from '../groupAuthorization';
 import { requireRecentReauthentication } from '../sessions';
 import { writeAdminAudit } from '../adminAudit';
+import { assertDrawLineup, DRAW_LINEUP_CHANGED, DRAW_LINEUP_CHANGED_CODE, DrawLineupChangedError, isDrawLineup } from '../drawLineup';
 
 export const matchmakingRouter = Router();
 
@@ -267,6 +269,7 @@ matchmakingRouter.post('/', (req, res) => {
     bettingAllowed,
     serverAddress: null as string | null,
     serverPassword: null as string | null,
+    createdByName: req.player!.name,
   };
 
   // Logged for the history view (every draw, including re-rolls — see the
@@ -357,6 +360,7 @@ matchmakingRouter.post('/rematch', (req, res) => {
     bettingAllowed,
     serverAddress: null as string | null,
     serverPassword: null as string | null,
+    createdByName: req.player!.name,
   };
 
   withBettingAccounting(eventId, () => db.prepare(
@@ -383,6 +387,7 @@ interface DrawRow {
   bettingAllowed: number;
   serverAddress: string | null;
   serverPassword: string | null;
+  createdByName: string | null;
 }
 
 const DRAW_COLUMNS = `md.id AS id, md.game_id AS gameId, g.name AS gameName, g.icon AS gameIcon,
@@ -390,10 +395,14 @@ const DRAW_COLUMNS = `md.id AS id, md.game_id AS gameId, g.name AS gameName, g.i
               md.seat_pairs_considered AS seatPairsConsidered, md.generated_at AS generatedAt,
               md.match_id AS matchId, md.source AS source, md.betting_allowed AS bettingAllowed,
               md.tournament_id AS tournamentId, t.name AS tournamentName,
-              md.server_address AS serverAddress, md.server_password AS serverPassword`;
+              md.server_address AS serverAddress, md.server_password AS serverPassword,
+              creator.name AS createdByName`;
+// The creator is shown as "Ausgelost von …"; a since-removed account simply
+// leaves the name empty instead of hiding the draw.
 const DRAW_JOINS = `FROM matchmaking_draws md
        JOIN games g ON g.id = md.game_id
-       LEFT JOIN tournaments t ON t.id = md.tournament_id`;
+       LEFT JOIN tournaments t ON t.id = md.tournament_id
+       LEFT JOIN players creator ON creator.id = md.created_by`;
 
 function parseDrawRow(r: DrawRow) {
   return {
@@ -414,6 +423,7 @@ function parseDrawRow(r: DrawRow) {
     // tournament-owned draw no longer exposes them (nor can they be edited).
     serverAddress: r.matchId || r.tournamentId ? null : r.serverAddress ?? null,
     serverPassword: r.matchId || r.tournamentId ? null : r.serverPassword ?? null,
+    createdByName: r.createdByName ?? null,
   };
 }
 
@@ -527,6 +537,17 @@ matchmakingRouter.get('/history', (req, res) => {
         ORDER BY md.generated_at DESC, md.id DESC`).all(...openParams) as DrawRow[]).map(parseDrawRow)
     : undefined;
   res.json({ history: draws, openDraws, nextCursor: hasMore && last ? { before: last.generatedAt, beforeId: last.id } : null });
+});
+
+// GET /api/matchmaking/draws/:id - one draw in its client shape, for a view
+// that must refresh a specific draw independent of the history filters (a
+// lineup conflict on the "Neue Auslosung" card, which "Meine" may hide).
+matchmakingRouter.get('/draws/:id', (req, res) => {
+  const row = db.prepare('SELECT id, event_id FROM matchmaking_draws WHERE id = ? AND group_id = ?')
+    .get(req.params.id, req.group!.id) as { id: string; event_id: string } | undefined;
+  if (!row) return res.status(404).json({ error: 'Auslosung nicht gefunden.' });
+  if (!requireGroupEventAccess(req, res, row.event_id)) return;
+  res.json(loadDrawView(row.id));
 });
 
 // Removing a card also removes its linked standalone leaderboard result.
@@ -740,6 +761,139 @@ matchmakingRouter.delete('/draws/:id/players/:playerId', (req, res) => {
   const scope = { groupId, eventId: deliveryEventId(existing.event_id) };
   broadcast(Events.matchmakingDrawsChanged, draw, scope);
   if (recorded) broadcast(Events.leaderboardChanged, null, scope);
+  res.json(draw);
+});
+
+type OpenDrawRow = { teams: string; seat_pairs_considered: number; source: string | null };
+
+// Re-reads a draw inside the caller's immediate transaction and refuses one
+// whose lineup is frozen, so a check and its write can never be split by a
+// parallel result, tournament or lineup edit.
+function loadOpenDrawForEdit(drawId: string): OpenDrawRow {
+  const row = db.prepare('SELECT teams, match_id, tournament_id, seat_pairs_considered, source FROM matchmaking_draws WHERE id = ?')
+    .get(drawId) as (OpenDrawRow & { match_id: string | null; tournament_id: string | null }) | undefined;
+  if (!row) throw new PointsError('Auslosung nicht gefunden.', 404);
+  if (row.tournament_id) throw new PointsError('Aus dieser Auslosung wurde bereits ein Turnier erstellt.');
+  if (row.match_id) throw new PointsError('Für diese Auslosung wurde bereits ein Ergebnis erfasst.');
+  return row;
+}
+
+// POST /api/matchmaking/draws/:id/shuffle - "Neu mischen": redistributes the
+// players of an open draw into the same number of teams, balanced with their
+// current ratings (and seat neighbors, if the draw considered them; see
+// reshuffleTeams). The draw keeps its id, creator, server details and betting
+// link; the betting reconcile treats the new lineup like any other lineup
+// edit. A lineup without any other split is refused (409) instead of being
+// reported as reshuffled. Recorded and tournament-owned draws stay frozen.
+matchmakingRouter.post('/draws/:id/shuffle', (req, res) => {
+  const groupId = req.group!.id;
+  const existing = db.prepare('SELECT id, event_id, game_id FROM matchmaking_draws WHERE id = ? AND group_id = ?')
+    .get(req.params.id, groupId) as { id: string; event_id: string; game_id: string } | undefined;
+  if (!existing) return res.status(404).json({ error: 'Auslosung nicht gefunden.' });
+  if (!requireGroupEventAccess(req, res, existing.event_id)) return;
+
+  withBettingAccounting(existing.event_id, () => {
+    const row = loadOpenDrawForEdit(existing.id);
+    const teams = JSON.parse(row.teams) as DrawTeamSnapshot[];
+    const players = teams.flatMap((team) => team.players);
+    const ids = players.map((player) => player.id);
+    const placeholders = ids.map(() => '?').join(',');
+    const ratingByPlayer = new Map((db.prepare(`SELECT player_id, rating FROM skills WHERE game_id = ? AND player_id IN (${placeholders})`)
+      .all(existing.game_id, ...ids) as Array<{ player_id: string; rating: number }>).map((r) => [r.player_id, r.rating]));
+    const ratings: PlayerRating[] = ids.map((id) => ({ id, rating: ratingByPlayer.get(id) ?? DEFAULT_RATING }));
+    const avoidPairs = row.seat_pairs_considered > 0 ? loadAvoidPairs(groupId, existing.event_id, ids) : [];
+
+    const teamIdLists = reshuffleTeams(ratings, teams.map((team) => team.players.map((player) => player.id)), avoidPairs);
+    if (!teamIdLists) throw new PointsError('Jedes Team hat nur einen Spieler, neu mischen ändert daran nichts.');
+
+    const playerById = new Map(players.map((player) => [player.id, player]));
+    const shuffled: DrawTeamSnapshot[] = teamIdLists.map((teamIds) => {
+      const teamPlayers = teamIds.map((id) => {
+        const { seatConflict: _conflict, seatConflictNames: _names, ...player } = playerById.get(id)!;
+        return { ...player, rating: ratingByPlayer.get(id) ?? null };
+      });
+      return { players: teamPlayers, totalRating: totalRatingOf(teamPlayers) };
+    });
+    const seatConflicts = avoidPairs.length > 0 ? applySeatConflicts(groupId, existing.event_id, shuffled) : 0;
+    // The new lineup is a rating-balanced draw, also when it started as a
+    // Captain Draft or a rematch of fixed teams.
+    db.prepare('UPDATE matchmaking_draws SET teams = ?, seat_conflicts = ?, source = NULL WHERE id = ?')
+      .run(JSON.stringify(shuffled), seatConflicts, existing.id);
+  });
+
+  const draw = loadDrawView(existing.id);
+  broadcast(Events.matchmakingDrawsChanged, draw, { groupId, eventId: deliveryEventId(existing.event_id) });
+  res.json(draw);
+});
+
+// POST /api/matchmaking/draws/:id/players - adds an event participant who is
+// not in the lineup yet to an open draw. Body: { playerId, teamIndex?, drawLineup? };
+// without teamIndex the player joins the team with the fewest players, ties
+// going to the lower skill total and then to the first such team. A chosen
+// team is a position in the lineup the dialog showed, so the dialog sends that
+// lineup along: a draw reshuffled or edited since answers 409
+// draw_lineup_changed instead of placing the player into a different team. Check and
+// write run in one immediate transaction, so of two parallel additions of the
+// same player exactly one wins and the other sees the new state (409).
+matchmakingRouter.post('/draws/:id/players', (req, res) => {
+  const { playerId, teamIndex, drawLineup } = req.body ?? {};
+  if (typeof playerId !== 'string' || !/^[A-Za-z0-9_-]{1,64}$/.test(playerId)) {
+    return res.status(400).json({ error: 'playerId ist ungültig.' });
+  }
+  if (teamIndex !== undefined && teamIndex !== null && (!Number.isInteger(teamIndex) || teamIndex < 0)) {
+    return res.status(400).json({ error: 'teamIndex ist ungültig.' });
+  }
+  if (drawLineup !== undefined && !isDrawLineup(drawLineup)) {
+    return res.status(400).json({ error: 'drawLineup ist ungültig.' });
+  }
+  const groupId = req.group!.id;
+  const existing = db.prepare('SELECT id, event_id, game_id FROM matchmaking_draws WHERE id = ? AND group_id = ?')
+    .get(req.params.id, groupId) as { id: string; event_id: string; game_id: string } | undefined;
+  if (!existing) return res.status(404).json({ error: 'Auslosung nicht gefunden.' });
+  if (!requireGroupEventAccess(req, res, existing.event_id)) return;
+  if (!competitionPlayersBelongToGroup(groupId, existing.event_id, [playerId])) {
+    return res.status(404).json({ error: 'Spieler nicht gefunden.' });
+  }
+  const player = db.prepare('SELECT id, name, color, avatar FROM players WHERE id = ? AND deactivated_at IS NULL')
+    .get(playerId) as PlayerRow | undefined;
+  if (!player) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
+
+  try {
+    withBettingAccounting(existing.event_id, () => {
+      const row = loadOpenDrawForEdit(existing.id);
+      const teams = JSON.parse(row.teams) as DrawTeamSnapshot[];
+      if (drawLineup) assertDrawLineup(existing.id, drawLineup as string[][], typeof teamIndex === 'number' ? teamIndex : undefined);
+      if (teams.some((team) => team.players.some((p) => p.id === playerId))) {
+        throw new PointsError(`${player.name} ist bereits in dieser Auslosung.`);
+      }
+      if (typeof teamIndex === 'number' && teamIndex >= teams.length) throw new PointsError('teamIndex ist ungültig.', 400);
+      const skillTotal = (team: DrawTeamSnapshot) => totalRatingOf(team.players);
+      const target = typeof teamIndex === 'number'
+        ? teamIndex
+        : teams.reduce((best, team, index) => {
+          const current = teams[best];
+          if (team.players.length !== current.players.length) return team.players.length < current.players.length ? index : best;
+          return skillTotal(team) < skillTotal(current) ? index : best;
+        }, 0);
+      const rating = db.prepare('SELECT rating FROM skills WHERE game_id = ? AND player_id = ?')
+        .pluck().get(existing.game_id, playerId) as number | undefined;
+      const team = teams[target];
+      team.players.push({ ...player, rating: rating ?? null });
+      // Same rule as a move: older drafts without a snapshot keep no total.
+      team.totalRating = row.source === 'draft' && !team.skillSnapshot ? 0 : totalRatingOf(team.players);
+      const seatConflicts = row.seat_pairs_considered > 0 ? applySeatConflicts(groupId, existing.event_id, teams) : 0;
+      db.prepare('UPDATE matchmaking_draws SET teams = ?, seat_conflicts = ? WHERE id = ?')
+        .run(JSON.stringify(teams), seatConflicts, existing.id);
+    });
+  } catch (error) {
+    if (error instanceof DrawLineupChangedError) {
+      return res.status(409).json({ error: DRAW_LINEUP_CHANGED, code: DRAW_LINEUP_CHANGED_CODE });
+    }
+    throw error;
+  }
+
+  const draw = loadDrawView(existing.id);
+  broadcast(Events.matchmakingDrawsChanged, draw, { groupId, eventId: deliveryEventId(existing.event_id) });
   res.json(draw);
 });
 

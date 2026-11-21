@@ -393,6 +393,7 @@ draftRouter.post('/pick', ...withBodyPlayerIdentity, (req, res) => {
         bettingAllowed: Boolean(row.betting_allowed),
         tournamentId: null,
         tournamentName: null,
+        createdByName: (db.prepare('SELECT name FROM players WHERE id = ?').pluck().get(row.created_by) as string | undefined) ?? null,
       };
     }
     return true;
