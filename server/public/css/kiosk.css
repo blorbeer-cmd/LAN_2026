@@ -628,6 +628,9 @@
   grid-template-columns: repeat(var(--live-columns, 1), minmax(0, 1fr));
   flex: 1;
   min-height: 0;
+  /* Stretch only the row surfaces into otherwise unused card height. Text,
+     avatars and status markers keep their established readable size. */
+  align-content: stretch;
   /* No overflow:hidden here on purpose: it would clip its own content
      against ITS box and hide that overflow from the parent's scrollHeight,
      which is exactly what kiosk.js measures to decide whether to page. The

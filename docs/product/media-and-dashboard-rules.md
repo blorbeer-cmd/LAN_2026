@@ -25,7 +25,8 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu TV-Kiosk, Jam
 - **Cards**: Four cards remain a 2×2 grid: Live-Status and Newsticker above Abstimmung and
   Turnier/Ergebnisse. The Jam bar sits between the banner and the cards. Banner, header and Jam bar share the card edges and the card
   content inset. A card without data centers one short line at content size in the whole card.
-- **Live-Status**: shows every participant including offline ones, playing first. Like Home, but
+- **Live-Status**: shows every participant including offline ones, alphabetically by name regardless
+  of status so live updates never move people around. Like Home, but
   without the own pause toggle („Dein Status“), a single-line strip beside the Live-Status heading
   names each running game with its player count (people icon plus number, „N Spieler“ as accessible
   name), largest group first; it is omitted while nobody plays and never wraps: game names stay
@@ -37,7 +38,8 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu TV-Kiosk, Jam
   „Offline“. In forced colors, the diamond and circle remain filled, the pause ring is dashed and
   the offline ring is solid. The German state stays available as the marker's accessible name and tooltip. The roster
   uses four columns on wide cards and fewer on narrow cards, budgeting 140 px per column including spacing. Short
-  rosters keep the compact row height and start at the top. Long player names are shortened
+  rosters stretch their row surfaces across the available card height while text, avatars and markers keep their
+  established size. Long player names are shortened
   with an ellipsis instead of
   widening a column. If the roster exceeds the available height, the rows tighten first. Larger
   rosters rotate pages, marked by dots. The game counts
