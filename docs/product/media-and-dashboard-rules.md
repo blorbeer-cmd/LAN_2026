@@ -199,7 +199,12 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu TV-Kiosk, Jam
   Current playback is reported independently from the slower Spotify queue lookup, so queue latency
   cannot hold the progress display back. A short Spotify status failure keeps the last successful
   playback and connected state for 30 seconds; only a sustained outage shows the recovery message.
-  Spotify rate limits are retried after the advertised delay.
+  Spotify rate limits are retried after the advertised delay; a long block names its end and is
+  waited out without further Spotify requests. To stay within the shared Spotify app quota, the
+  controller keeps its three-second Respawn heartbeat but reads Spotify only after a command, at
+  a Jam start, shortly after the expected song end and otherwise every 20 seconds during a Jam or
+  once a minute without one. A Respawn browser player on the controller computer reports its own
+  state changes through the loopback controller, which then needs Spotify only as a safety net.
   Every group owner and admin can end the active Jam and then explicitly disconnect the controller
   through the collapsible „Verbindung verwalten“ card with a neutral „Entkoppeln“ and a red
   confirmation.

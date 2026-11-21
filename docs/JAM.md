@@ -87,6 +87,30 @@ Musik-PCs an TV oder Soundbar weiter.
   **Spotify-Anmeldung erneuern** wählen. Controller-Paket und Respawn-Kopplung bleiben dabei
   unverändert. Der ursprüngliche Jam-Tab und der Kiosk prüfen die Freigabe danach automatisch erneut;
   ein manueller Reload ist nicht nötig.
+- Spotify zählt alle Anfragen einer Spotify-App gegen ein gemeinsames Kontingent. Der Controller
+  meldet sich weiter alle drei Sekunden bei Respawn, fragt Spotify aber sparsam ab:
+  - direkt nach jedem Wiedergabebefehl und jedem Songwunsch,
+  - beim Start einer Jam-Session, die Respawn ihm im Heartbeat meldet,
+  - kurz nach dem erwarteten Ende des laufenden Songs,
+  - sonst während einer Session alle 20 Sekunden und ohne Session einmal pro Minute.
+
+  Spielt die Musik über **Diesen Browser als Musikgerät** oder den Kiosk-Ton, meldet der
+  Spotify-Player im Browser jeden Songwechsel, jede Pause und jeden Sprung selbst an den lokalen
+  Controller (`POST /web-player/state`, nur von der konfigurierten Respawn-Origin). Der Controller
+  gibt das sofort an Respawn weiter und fragt Spotify dann nur noch etwa einmal pro Minute zur
+  Sicherheit. Endet die Browser-Wiedergabe oder wechselt Spotify auf ein anderes Gerät, fragt er
+  sofort wieder bei Spotify nach.
+
+  Die Spotify-Warteschlange liest er nur bei einem neuen Song, einer neuen Playlist oder nach
+  einem Befehl. Den Fortschritt dazwischen rechnet Respawn selbst weiter. Bedient jemand Spotify
+  direkt in der Spotify-App, erscheint das deshalb erst nach bis zu 20 Sekunden in Respawn. Eine
+  Session über 24 Stunden kommt so auf etwa 5.000 bis 7.000 Spotify-Anfragen; die lokale Seite
+  zeigt die Anfragen der letzten Stunde.
+- Sperrt Spotify die Wiedergabesteuerung länger wegen zu vieler Anfragen (HTTP 429,
+  `QUOTA_EXCEEDED`), nennt die lokale Seite das Ende der Sperre und der Controller wartet sie ab,
+  statt weiter anzufragen. Beobachtet am 21.11.2026: Die Sperre galt für das Spotify-Konto über
+  alle Spotify-Apps hinweg. Eine zweite Spotify-App mit neuer Client-ID hebt sie nicht auf;
+  `/v1/me` blieb dabei erreichbar, nur die `/v1/me/player`-Endpunkte waren gesperrt.
 - Die lokale Seite zeigt beide Verbindungszustände getrennt, kann sofort einen neuen Versuch
   auslösen und bietet unter **Verbindung verwalten** als letzte Option einen vollständigen Reset.
   Einen neuen Download braucht es nur auf einem Ersatzgerät oder wenn die lokale Installation
