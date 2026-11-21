@@ -10,6 +10,7 @@ import {
   gameById,
   catalogGames,
   gamesWithHistory,
+  defaultCatalogGameId,
   eventPlayers,
 } from './state.js';
 
@@ -137,4 +138,24 @@ test('gamesWithHistory also keeps the extra ids it is handed', () => {
     gamesWithHistory().map((g) => g.id),
     ['g1'],
   );
+});
+
+test('defaultCatalogGameId opens on the last played catalog game, not the alphabetical first', () => {
+  state.games = [
+    { id: 'g1', name: 'Age of Empires', isSuggestion: false },
+    { id: 'g2', name: 'CS2', isSuggestion: false },
+    { id: 'g3', name: 'Rocket League', isSuggestion: false },
+    { id: 'g4', name: 'Zurückgestuft', isSuggestion: true },
+  ];
+  state.matches = [
+    { id: 'm1', gameId: 'g3', playedAt: 1_000 },
+    { id: 'm2', gameId: 'g2', playedAt: 3_000 },
+    { id: 'm3', gameId: 'g4', playedAt: 5_000 },
+  ];
+  // A demoted game cannot be drawn for, so its newer result does not win.
+  assert.equal(defaultCatalogGameId(), 'g2');
+  state.matches = [];
+  assert.equal(defaultCatalogGameId(), 'g1');
+  state.games = [];
+  assert.equal(defaultCatalogGameId(), null);
 });

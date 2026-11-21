@@ -126,9 +126,12 @@ Die Spielberechnung übernimmt die Platzregel des Zielkonzepts
   self-rating shows the matchmaking fallback in parentheses, so the visible value matches the one
   the draw balanced with, while the captain draft keeps the en dash because it never uses ratings.
   The title and accessible label retain the full term „Skill-Level“.
-  Unplayed draws and running tournaments of the selected game have their own „Ohne Ergebnis“ section above „Historie“. It starts collapsed and builds
+  Unplayed draws and running tournaments of every game have their own „Ohne Ergebnis“ section above „Historie“. It starts collapsed and builds
   its cards only when opened. Each unplayed game is also a collapsed tile that can be opened
-  independently to show its teams and player moves. Recorded matches and completed tournaments share the „Historie“ for the selected game. It starts
+  independently to show its teams and player moves. Recorded matches and completed tournaments share the „Historie“ for the selected game. Until a
+  game is picked, Match opens on the catalog game of the most recently recorded result (the first
+  catalog game only when nothing was recorded yet), so a newly added, unplayed game never hides the
+  Historie. Saving the result of an unplayed draw selects that draw's game. „Historie“ starts
   collapsed. The shared „Alle | Matches | Turniere“ filter row sits above „Ohne Ergebnis“ and applies
   to open draws, running tournaments and completed history. The running overview above setup is
   independent of these filters and always shows every running tournament.

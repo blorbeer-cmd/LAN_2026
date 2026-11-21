@@ -111,3 +111,17 @@ export function gamesWithHistory(extraGameIds = []) {
   for (const match of state.matches) kept.add(match.gameId);
   return state.games.filter((game) => !game.isSuggestion || kept.has(game.id));
 }
+
+// The catalog game a game picker opens on before anyone picked one: the game
+// of the most recently played result, otherwise the first catalog game. The
+// catalog is alphabetical and every member may add games, so its first entry
+// is often one nobody has played yet — opening Match on it would hide the
+// whole Historie behind an empty game.
+export function defaultCatalogGameId() {
+  const catalogIds = new Set(catalogGames().map((game) => game.id));
+  let latest = null;
+  for (const match of state.matches) {
+    if (catalogIds.has(match.gameId) && (!latest || match.playedAt > latest.playedAt)) latest = match;
+  }
+  return latest?.gameId ?? catalogGames()[0]?.id ?? null;
+}
