@@ -17,7 +17,8 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import request from 'supertest';
-import { createTestApp } from './testApp';
+import { SESSION_COOKIE_NAME } from '../sessions';
+import { createTestApp, sessionCookie } from './testApp';
 import {
   agentExePath,
   buildAgentConfig,
@@ -31,7 +32,9 @@ const app = createTestApp();
 let stubDistDir: string;
 let playerId: string;
 
-before(() => {
+before(async () => {
+  const { body } = await request(app).post('/api/players').send({ name: 'Download Tester' }).expect(201);
+  playerId = body.id;
   stubDistDir = fs.mkdtempSync(path.join(os.tmpdir(), 'respawn-agent-dist-'));
   fs.writeFileSync(path.join(stubDistDir, 'respawn-agent.exe'), 'stub agent executable');
   process.env.AGENT_DIST_DIR = stubDistDir;
@@ -110,11 +113,8 @@ test('buildUninstallBat removes launchers from the Windows known Desktop folder'
   assert.match(script, /Respawn-Agent Steuerung\.lnk/);
   assert.match(script, /Respawn-Agent Steuerung\.url/);
 
-  // The agent ships the same cleanup for its in-app uninstall, and the two
-  // live on opposite sides of a module boundary that has no shared code path.
-  // When they drifted apart before, one uninstall route silently left a dead
-  // shortcut on a redirected Desktop while every test stayed green. This is
-  // the only check that fails on that drift.
+  // uninstaller.test.js runs the agent's identical cleanup against a
+  // redirected Desktop on Windows. Keep both generated commands in sync.
   const agentUninstallerPath = path.join(__dirname, '..', '..', '..', 'agent', 'src', 'uninstaller.js');
   assert.ok(fs.existsSync(agentUninstallerPath), `agent uninstaller not found at ${agentUninstallerPath}`);
   const agentUninstaller = require(agentUninstallerPath) as {
@@ -125,28 +125,6 @@ test('buildUninstallBat removes launchers from the Windows known Desktop folder'
     buildDesktopShortcutCleanupPowerShell(),
     'the in-app uninstall and uninstall.bat must remove the same shortcuts from the same Desktop folder'
   );
-});
-
-test('the generated cleanup removes launchers from a redirected Desktop', {
-  skip: process.platform !== 'win32',
-}, () => {
-  const redirectedDesktop = fs.mkdtempSync(path.join(os.tmpdir(), "respawn-agent-redirected-O'Brien-"));
-  const launcher = path.join(redirectedDesktop, 'Respawn-Agent Steuerung.lnk');
-  const legacyLauncher = path.join(redirectedDesktop, 'Respawn-Agent Steuerung.url');
-  fs.writeFileSync(launcher, 'placeholder');
-  fs.writeFileSync(legacyLauncher, 'placeholder');
-
-  try {
-    const command = buildDesktopShortcutCleanupPowerShell('$env:RESPAWN_TEST_DESKTOP');
-    execFileSync('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', command], {
-      env: { ...process.env, RESPAWN_TEST_DESKTOP: redirectedDesktop },
-      windowsHide: true,
-    });
-    assert.equal(fs.existsSync(launcher), false);
-    assert.equal(fs.existsSync(legacyLauncher), false);
-  } finally {
-    fs.rmSync(redirectedDesktop, { recursive: true, force: true });
-  }
 });
 
 test('the generated upgrade command releases a running Windows executable for replacement', {
@@ -240,24 +218,14 @@ test('agentExePath honours AGENT_DIST_DIR and falls back to the shipped director
   process.env.AGENT_DIST_DIR = stubDistDir;
 });
 
-test('setup: a player', async () => {
-  const p = await request(app).post('/api/players').send({ name: 'Download Tester' });
-  playerId = p.body.id;
+test('GET /api/agent-download rejects an invalid session', async () => {
+  await request(app).get('/api/agent-download').set('Cookie', `${SESSION_COOKIE_NAME}=invalid-test-session`).expect(401);
 });
 
-test('GET /api/agent-download derives the player from the session', async () => {
-  const res = await request(app).get('/api/agent-download');
-  assert.equal(res.status, 200);
-});
-
-test('GET /api/agent-download 404s for an unknown player', async () => {
-  const res = await request(app).get('/api/agent-download?playerId=ghost');
-  assert.equal(res.status, 401);
-});
-
-test('GET /api/agent-download streams a real ZIP named after the player', async () => {
+test('GET /api/agent-download streams a ZIP named for the authenticated player', async () => {
   const res = await request(app)
-    .get(`/api/agent-download?playerId=${playerId}`)
+    .get('/api/agent-download')
+    .set('Cookie', sessionCookie(playerId))
     .buffer(true)
     .parse((r, cb) => {
       const chunks: Buffer[] = [];
@@ -277,7 +245,7 @@ test('GET /api/agent-download returns a clean 503 when the exe is not deployed',
   const emptyDir = fs.mkdtempSync(path.join(os.tmpdir(), 'respawn-agent-dist-empty-'));
   process.env.AGENT_DIST_DIR = emptyDir;
   try {
-    const res = await request(app).get(`/api/agent-download?playerId=${playerId}`);
+    const res = await request(app).get('/api/agent-download').set('Cookie', sessionCookie(playerId));
     assert.equal(res.status, 503);
     assert.match(res.body.error, /agent-dist\/respawn-agent\.exe fehlt/);
   } finally {

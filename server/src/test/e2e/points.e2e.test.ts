@@ -200,16 +200,32 @@ test('real LAN account, automatic orga credits, own-game betting notification, h
   assert.equal(hidden.wallet.total, 100);
   await setPointsVisibility(true);
   await admin.setViewportSize({ width: 1366, height: 720 });
-  const compactRail = await admin.locator('.desktop-nav-main').evaluate((element) => ({
-    // Automatic would swap a scrolling rail for the laptop shell, which hides
-    // the rail and would make the overflow below trivially zero.
-    layoutMode: document.documentElement.dataset.layoutMode,
-    overflow: element.scrollHeight - element.clientHeight,
-    rowHeights: Array.from(document.querySelectorAll('.desktop-nav-btn'), (button) => button.getBoundingClientRect().height),
-  }));
-  assert.equal(compactRail.layoutMode, 'desktop', `the full LAN rail stays on a small desktop: ${JSON.stringify(compactRail)}`);
-  assert.ok(compactRail.overflow <= 1, `the full LAN rail fits a small desktop: ${JSON.stringify(compactRail)}`);
-  assert.ok(compactRail.rowHeights.every((height) => height >= 31 && height <= 33));
+  await admin.evaluate(() => document.fonts.ready.then(() => undefined));
+  const compactRail = await admin.locator('.desktop-nav-main').evaluate((element) => {
+    // Measure the full rail even when Automatic currently hides it.
+    const root = document.documentElement;
+    const previousMode = root.getAttribute('data-layout-mode');
+    root.dataset.layoutMode = 'desktop';
+    try {
+      return {
+        overflow: element.scrollHeight - element.clientHeight,
+        rowHeights: Array.from(document.querySelectorAll('.desktop-nav-btn'), (button) => button.getBoundingClientRect().height),
+      };
+    } finally {
+      if (previousMode === null) root.removeAttribute('data-layout-mode');
+      else root.setAttribute('data-layout-mode', previousMode);
+    }
+  });
+  const railFits = compactRail.overflow <= 1;
+  // The 720px fit is a Linux reference. Native fonts can need more space
+  // elsewhere, where Automatic must switch to the laptop navigation.
+  if (process.platform === 'linux') {
+    assert.ok(railFits, `the full LAN rail fits the Linux reference viewport: ${JSON.stringify(compactRail)}`);
+  }
+  assert.ok(compactRail.rowHeights.length > 0 && compactRail.rowHeights.every((height) => height >= 31 && height <= 33));
+  const nav = railFits ? '.desktop-nav' : '.bottom-nav';
+  const mode = railFits ? 'desktop' : 'laptop';
+  await admin.locator(`html[data-layout-mode="${mode}"] ${nav}`).waitFor();
   await admin.setViewportSize({ width: 1440, height: 900 });
   await navigate(member, 'points');
   await member.getByRole('region', { name: 'Mein Punktekonto' }).getByText('100', { exact: true }).first().waitFor();
@@ -253,7 +269,6 @@ test('real LAN account, automatic orga credits, own-game betting notification, h
     assert.equal(await admin.locator('#lb-filter-search').isVisible(), true);
     assert.equal(await admin.locator('#add-match-btn').isVisible(), true);
     assert.equal(await admin.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth), true);
-    await admin.screenshot({ path: `test-results/points-ranking-${width}.png`, fullPage: true, animations: 'disabled' });
   }
   await admin.locator('#lb-filter-search').fill('Punkte-');
   await admin.keyboard.press('Enter');
@@ -290,7 +305,6 @@ test('real LAN account, automatic orga credits, own-game betting notification, h
     await member.setViewportSize({ width, height: 900 });
     await member.locator('#mm-betting-allowed').scrollIntoViewIfNeeded();
     assert.ok(await member.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth));
-    await member.screenshot({ path: `test-results/match-betting-choice-${width}.png`, animations: 'disabled' });
   }
   await member.setViewportSize({ width: 390, height: 844 });
   // The only disclosure before the first draw is the empty history. Its
@@ -500,7 +514,6 @@ test('real LAN account, automatic orga credits, own-game betting notification, h
   assert.ok(outcomeGeometry.left.every((left) => left === outcomeGeometry.left[0]));
   assert.ok(outcomeGeometry.tops.every((top, index) => !index || top > outcomeGeometry.tops[index - 1]));
   assert.ok(outcomeGeometry.labels.includes('Unentschieden'));
-  await tipDetails.screenshot({ path: 'test-results/points-tip-details.png', animations: 'disabled' });
   await member.setViewportSize({ width: 390, height: 844 });
   await member.keyboard.press('Escape');
   await navigate(member, 'matchmaking');
@@ -881,9 +894,7 @@ test('token-only kiosk pages every result participant and removes point columns 
     await results.getByRole('table', { name: game.name, exact: true }).waitFor();
     await results.getByText('korrigiert', { exact: true }).waitFor();
     assert.deepEqual(errors, []);
-    await kiosk.screenshot({ path: 'test-results/kiosk-results-desktop.png' });
     await kiosk.setViewportSize({ width: 390, height: 900 });
-    await kiosk.screenshot({ path: 'test-results/kiosk-results-phone.png' });
     const tournament = await api('/api/tournaments', 'POST', {
       gameId: game.id, name: 'Broadcast-Pokal', format: 'single_elimination',
       teams: ids.slice(0, 2).map((id) => ({ playerIds: [id] })),
@@ -1081,7 +1092,6 @@ test('category history and reasoned own and foreign corrections stay consistent 
     assert.equal(await admin.getByText('Beim Erledigen erhält der erste fremde Helfer einmalig 3 Orga-Punkte.', { exact: true }).count(), 0, 'fixed rewards do not add explanatory copy to every task form');
     await admin.setViewportSize({ width: 390, height: 844 });
     await admin.locator('#toast-container .toast').waitFor({ state: 'detached' });
-    await admin.screenshot({ path: 'test-results/todo-points-form-phone.png', animations: 'disabled' });
     await admin.locator('#checklist-todo-form [type=submit]').click();
     await admin.locator('#checklist-todo-form').waitFor({ state: 'detached' });
     const todo = (await api('/api/checklist/tasks')).tasks.find((task: any) => task.title === 'Switch nach der LAN einpacken');
@@ -1107,7 +1117,6 @@ test('category history and reasoned own and foreign corrections stay consistent 
       }
     }
     await member.setViewportSize({ width: 390, height: 844 });
-    await member.screenshot({ path: 'test-results/category-points-phone.png', fullPage: true });
     await openSection(member, 'history');
     await history.locator('[data-category-entry]').first().click();
     await member.getByRole('dialog', { name: 'Kategorie-Buchung', exact: true }).waitFor();
@@ -1118,7 +1127,6 @@ test('category history and reasoned own and foreign corrections stay consistent 
     await correctInUi(own.id, -1, 'Eigene Korrektur bei ausgeblendeter Teilnehmeransicht');
     assert.equal((await api(`/api/points?eventId=${event.id}`)).categoryBalances.orga, -1);
     await administration.getByText('Eigene Korrektur bei ausgeblendeter Teilnehmeransicht', { exact: true }).waitFor();
-    await admin.screenshot({ path: 'test-results/category-points-admin.png', fullPage: true });
     await navigate(member, 'checklist');
     await member.locator(`[data-task-detail="${todo.id}"]`).click();
     assert.equal(await member.getByText('Orga-Punkte', { exact: true }).count(), 0);
@@ -1211,7 +1219,6 @@ test('a participant reports awarded points, the sole admin reviews anonymously, 
   assert.ok(!(await adminInbox.innerText()).includes('Points Alice'));
   const blocked = await fetch(`${server.baseUrl}/api/points/close`, { method: 'POST', headers: { cookie, 'content-type': 'application/json' }, body: '{}' });
   assert.equal(blocked.status, 409);
-  await admin.screenshot({ path: 'test-results/points-report-admin-1440.png', fullPage: true, animations: 'disabled' });
   await adminInbox.getByRole('button', { name: 'Zum Punktejournal', exact: true }).click();
   await admin.locator('[data-admin-category-account]').selectOption('orga');
   await admin.locator('[data-admin-category-query]').fill(task.id);
@@ -1225,7 +1232,6 @@ test('a participant reports awarded points, the sole admin reviews anonymously, 
   await ownInbox.locator(`[data-points-report-id="${reportId}"]`).getByText('In Ordnung', { exact: true }).waitFor();
   await member.setViewportSize({ width: 320, height: 568 });
   assert.equal(await member.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth), true);
-  await member.screenshot({ path: 'test-results/points-report-member-320.png', fullPage: true, animations: 'disabled' });
   while (await admin.locator('.modal-backdrop').count()) await admin.keyboard.press('Escape');
   while (await member.locator('.modal-backdrop').count()) await member.keyboard.press('Escape');
   const marketIds: string[] = [];
