@@ -6169,6 +6169,16 @@ registerMigration({ version: 139, name: 'allow the same Jam track to be requeste
     CREATE INDEX IF NOT EXISTS idx_music_requests_session_track ON music_requests(session_id, track_uri, status);`);
 } });
 
+registerMigration({ version: 140, name: 'store optional server details on open matchmaking draws', up: () => {
+  // Players note where an open Match is hosted (server address and password)
+  // right on its draw. Both stay optional; existing draws simply have none.
+  const columns = db.prepare('PRAGMA table_info(matchmaking_draws)').all() as Array<{ name: string }>;
+  if (!columns.some((column) => column.name === 'server_address'))
+    db.exec('ALTER TABLE matchmaking_draws ADD COLUMN server_address TEXT');
+  if (!columns.some((column) => column.name === 'server_password'))
+    db.exec('ALTER TABLE matchmaking_draws ADD COLUMN server_password TEXT');
+} });
+
 runRegisteredMigrations();
 
 // The active default-group role is the source of truth for instance admin
