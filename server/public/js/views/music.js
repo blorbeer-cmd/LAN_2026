@@ -392,7 +392,7 @@ function requestQueueHtml(session) {
       ${rows.length
         ? `<div class="music-queue-list${draggable ? ' is-draggable' : ''}${sortable ? ' is-sortable' : ''}" role="table" aria-label="Als Nächstes">${rows.join('')}</div>`
         : emptyStateHtml('Noch keine Wünsche.')}
-      ${draggable ? `<div class="music-queue-trash" data-music-queue-trash hidden role="status" aria-live="polite">${icon('trash')}<strong>Hier ablegen zum Entfernen</strong></div>` : ''}
+      ${draggable ? `<div class="drag-remove-zone" data-music-queue-trash hidden role="status" aria-live="polite">${icon('trash')}<strong>Hier ablegen zum Entfernen</strong></div>` : ''}
     </section>`;
 }
 

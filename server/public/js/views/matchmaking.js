@@ -634,10 +634,33 @@ function isDragOutTarget(event) {
   return !event.target.closest(`[data-draw-teams="${CSS.escape(draggedDrawPlayer.drawId)}"]`);
 }
 
+// Same bottom drop target as the Jam queue. It lives in #view-container, so a
+// drop on it counts as a drop outside the lineup; a rerender drops the node
+// and the next drag creates it again.
+function dragRemoveZone() {
+  const view = document.getElementById('view-container');
+  if (!view) return null;
+  let zone = view.querySelector(':scope > [data-draw-remove-zone]');
+  if (!zone) {
+    view.insertAdjacentHTML('beforeend', `<div class="drag-remove-zone" data-draw-remove-zone hidden role="status" aria-live="polite">${icon('trash')}<strong>Hier ablegen zum Entfernen</strong></div>`);
+    zone = view.querySelector(':scope > [data-draw-remove-zone]');
+  }
+  return zone;
+}
+
+function showDragRemoveZone(visible) {
+  const zone = visible ? dragRemoveZone() : document.querySelector('[data-draw-remove-zone]');
+  if (!zone) return;
+  zone.hidden = !visible;
+  zone.classList.remove('is-over');
+}
+
 function wireDragOutRemoval() {
   if (dragOutWired) return;
   dragOutWired = true;
   document.addEventListener('dragover', (event) => {
+    const zone = draggedDrawPlayer?.removable ? document.querySelector('[data-draw-remove-zone]') : null;
+    zone?.classList.toggle('is-over', event.target instanceof Node && zone.contains(event.target));
     if (!isDragOutTarget(event)) return;
     event.preventDefault();
     event.dataTransfer.dropEffect = 'move';
@@ -647,6 +670,7 @@ function wireDragOutRemoval() {
     event.preventDefault();
     const { drawId, playerId } = draggedDrawPlayer;
     draggedDrawPlayer = null;
+    showDragRemoveZone(false);
     removeDrawPlayer(drawId, playerId);
   });
 }
@@ -735,6 +759,7 @@ function wireDrawCards(container, ctx) {
     });
     draggedPlayer = null;
     draggedDrawPlayer = null;
+    showDragRemoveZone(false);
   };
 
   container.querySelectorAll('[data-move-draw]').forEach((playerRow) => {
@@ -742,6 +767,7 @@ function wireDrawCards(container, ctx) {
       draggedPlayer = { drawId: playerRow.dataset.moveDraw, playerId: playerRow.dataset.movePlayer };
       draggedDrawPlayer = { ...draggedPlayer, removable: playerRow.dataset.removable === 'true' };
       playerRow.classList.add('is-dragging');
+      if (draggedDrawPlayer.removable) showDragRemoveZone(true);
       event.dataTransfer.effectAllowed = 'move';
       event.dataTransfer.setData('text/plain', JSON.stringify(draggedPlayer));
     });
