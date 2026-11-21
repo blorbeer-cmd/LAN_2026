@@ -610,15 +610,46 @@ test('large free-for-all Matches tip the top two from six and the top three from
   assert.deepEqual((await automaticMarket(f, 'draw', nine.id)).winners, ['0', '1', '2', '3'], 'a shared third place is in the top three');
   assert.deepEqual(f.players.slice(0, 2).map((id) => wallet(f.eventId, id).total), [112, 85]);
 
+  // Once the top-two market holds tips, a winner-only result is refused, so
+  // a dialog opened before the tips arrived cannot refund them.
   const unranked = await ffa(everyone.slice(0, 6));
   const unrankedMarket = await automaticMarket(f, 'draw', unranked.id);
   for (const [playerId, outcomeId] of [[f.players[0], '0'], [f.players[1], '1']] as const)
     assert.equal((await tip(unrankedMarket.id, playerId, outcomeId, 5)).status, 200);
-  assert.equal((await record(unranked.id, unrankedMarket)).status, 201);
-  const refunded = await automaticMarket(f, 'draw', unranked.id);
-  assert.deepEqual([refunded.status, refunded.refundReason], ['refunded', 'Keine vollständige Platzierung eingetragen'],
-    'a winner-only result places nobody else and refunds the top-two market');
-  assert.deepEqual(f.players.slice(0, 2).map((id) => wallet(f.eventId, id).total), [112, 85]);
+  const refused = await record(unranked.id, unrankedMarket);
+  const placementError = 'Für die Top-2-Wette bitte für jedes Team einen Punktestand eintragen.';
+  assert.deepEqual([refused.status, refused.body.error], [409, placementError]);
+  assert.equal(db.prepare('SELECT match_id FROM matchmaking_draws WHERE id=?').pluck().get(unranked.id), null);
+  assert.equal((await automaticMarket(f, 'draw', unranked.id)).status, 'open');
+  assert.deepEqual(f.players.slice(0, 2).map((id) => wallet(f.eventId, id).held), [5, 5]);
+  const ranked = await record(unranked.id, unrankedMarket, [1, 3, 2, 4, 5, 6]);
+  assert.equal(ranked.status, 201);
+  const paid = await automaticMarket(f, 'draw', unranked.id);
+  assert.equal(paid.status, 'settled');
+  const correction = await request(app).patch(`/api/matches/${ranked.body.id}`).send({
+    teams: paid.outcomes.map((o) => ({ playerIds: o.playerIds })), winnerTeamIndex: 0,
+    bettingCorrection: { reason: 'Nur Sieger', revisions: [{ id: paid.id, revision: paid.revision }] } });
+  assert.deepEqual([correction.status, correction.body.error], [409, placementError],
+    'a correction cannot drop the places a settled top-two market was paid on');
+  assert.equal((await automaticMarket(f, 'draw', unranked.id)).status, 'settled');
+  // A tip racing a winner-only result: either the tip lands first and the
+  // result is refused, or the result closes the market and the tip is refused.
+  const racing = await ffa(everyone.slice(0, 6));
+  const racingMarket = await automaticMarket(f, 'draw', racing.id);
+  assert.equal((await tip(racingMarket.id, f.players[0], '0', 2)).status, 200);
+  const [raceTip, raceResult] = await Promise.all([tip(racingMarket.id, f.players[1], '1', 2), record(racing.id, racingMarket)]);
+  assert.deepEqual([raceTip.status, raceResult.status], [200, 409], 'the existing tip already demands every place');
+  const lone = await ffa(everyone.slice(1, 7));
+  const loneMarket = await automaticMarket(f, 'draw', lone.id);
+  const [loneTip, loneResult] = await Promise.all([tip(loneMarket.id, f.players[0], '0', 2), record(lone.id, loneMarket)]);
+  assert.ok((loneTip.status === 200 && loneResult.status === 409) || (loneTip.status === 409 && loneResult.status === 201),
+    JSON.stringify([loneTip.status, loneResult.status]));
+  const loneRow = db.prepare('SELECT status FROM betting_rounds WHERE id=?').pluck().get(loneMarket.id);
+  assert.equal(loneRow, loneTip.status === 200 ? 'open' : 'refunded', 'no accepted tip is refunded by a winner-only result');
+  // Without tips a winner-only result simply refunds the empty market.
+  const untipped = await ffa(everyone.slice(0, 7));
+  assert.equal((await record(untipped.id, await automaticMarket(f, 'draw', untipped.id))).status, 201);
+  assert.equal((await automaticMarket(f, 'draw', untipped.id)).status, 'refunded');
 
   // Removing the only player of a team removes that team: six become five
   // teams and the top-two market gives way to a winner market.

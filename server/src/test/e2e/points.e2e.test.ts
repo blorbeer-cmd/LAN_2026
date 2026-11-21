@@ -1216,28 +1216,38 @@ test('a six-team free-for-all Match tips the top two and records its result only
       .find((row: { id: string }) => row.id === round.id);
     assert.deepEqual([saved.mine.outcomeId, saved.mine.stake], [choice.id, 3]);
 
-    // The top-two tip needs every team's place: the result dialog asks for
-    // point totals only and refuses an empty field, while an entered 0 counts.
+    // A result dialog opened before the first tip offers the winner mode.
+    // Tips placed meanwhile by others make it reopen asking every team's
+    // score: an empty field blocks saving, an entered 0 counts.
+    const raceGame = await api('/api/games', 'POST', { name: 'Top-2-Rennen' });
+    const race = await api('/api/matchmaking', 'POST', { gameId: raceGame.id, playerIds: field, teamCount: field.length });
+    const raceRound = (await api(`/api/points?eventId=${event.id}`)).rounds.find((row: { sourceId: string }) => row.sourceId === race.id);
     await navigate(member, 'matchmaking');
     const openDraws = member.locator('.matchmaking-open-draws');
     if (!await openDraws.evaluate((element) => (element as HTMLDetailsElement).open)) await openDraws.locator(':scope > summary').click();
-    await clickActionMenuEntry(member.locator(`#match-history-open [data-record-draw="${draw.id}"]`));
+    await clickActionMenuEntry(member.locator(`#match-history-open [data-record-draw="${race.id}"]`));
     const result = member.getByRole('dialog', { name: 'Ergebnis', exact: true });
     await result.waitFor();
-    assert.equal(await result.locator('[data-result-mode]').count(), 0, 'placement tips fix the score mode');
-    for (let index = 0; index < 5; index++) await result.locator(`#draw-result-score-${index}`).fill(String(10 - index));
+    assert.equal(await result.locator('[data-result-mode]').count(), 2, 'without tips the winner mode is offered');
+    for (const [session, outcomeId] of [[bob.cookie, '0'], [cookie, '1']] as const)
+      await api(`/api/points/rounds/${raceRound.id}/tip?eventId=${event.id}`, 'PUT', { outcomeId, stake: 4 }, session);
+    await result.locator('[data-result-winners] .tournament-result-pick').first().click();
+    await result.locator('[data-result-save]').click();
+    await member.getByText('Inzwischen gibt es Platzierungstipps: Bitte für jedes Team einen Punktestand eintragen.', { exact: true }).waitFor();
+    await result.locator('[data-result-scores]:not([data-inactive])').waitFor();
+    assert.equal(await result.locator('[data-result-mode]').count(), 0, 'the reopened dialog asks for scores only');
+    const raceStatus = async () => (await api(`/api/points?eventId=${event.id}`)).rounds.find((row: { id: string }) => row.id === raceRound.id);
+    assert.equal((await raceStatus()).status, 'open', 'no winner-only result was recorded');
+    for (const [index, score] of [10, 1, 9, 8, 7].entries()) await result.locator(`#draw-result-score-${index}`).fill(String(score));
     await result.locator('[data-result-save]').click();
     await member.getByText('Bitte für jedes Team einen Punktestand eintragen, auch 0.', { exact: true }).waitFor();
     assert.equal(await result.locator('#draw-result-score-5').evaluate((input) => input === document.activeElement), true);
-    assert.equal((await api(`/api/points?eventId=${event.id}`)).rounds.find((row: { id: string }) => row.id === round.id).status, 'open',
-      'nothing is recorded while a team has no value');
+    assert.equal((await raceStatus()).status, 'open', 'nothing is recorded while a team has no value');
     await result.locator('#draw-result-score-5').fill('0');
     await result.locator('[data-result-save]').click();
     await result.waitFor({ state: 'detached' });
-    const settled = (await api(`/api/points?eventId=${event.id}`, 'GET', undefined, alice.cookie)).rounds
-      .find((row: { id: string }) => row.id === round.id);
-    assert.equal(settled.status, 'refunded', 'a pool with tips on one side only is refunded');
-    assert.notEqual(settled.refundReason, 'Keine vollständige Platzierung eingetragen', 'all six places were recorded');
+    const settled = await raceStatus();
+    assert.deepEqual([settled.status, settled.winners], ['settled', ['0', '2']], 'all six places decide the top two');
     assert.deepEqual(pageErrors, []);
   } finally {
     // The extra accounts take part in this event only.

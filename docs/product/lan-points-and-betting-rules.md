@@ -186,9 +186,13 @@ dieser Regel für große Matches entstanden sind, bleiben bis zu einer Aufstellu
 
 Top 2 und Top 3 brauchen die Platzierung aller Teams. Sobald eine solche Wette Tipps hat, fragt der
 Ergebnisdialog des Matches daher nur den Punktestand ab und verlangt für jedes Team einen
-ausdrücklich eingetragenen Wert; 0 ist dabei ein gültiger Wert. Wird über die API nur ein Sieger
-eingetragen, wird die Wette mit dem Grund „Keine vollständige Platzierung eingetragen“ vollständig
-erstattet; eine spätere Ergebniskorrektur mit Platzierung rechnet sie regulär ab.
+ausdrücklich eingetragenen Wert; 0 ist dabei ein gültiger Wert. Gehen die ersten Tipps erst ein,
+während der Dialog schon offen ist, öffnet er sich beim Speichern in diesem Modus neu und behält
+bereits eingetippte Werte. Der Server lehnt ein Ergebnis oder eine Ergebniskorrektur ohne
+vollständige Platzierung in diesem Fall mit 409 ab („Für die Top-2-Wette bitte für jedes Team einen
+Punktestand eintragen.“). Ohne Tipps erstattet ein reines Siegerergebnis die leere Wette; eine
+mit dem Grund „Keine vollständige Platzierung eingetragen“ erstattete Wette rechnet eine spätere
+Ergebniskorrektur mit Platzierung regulär ab.
 
 ## Abrechnung und Korrektur
 

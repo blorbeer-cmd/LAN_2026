@@ -1,4 +1,4 @@
-import { withBettingAccounting, assertMatchEditable, correctableDrawRounds, validateBettingCorrection, rebookCorrectedRounds } from '../betting';
+import { withBettingAccounting, assertMatchEditable, assertPlacementResult, correctableDrawRounds, validateBettingCorrection, rebookCorrectedRounds } from '../betting';
 // Recorded match results (FR-22, FR-25). Result details (teams + winner) are
 // stored as JSON with an explicit draw flag so missing results stay unscored.
 // Each match is
@@ -228,6 +228,7 @@ matchesRouter.post('/', (req, res) => {
   };
   try {
     withBettingAccounting(eventId, () => {
+      if (drawId) assertPlacementResult(drawId, validated);
       db.prepare('INSERT INTO matches (id, game_id, event_id, played_at, result, group_id, created_by, recorded_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').run(
         row.id,
         row.game_id,
@@ -362,6 +363,9 @@ matchesRouter.patch('/:id', resolveMatch, (req, res) => {
     const rounds = correctableDrawRounds(req.group!.id, existing.id);
     if (!rounds.length) assertMatchEditable(req.group!.id, existing.id);
     const correction = validateBettingCorrection(req, rounds);
+    if (nextResult !== existing.result)
+      for (const draw of db.prepare('SELECT id FROM matchmaking_draws WHERE group_id = ? AND match_id = ?')
+        .all(req.group!.id, existing.id) as Array<{ id: string }>) assertPlacementResult(draw.id, nextResultObj);
     if (nextGameId !== existing.game_id || nextPlayedAt !== existing.played_at || nextResult !== existing.result) {
       db.prepare('UPDATE matches SET game_id = ?, played_at = ?, result = ?, updated_at = ?, result_revision = result_revision + 1 WHERE id = ?')
         .run(nextGameId, nextPlayedAt, nextResult, Date.now(), existing.id);

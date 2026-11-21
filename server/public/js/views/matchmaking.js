@@ -1,5 +1,5 @@
 import { historyItemHtml as sharedHistoryItemHtml } from '../historyItem.js';
-import { competitionBettingHtml, competitionStartActionHtml, competitionBettingSummaryHtml, competitionMatchesTipFilter, wireCompetitionBetting, competitionCorrection, competitionNeedsPlacements, bettingHiddenHintHtml } from './points.js';
+import { competitionBettingHtml, competitionStartActionHtml, competitionBettingSummaryHtml, competitionMatchesTipFilter, wireCompetitionBetting, competitionCorrection, competitionNeedsPlacements, competitionNeedsPlacementsNow, bettingHiddenHintHtml } from './points.js';
 let pointsContext = null;
 // Matchmaking view (FR-16..18): pick a game + present players, draw balanced
 // teams. Results are stored in shared state (updated live via the
@@ -509,32 +509,51 @@ function openDrawServerDialog(draw, ctx) {
 }
 
 // Draw results keep the Match API shape; only the form is shared.
-function openDrawResultDialog(draw, ctx) {
+function openDrawResultDialog(draw, ctx, { requirePlacements = false, enteredScores = null } = {}) {
   const recorded = Boolean(draw.matchId);
   const hasValues = recorded && draw.teams.some((team) => team.score != null);
   const teams = draw.teams.map((team, index) => ({ name: defaultDrawTeamName(draw, team, index), players: team.players.map((player) => player.name) }));
   const correction = competitionCorrection('draw', draw.id);
   // Top-two and top-three tips need every team's place, which only point totals give.
-  const placements = competitionNeedsPlacements('draw', draw.id);
+  const placements = requirePlacements || competitionNeedsPlacements('draw', draw.id);
   const mode = placements || hasValues ? 'score' : 'winner';
   const { close, el } = openModal('Ergebnis', `
     <div class="muted result-dialog-subtitle">${escapeHtml(draw.gameName)} · ${draw.teams.length} Teams${placements ? ' · Punktestand für die Platzierungswette' : ''}</div>
     ${recorded ? correction.html : ''}
-    ${resultFormHtml({ teams, prefix: 'draw-result', mode, fixedMode: placements, requireAllScores: placements, winnerIndex: recorded && !hasValues ? draw.winnerTeamIndex ?? (draw.isDraw ? -1 : undefined) : undefined, scores: draw.teams.map((team) => team.score) })}`);
+    ${resultFormHtml({ teams, prefix: 'draw-result', mode, fixedMode: placements, requireAllScores: placements, winnerIndex: recorded && !hasValues ? draw.winnerTeamIndex ?? (draw.isDraw ? -1 : undefined) : undefined, scores: enteredScores ?? draw.teams.map((team) => team.score) })}`);
   wireResultForm(el, {
     teams,
     mode,
     requireAllScores: placements,
     onSave: async ({ mode, scores, ranks, winnerIndex }) => {
+      // Placement tips that arrived after opening need every team's score:
+      // reopen the dialog in that mode instead of saving a winner-only result.
+      // Typed values carry over as entered; an empty field stays empty.
+      const reopenForPlacements = () => {
+        const enteredScores = mode === 'score' ? [...el.querySelectorAll('[data-result-score]')].map((input) => input.value) : null;
+        close();
+        showToast('Inzwischen gibt es Platzierungstipps: Bitte für jedes Team einen Punktestand eintragen.', { error: true });
+        openDrawResultDialog(draw, ctx, { requirePlacements: true, enteredScores });
+        return false;
+      };
+      if (!placements && await competitionNeedsPlacementsNow('draw', draw.id).catch(() => false)) return reopenForPlacements();
       const payloadTeams = draw.teams.map((team, index) => ({
         playerIds: team.players.map((player) => player.id),
         score: mode === 'score' ? scores[index] : null,
         rank: mode === 'score' ? ranks[index] : null,
       }));
-      if (recorded) {
-        await api.matches.update(draw.matchId, { teams: payloadTeams, winnerTeamIndex: winnerIndex, isDraw: winnerIndex === null, ...correction.payload(el) });
-      } else {
-        await api.matches.create({ gameId: draw.gameId, drawId: draw.id, teams: payloadTeams, winnerTeamIndex: winnerIndex, isDraw: winnerIndex === null });
+      try {
+        if (recorded) {
+          await api.matches.update(draw.matchId, { teams: payloadTeams, winnerTeamIndex: winnerIndex, isDraw: winnerIndex === null, ...correction.payload(el) });
+        } else {
+          await api.matches.create({ gameId: draw.gameId, drawId: draw.id, teams: payloadTeams, winnerTeamIndex: winnerIndex, isDraw: winnerIndex === null });
+        }
+      } catch (error) {
+        // The server refuses a result without places once such tips exist.
+        if (!placements && error.status === 409 && await competitionNeedsPlacementsNow('draw', draw.id).catch(() => false)) return reopenForPlacements();
+        throw error;
+      }
+      if (!recorded) {
         if (state.lastMatchmaking?.id === draw.id) state.lastMatchmaking = null;
         // Open lineups of every game are listed, but Historie shows the
         // selected game only: follow the result so it appears there.

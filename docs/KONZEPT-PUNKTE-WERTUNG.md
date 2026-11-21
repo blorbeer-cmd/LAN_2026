@@ -177,8 +177,8 @@ Teamzahl: bis fünf Teams wird der Sieger getippt, ab sechs Teams die **Top 2**,
 **Top 3**. Die Platzierungswette ersetzt den Siegertipp; pro Match bleibt es bei einer Wette.
 Gleichstand an der Grenze zählt mit; es können mehrere Ausgänge zugleich gewinnen. Abgerechnet wird
 mit derselben Gewinnbegrenzung, wobei alle gewinnenden Ausgänge gemeinsam die Gewinnerseite bilden.
-Platzierungswetten brauchen eine vollständige Platzierung; bei Tipps fragt der Ergebnisdialog
-deshalb den Punktestand ab, ein reines Siegerergebnis erstattet die Wette. Verworfen wurden eine
+Platzierungswetten brauchen eine vollständige Platzierung; bei Tipps fragen Ergebnisdialog und
+Server deshalb den Punktestand jedes Teams ab und lehnen ein reines Siegerergebnis ab. Verworfen wurden eine
 „Rote Laterne“ (Tipp auf den Letzten), exakte Reihenfolgen und komplette Ranglisten-Tipps. Details:
 [Produktregeln](product/lan-points-and-betting-rules.md#top-2--und-top-3-wetten-bei-matches-mit-vielen-teams).
 

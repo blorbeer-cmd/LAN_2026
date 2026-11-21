@@ -285,10 +285,21 @@ export function competitionBettingHtml(type, id, ctx, options = {}) {
 
 // A top-two or top-three market is decided by complete ranks only, so a Match
 // whose market holds such tips records point totals.
-export function competitionNeedsPlacements(type, id) {
-  const round = bettingRound(type, id);
+function needsPlacements(round) {
   return Boolean(round && topPlaces(round) && round.tipCount > 0
     && (['open', 'locked', 'settled'].includes(round.status) || round.rebooksOnCorrection));
+}
+export function competitionNeedsPlacements(type, id) {
+  return needsPlacements(bettingRound(type, id));
+}
+// Tips can arrive while a result dialog is open, so a result without every
+// team's place first asks the server for the current market. A winner market
+// cannot turn into a top market without a lineup change, which closes the dialog anyway.
+export async function competitionNeedsPlacementsNow(type, id) {
+  const known = bettingRound(type, id);
+  if (!state.activeEvent?.pointsEnabled || (known && !topPlaces(known))) return false;
+  const data = await pointsRequest('', {}, state.activeEvent.id);
+  return needsPlacements(data.rounds.find((round) => !round.replaced && round.sourceType === type && round.sourceId === id));
 }
 
 // The "Spiel starten" entry for a caller that renders the betting controls

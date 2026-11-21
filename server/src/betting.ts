@@ -135,6 +135,23 @@ export function betSourceState(groupId: string, eventId: string, type: BetSource
     invalid: source.invalid || type !== 'draw',
   };
 }
+// A winner-only result places nobody else; complete ranks or a declared
+// draw of everyone do.
+function ranksEveryTeam(result: MatchForScoring): boolean {
+  return result.teams.every((team) => Number.isInteger(team.rank) && team.rank! >= 1) ||
+    Boolean(result.isDraw && (result.winnerTeamIndex === null || result.winnerTeamIndex === undefined));
+}
+// Called inside the result write. Once a draw's top-two or top-three market
+// holds tips, a result without every team's place would refund them, also
+// when the tips arrived while a result dialog was already open. The write is
+// refused instead; a result with complete ranks settles the market.
+export function assertPlacementResult(drawId: string, result: MatchForScoring): void {
+  const market = db.prepare(`SELECT r.market FROM betting_rounds r WHERE r.source_type = 'draw' AND r.source_id = ?
+    AND r.market != 'winner' AND r.refund_cause IS NOT 'replaced' AND r.status IN ('open','locked','settled')
+    AND EXISTS (SELECT 1 FROM betting_tips t WHERE t.round_id = r.id)`).pluck().get(drawId) as Exclude<BetMarket, 'winner'> | undefined;
+  if (market && !ranksEveryTeam(result))
+    throw new PointsError(`Für die ${TOP_MARKET_TITLES[market].replace(' ', '-')}-Wette bitte für jedes Team einen Punktestand eintragen.`);
+}
 function competitionState(groupId: string, eventId: string, type: BetSource, id: string): CompetitionState {
   if (type === 'draw') {
     const draw = db
@@ -159,10 +176,7 @@ function competitionState(groupId: string, eventId: string, type: BetSource, id:
       : null;
     const placements = data ? computeMatchPlacements(data) : null;
     const winners = placements?.flatMap((placement, index) => placement.place === 1 ? [String(index)] : []) ?? [];
-    // A winner-only result places nobody else; complete ranks or a declared
-    // draw of everyone do.
-    const ranked = Boolean(data && placements && (data.teams.every((team) => Number.isInteger(team.rank) && team.rank! >= 1) ||
-      (data.isDraw && (data.winnerTeamIndex === null || data.winnerTeamIndex === undefined))));
+    const ranked = Boolean(data && placements && ranksEveryTeam(data));
     const mismatch =
       data &&
       JSON.stringify(data.teams.map((t) => [...t.playerIds].sort())) !==
