@@ -96,7 +96,72 @@ Turniersieger-Märkte bieten ihn nicht; ältere Märkte behalten ihre ursprüngl
 Eine neue Runde verbraucht keinen Kontingentplatz. Auch ein gespeichertes altes `maxRounds=0`
 deaktiviert keine neuen Wetten mehr. Sichtbarkeit und Festschreibung behalten ihre Wirkung.
 
-### Platzierungswetten bei Matches mit vielen Teams
+Pro Person und Runde gibt es einen Tipp. Bis zum Schließen lassen sich Auswahl und Einsatz
+ändern oder der Tipp zurücknehmen. Annahme und Journalreservierung erfolgen gemeinsam;
+parallele Einsätze können verfügbare Mittel nicht mehrfach verbrauchen. Bei negativem
+verfügbarem Guthaben sind neue Tipps und Änderungen gesperrt. Eine vollständige Rücknahme
+eines noch offenen Tipps bleibt möglich.
+
+Die persönliche Öffnungsmitteilung nennt Event und Runde, berücksichtigt Einwilligung und
+Stummschaltung und wird nicht doppelt gesendet. Für eine Auslosung geht sie erst 30 Sekunden nach
+dem Auslosen hinaus; wird in dieser Zeit neu ausgelost, erhält nur die behaltene Aufstellung eine
+Mitteilung. Märkte, die gemeinsam für ein Turnier öffnen, teilen sich eine Mitteilung („6 Spiele
+und der Turniersieger“). Sie wird zurückgezogen, sobald keiner dieser Turniermärkte mehr Tipps
+annimmt. Später einzeln öffnende Turnierspiele erhalten eine eigene Mitteilung.
+
+Wird für dasselbe Spiel und dieselben Spieler erneut „Teams auslosen“ gewählt, verwirft das die
+zuvor angezeigte Auslosung ohne Ergebnis: Sie bietet dauerhaft keine Wetten mehr an, auch wenn
+die LAN-Punkte gerade ausgeblendet sind und noch kein Markt besteht. Ein offener Markt schließt,
+angenommene Tipps werden erstattet. Eine Auslosung für andere Spieler oder ein anderes Spiel, eine bereits geschlossene
+Tippabgabe und eine Auslosung mit Ergebnis bleiben unberührt. Neue automatische Märkte bleiben bis zur
+ausdrücklichen Startaktion offen. Mitspieler oder Admins schließen vor Spielbeginn; beim
+ersten Turnierspiel wird zugleich der Gesamtsieger-Markt geschlossen. Bestehende explizite
+Fristen bleiben wirksam. Wird bei noch offenen Tipps ein Ergebnis eingetragen, schließt dies
+die Tippabgabe und rechnet die bereits angenommenen Tipps regulär ab. Ergebnis, Schließung
+und Abrechnung sind atomar; spätere Tipps werden abgewiesen. Das erste Turnierergebnis
+schließt auch den Gesamtsieger-Markt, dessen Abrechnung bis zum Turnierende wartet.
+Der Hintergrundlauf arbeitet auch ohne offenen Browser. Bei geschlossener Tippabgabe sind Einsätze unveränderlich.
+Mitspieler und Admins können eine manuell geschlossene Tippabgabe vor dem Ergebnis wieder öffnen.
+Dabei bleiben Einsätze und Wallet unverändert; auch ein leerer oder einseitiger Topf bleibt beim
+manuellen Schließen zunächst gesperrt und wird erst mit dem Ergebnis oder beim LAN-Abschluss
+abgerechnet beziehungsweise erstattet. Eine bereits abgelaufene feste Frist, ein begonnenes oder
+beendetes Turnier und eine festgeschriebene Wertung lassen sich damit nicht umgehen. Der
+Turniersieger-Markt bleibt geschlossen, solange ein Turnierspiel als gestartet markiert ist.
+Das Wiederöffnen und sein Audit werden atomar gespeichert; zwei gleichzeitige Versuche ergeben
+200/409. Bereits abgerechnete oder erstattete Märkte können nicht wieder geöffnet werden. Das gilt
+auch für bereits bezahlte Pools, die nach einer Ergebniskorrektur wieder auf ein Ergebnis warten.
+Der Sekundentakt gleicht nur Events mit fälliger Frist ab; ohne solche Frist nimmt er keine
+Schreibsperre für einen Quellenabgleich. Beim Start und alle 30 Sekunden läuft zusätzlich ein
+eventweise isolierter Wiederherstellungsabgleich. Fehler eines Events halten andere Events
+nicht auf; dauerhaft fehlerhafte Quellen werden bis zur Erholung nur einmal protokolliert.
+Erzeugung der Quelle und ihrer Märkte laufen atomar; Benachrichtigungen folgen erst nach Commit.
+Der Abruf des Punktekontos berechnet keine Ansprüche neu und schreibt keine Punkte.
+Teilnahme-/Einstellungsschreibzugriffe sowie Reaktivierung, Aktivierung der Mitgliedschaft
+und der Wechsel vom Testkonto zum normalen Konto buchen fehlendes Startguthaben über Datenbank-Trigger;
+Quellenänderungen und der Prozessstart synchronisieren die Kategorieansprüche.
+Migration 134 ergänzt diese Aktivierungspfade und finanziert bereits übersehene berechtigte
+Konten offener Wertungen einmalig nach. Bestehende Guthaben, Einsätze und abgeschlossene
+Wertungen bleiben erhalten; es gibt keinen erneuten Reset und keine zweite Startgutschrift.
+Migration 136 erweitert dieselben Trigger auf Testkonten in Testevents und finanziert deren
+fehlendes Startguthaben in offenen Wertungen einmalig nach.
+Während der Festschreibung neu berechtigte Konten werden erst beim begründeten Wiederöffnen
+finanziert. Die fehlende Startgutschrift und das Wiederöffnen bilden eine gemeinsame Transaktion;
+frühere Endstände bleiben unverändert.
+Nach Eventende sind neue Tipps gesperrt, während Ergebnisse und Verlauf sichtbar bleiben.
+
+Ändert sich die Aufstellung eines Wettbewerbs vor dem Spiel, etwa durch Verschieben eines Spielers
+im Feinschliff, durch Entfernen eines Spielers (auch wenn dabei ein Team wegfällt) oder durch ein
+korrigiertes Vorrundenspiel im K.-o.-Baum, gilt:
+
+- Ohne Tipps übernimmt der bestehende Markt die neue Aufstellung. Link und Mitteilung bleiben gültig.
+- Ein offener Markt mit Tipps wird vollständig erstattet. Im selben Schritt öffnet für dieselbe
+  Auslosung beziehungsweise Partie ein neuer Markt mit neuer Mitteilung, sobald beide Seiten
+  feststehen. Eine explizite Frist des ersetzten Marktes gilt für den neuen Markt weiter. Tipps auf
+  den ersetzten Markt werden abgewiesen. Er bleibt nur im Punkteverlauf.
+- Ein bereits geschlossener Markt mit Tipps oder abgelaufener Frist wird erstattet; die Tippabgabe
+  bleibt geschlossen.
+
+### Top-2- und Top-3-Wetten bei Matches mit vielen Teams
 
 Bei freien Matches richtet sich die Art der Wette nach der Teamzahl (Nutzerentscheidung,
 Migration 141, Spalte `market`):
@@ -107,18 +172,21 @@ Migration 141, Spalte `market`):
 | 6 bis 8 | **Top 2** | auf Platz 1 oder 2 landet |
 | ab 9 | **Top 3** | auf Platz 1, 2 oder 3 landet |
 
-Top 2 und Top 3 ersetzen den Siegertipp; pro Match gibt es weiterhin genau eine Wette. Ein
-geteilter Platz an der Grenze zählt mit, sodass mehrere Ausgänge zugleich gewinnen können.
+Top 2 und Top 3 ersetzen den Siegertipp; pro Match gibt es weiterhin genau eine Wette, und alle
+übrigen Regeln zu Tippabgabe, Einsatzgrenze, Mitteilung, Start und Wiederöffnen gelten unverändert.
+Ein geteilter Platz an der Grenze zählt mit, sodass mehrere Ausgänge zugleich gewinnen können.
 „Unentschieden“ ist dort nicht wählbar. Turniere tippen weiterhin immer den Sieger.
 
-Ändert sich die Teamzahl vor dem Spiel über eine Schwelle, etwa weil ein Spieler entfernt wird,
-gilt dieselbe Regel wie für andere Aufstellungsänderungen, nur dass auch ein Markt ohne Tipps
-ersetzt statt umgeschrieben wird: Der offene Markt wird erstattet und die passende Wettart öffnet
-neu. Offene Siegermärkte, die vor dieser Regel für große Matches entstanden sind, bleiben bis zu
-einer Aufstellungsänderung bestehen.
+Überschreitet eine Aufstellungsänderung vor dem Spiel eine Schwelle, etwa weil ein Spieler
+entfernt wird und dadurch aus sechs Teams fünf werden, gelten die Regeln oben mit einer Ergänzung:
+Auch ein offener Markt ohne Tipps übernimmt die neue Aufstellung nicht, sondern wird wie ein
+offener Markt mit Tipps ersetzt, damit die passende Wettart neu öffnet. Ein bereits geschlossener
+Markt wird wie bisher erstattet und die Tippabgabe bleibt geschlossen. Offene Siegermärkte, die vor
+dieser Regel für große Matches entstanden sind, bleiben bis zu einer Aufstellungsänderung bestehen.
 
 Top 2 und Top 3 brauchen die Platzierung aller Teams. Sobald eine solche Wette Tipps hat, fragt der
-Ergebnisdialog des Matches daher nur den Punktestand ab. Wird über die API nur ein Sieger
+Ergebnisdialog des Matches daher nur den Punktestand ab und verlangt für jedes Team einen
+ausdrücklich eingetragenen Wert; 0 ist dabei ein gültiger Wert. Wird über die API nur ein Sieger
 eingetragen, wird die Wette mit dem Grund „Keine vollständige Platzierung eingetragen“ vollständig
 erstattet; eine spätere Ergebniskorrektur mit Platzierung rechnet sie regulär ab.
 
@@ -154,9 +222,10 @@ wenn eine Teilbuchung scheitert.
 
 Ein nicht am Markt wählbares Remis, fehlende Tipps auf das eingetretene Ergebnis, Einsätze
 auf nur einen Ausgang und ein abgebrochener Wettbewerb führen zur vollständigen Erstattung.
-Bei Top-2- und Top-3-Wetten bilden alle gewinnenden Ausgänge gemeinsam die Gewinnerseite; erstattet
-wird, wenn alle Tipps auf der Gewinner- oder alle auf der Verliererseite liegen.
-Ein angebotenes Remis kann dagegen regulär gewinnen und wird genauso abgerechnet wie ein Sieger-Tipp.
+Bei Siegerwetten kann ein angebotenes Remis dagegen regulär gewinnen und wird genauso abgerechnet
+wie ein Sieger-Tipp. Bei Top-2- und Top-3-Wetten bilden alle gewinnenden Ausgänge gemeinsam die
+Gewinnerseite; erstattet wird, wenn alle Tipps auf der Gewinner- oder alle auf der Verliererseite
+liegen. Ein Remis aller Teams macht dort jeden Ausgang zum Gewinner und wird deshalb erstattet.
 Bei freien Matches gilt dieselbe Ergebnisinterpretation wie für Spielpunkte: vollständige
 Teamränge haben Vorrang vor einem separaten Siegerfeld, ein geteilter erster Rang gilt als Remis.
 Ein geteilter Turniersieg ist im Gesamtsieger-Markt nicht wählbar und führt deshalb zur

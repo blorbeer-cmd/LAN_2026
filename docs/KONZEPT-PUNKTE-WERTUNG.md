@@ -180,7 +180,7 @@ mit derselben Gewinnbegrenzung, wobei alle gewinnenden Ausgänge gemeinsam die G
 Platzierungswetten brauchen eine vollständige Platzierung; bei Tipps fragt der Ergebnisdialog
 deshalb den Punktestand ab, ein reines Siegerergebnis erstattet die Wette. Verworfen wurden eine
 „Rote Laterne“ (Tipp auf den Letzten), exakte Reihenfolgen und komplette Ranglisten-Tipps. Details:
-[Produktregeln](product/lan-points-and-betting-rules.md#platzierungswetten-bei-matches-mit-vielen-teams).
+[Produktregeln](product/lan-points-and-betting-rules.md#top-2--und-top-3-wetten-bei-matches-mit-vielen-teams).
 
 ### 4.2 Vollständige Rückerstattung
 

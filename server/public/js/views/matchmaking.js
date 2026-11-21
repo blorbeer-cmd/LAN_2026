@@ -520,10 +520,11 @@ function openDrawResultDialog(draw, ctx) {
   const { close, el } = openModal('Ergebnis', `
     <div class="muted result-dialog-subtitle">${escapeHtml(draw.gameName)} · ${draw.teams.length} Teams${placements ? ' · Punktestand für die Platzierungswette' : ''}</div>
     ${recorded ? correction.html : ''}
-    ${resultFormHtml({ teams, prefix: 'draw-result', mode, fixedMode: placements, winnerIndex: recorded && !hasValues ? draw.winnerTeamIndex ?? (draw.isDraw ? -1 : undefined) : undefined, scores: draw.teams.map((team) => team.score) })}`);
+    ${resultFormHtml({ teams, prefix: 'draw-result', mode, fixedMode: placements, requireAllScores: placements, winnerIndex: recorded && !hasValues ? draw.winnerTeamIndex ?? (draw.isDraw ? -1 : undefined) : undefined, scores: draw.teams.map((team) => team.score) })}`);
   wireResultForm(el, {
     teams,
     mode,
+    requireAllScores: placements,
     onSave: async ({ mode, scores, ranks, winnerIndex }) => {
       const payloadTeams = draw.teams.map((team, index) => ({
         playerIds: team.players.map((player) => player.id),

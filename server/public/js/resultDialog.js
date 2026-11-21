@@ -1,7 +1,7 @@
 // Shared result entry for Match draws, tournament fixtures and Admin's free match.
 // Callers own their distinct API payloads; this module owns only the form.
 import { escapeHtml } from './format.js';
-import { parseResultScores, resultScoreInputValue } from './resultScores.js';
+import { missingResultScores, parseResultScores, resultScoreInputValue } from './resultScores.js';
 import { showToast } from './toast.js';
 
 export function resultRanks(scores) {
@@ -13,7 +13,9 @@ export function resultWinnerIndex(scores) {
   return scores.filter((score) => score === highest).length === 1 ? scores.indexOf(highest) : null;
 }
 
-export function resultFormHtml({ teams, prefix, mode = 'winner', fixedMode = false, allowDraw = true, integerScores = false, winnerIndex, scores = [] }) {
+// `requireAllScores` asks for an explicit value per team: no "0" placeholder,
+// and saving waits until every field is filled.
+export function resultFormHtml({ teams, prefix, mode = 'winner', fixedMode = false, allowDraw = true, integerScores = false, requireAllScores = false, winnerIndex, scores = [] }) {
   const scoreMode = mode === 'score';
   const choices = teams.map((team, index) => ({ ...team, index }));
   if (allowDraw) choices.push({ name: 'Unentschieden', players: [], index: -1 });
@@ -37,7 +39,7 @@ export function resultFormHtml({ teams, prefix, mode = 'winner', fixedMode = fal
           <span>${escapeHtml(team.name)}</span>
           ${team.players?.length ? `<span class="tournament-result-pick-players">${escapeHtml(team.players.join(', '))}</span>` : ''}
         </label>
-        <input type="number" id="${escapeHtml(prefix)}-score-${index}" class="tournament-result-score" data-result-score="${index}" aria-label="Punktestand ${escapeHtml(team.name)}" ${integerScores ? 'min="0" step="1" inputmode="numeric"' : 'step="any" inputmode="decimal"'} placeholder="0" value="${scores[index] ?? ''}" />
+        <input type="number" id="${escapeHtml(prefix)}-score-${index}" class="tournament-result-score" data-result-score="${index}" aria-label="Punktestand ${escapeHtml(team.name)}" ${integerScores ? 'min="0" step="1" inputmode="numeric"' : 'step="any" inputmode="decimal"'} ${requireAllScores ? 'required' : 'placeholder="0"'} value="${scores[index] ?? ''}" />
       </div>`).join('')}
     </div>
     </div>
@@ -45,7 +47,7 @@ export function resultFormHtml({ teams, prefix, mode = 'winner', fixedMode = fal
   </div>`;
 }
 
-export function wireResultForm(root, { teams, mode = 'winner', allowDraw = true, integerScores = false, onModeChange, onSave }) {
+export function wireResultForm(root, { teams, mode = 'winner', allowDraw = true, integerScores = false, requireAllScores = false, onModeChange, onSave }) {
   const entry = root.querySelector('[data-result-entry]');
   let currentMode = mode;
   const saveButton = entry.querySelector('[data-result-save]');
@@ -86,7 +88,13 @@ export function wireResultForm(root, { teams, mode = 'winner', allowDraw = true,
     if (saveButton.disabled) return;
     let result;
     if (currentMode === 'score') {
-      const scores = parseResultScores(inputs.map(resultScoreInputValue));
+      const raw = inputs.map(resultScoreInputValue);
+      const missing = requireAllScores ? missingResultScores(raw) : [];
+      if (missing.length) {
+        inputs[missing[0]].focus();
+        return showToast('Bitte für jedes Team einen Punktestand eintragen, auch 0.', { error: true });
+      }
+      const scores = parseResultScores(raw);
       if (!scores) return showToast('Bitte mindestens einen Punktestand eintragen.', { error: true });
       if (scores.some((score) => !Number.isFinite(score))) return showToast('Bitte nur Zahlen als Punktestand eintragen.', { error: true });
       if (integerScores && scores.some((score) => !Number.isInteger(score) || score < 0)) {
