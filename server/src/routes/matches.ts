@@ -14,6 +14,7 @@ import { db } from '../db';
 import { isSuggestionGame, SUGGESTION_GAME_ERROR } from './gameSelection';
 import { broadcast, Events } from '../realtime';
 import { applySeatConflicts, buildTeamsSnapshot } from './matchmaking';
+import { assertDrawLineup, DRAW_LINEUP_CHANGED, DRAW_LINEUP_CHANGED_CODE, DrawLineupChangedError, isDrawLineup } from '../drawLineup';
 import { requireGroupRole, resolveGroupResource } from '../groupAuthorization';
 import { competitionPlayersBelongToGroup } from '../competitionScope';
 import { requireGroupEventAccess, resolveRequestGroupEventScope } from '../groupEventScope';
@@ -34,7 +35,6 @@ interface DrawLinkRow {
 }
 
 class DrawAlreadyClaimedError extends Error {}
-
 interface TeamInput {
   playerIds: string[];
   // Both optional and independent of winnerTeamIndex/each other: a game with
@@ -160,12 +160,16 @@ matchesRouter.get('/', (req, res) => {
 });
 
 // POST /api/matches - record a new result.
-// Body: { gameId, teams: [{ playerIds }], winnerTeamIndex?, playedAt?, drawId? }
+// Body: { gameId, teams: [{ playerIds }], winnerTeamIndex?, playedAt?, drawId?, drawLineup? }
 // drawId links back to the matchmaking_draws row this result came from (a
 // "Teams auslosen" / draft lineup), moving it from Team-Historie to
 // Ergebnis-Historie — optional since results can also be entered ad-hoc.
+// drawLineup is the draw's lineup (player ids per team) the result dialog was
+// opened with. Checked in the claiming transaction, it stops a stale dialog
+// from overwriting a lineup that was reshuffled, extended or edited since
+// (409 with code draw_lineup_changed).
 matchesRouter.post('/', (req, res) => {
-  const { gameId, teams, winnerTeamIndex, isDraw, playedAt, drawId } = req.body ?? {};
+  const { gameId, teams, winnerTeamIndex, isDraw, playedAt, drawId, drawLineup } = req.body ?? {};
 
   if (typeof gameId !== 'string' || !gameId) {
     return res.status(400).json({ error: 'gameId ist erforderlich.' });
@@ -206,6 +210,9 @@ matchesRouter.post('/', (req, res) => {
   if (drawId !== undefined && (typeof drawId !== 'string' || !drawId)) {
     return res.status(400).json({ error: 'drawId ist ungültig.' });
   }
+  if (drawLineup !== undefined && (!drawId || !isDrawLineup(drawLineup))) {
+    return res.status(400).json({ error: 'drawLineup ist ungültig.' });
+  }
   let draw: DrawLinkRow | undefined;
   if (drawId) {
     draw = db
@@ -228,6 +235,7 @@ matchesRouter.post('/', (req, res) => {
   };
   try {
     withBettingAccounting(eventId, () => {
+      if (drawId && drawLineup) assertDrawLineup(drawId, drawLineup as string[][]);
       db.prepare('INSERT INTO matches (id, game_id, event_id, played_at, result, group_id, created_by, recorded_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').run(
         row.id,
         row.game_id,
@@ -284,6 +292,9 @@ matchesRouter.post('/', (req, res) => {
   } catch (error) {
     if (error instanceof DrawAlreadyClaimedError) {
       return res.status(409).json({ error: 'Für diese Auslosung wurde bereits ein Ergebnis erfasst.' });
+    }
+    if (error instanceof DrawLineupChangedError) {
+      return res.status(409).json({ error: DRAW_LINEUP_CHANGED, code: DRAW_LINEUP_CHANGED_CODE });
     }
     throw error;
   }

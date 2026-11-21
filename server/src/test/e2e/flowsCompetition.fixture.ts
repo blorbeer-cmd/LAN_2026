@@ -1642,6 +1642,53 @@ flowTest('an open game can be deleted from its own card after confirmation', asy
   assert.equal((await history.json()).openDraws.some((entry: { id: string }) => entry.id === draw.id), false);
 });
 
+flowTest('an open game names who drew it, adds a late player and reshuffles its teams', async () => {
+  await openTeams();
+  const gameId = await page.inputValue('#mm-game');
+  const late = await page.request.post(`${BASE_URL}/api/players`, { data: { name: 'E2E Nachzügler' } });
+  assert.equal(late.status(), 201, await late.text());
+  const lateId = (await late.json() as { id: string }).id;
+  const response = await page.request.post(`${BASE_URL}/api/matchmaking`, {
+    data: { gameId, playerIds: [alice.id, bob.id], teamCount: 2 },
+  });
+  assert.equal(response.status(), 200, await response.text());
+  const draw = await response.json() as { id: string };
+  const lineup = async () => {
+    const history = await (await page.request.get(`${BASE_URL}/api/matchmaking/history?gameId=${gameId}`)).json();
+    const entry = history.openDraws.find((open: { id: string }) => open.id === draw.id);
+    return (entry.teams as Array<{ players: Array<{ id: string }> }>).map((team) => team.players.map((player) => player.id).sort().join());
+  };
+  // The new participant only becomes selectable once the page knows them.
+  await page.reload();
+  await waitForPlayerData(page);
+  await openTeams();
+
+  const openSection = page.locator('.matchmaking-open-draws');
+  await openSection.waitFor();
+  if (!(await openSection.evaluate((element) => (element as HTMLDetailsElement).open))) {
+    await openSection.locator(':scope > summary').click();
+  }
+  const tile = openSection.locator(`[data-history-item="o-${draw.id}"]`);
+  await tile.locator('.muted', { hasText: `Ausgelost von ${alice.name}` }).waitFor();
+
+  await clickActionMenuEntry(tile.locator(`[data-add-draw-player="${draw.id}"]`));
+  const dialog = page.getByRole('dialog', { name: 'Spieler hinzufügen' });
+  await dialog.locator('#draw-add-player-search').fill('Nachzügler');
+  await dialog.getByRole('option', { name: 'E2E Nachzügler' }).click();
+  await dialog.getByRole('button', { name: 'Hinzufügen' }).click();
+  await dialog.waitFor({ state: 'detached' });
+  await page.locator('.toast', { hasText: 'E2E Nachzügler hinzugefügt.' }).waitFor();
+  const withLate = await lineup();
+  assert.ok(withLate.some((team) => team.split(',').includes(lateId)), JSON.stringify(withLate));
+
+  await clickActionMenuEntry(tile.locator(`[data-shuffle-draw="${draw.id}"]`));
+  await page.getByRole('alertdialog', { name: 'Teams neu mischen' }).getByRole('button', { name: 'Neu mischen' }).click();
+  await page.locator('.toast', { hasText: 'Teams neu gemischt.' }).waitFor();
+  const shuffled = await lineup();
+  assert.notDeepEqual([...shuffled].sort(), [...withLate].sort());
+  assert.deepEqual(shuffled.flatMap((team) => team.split(',')).sort(), [alice.id, bob.id, lateId].sort());
+});
+
 flowTest('Ergebnis eintragen keeps a manual team reassignment after changing "Anzahl Teams"', async () => {
   // Regression test: reassigning a player to a different team in the entry
   // form, then changing "Anzahl Teams", must not silently revert that player
