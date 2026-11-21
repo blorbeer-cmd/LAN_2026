@@ -174,6 +174,10 @@ test('recording round-1 results advances winners into the final and creates lead
   // Each recorded result should also show up as a normal leaderboard match.
   const matches = await request(app).get(`/api/matches?gameId=${gameId}`);
   assert.equal(matches.body.length, 2);
+  // Rounds of a running tournament are marked so Match's Historie (recorded
+  // draws and completed tournaments only) can tell them apart.
+  assert.deepEqual(matches.body.map((m: { drawId: string | null; tournamentStatus: string | null }) =>
+    [m.drawId, m.tournamentStatus]), [[null, 'active'], [null, 'active']]);
 });
 
 test('a second report for an already-decided match is rejected (two phones racing)', async () => {
@@ -222,6 +226,8 @@ test('correcting a bracket result reopens dependent matches without duplicating 
   const semi = beforeDetail.body.matches.find((m: { round: number; slot: number }) => m.round === 1 && m.slot === 0);
   const oldFinal = beforeDetail.body.matches.find((m: { round: number }) => m.round === 2);
   const beforeMatches = await request(app).get(`/api/matches?gameId=${gameId}`);
+  assert.ok(beforeMatches.body.every((m: { tournamentStatus: string | null }) => m.tournamentStatus === 'completed'),
+    'the completed tournament marks every one of its results');
 
   const correction = await request(app)
     .put(`/api/tournaments/${bracketId}/matches/${semi.id}/result`)

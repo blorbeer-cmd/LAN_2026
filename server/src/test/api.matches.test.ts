@@ -64,6 +64,9 @@ test('GET /api/matches lists the recorded match', async () => {
   assert.equal(res.status, 200);
   assert.equal(res.body.length, 1);
   assert.equal(res.body[0].id, matchId);
+  // An ad-hoc result belongs to neither a draw nor a tournament.
+  assert.equal(res.body[0].drawId, null);
+  assert.equal(res.body[0].tournamentStatus, null);
 });
 
 test('GET /api/leaderboard reflects points from the recorded match', async () => {
@@ -156,6 +159,8 @@ test('POST /api/matches with a drawId links the draw to the new match (Team-Hist
   const history = await request(app).get(`/api/matchmaking/history?gameId=${gameId}`);
   const linked = history.body.history.find((h: { id: string }) => h.id === draw.body.id);
   assert.equal(linked.matchId, match.body.id);
+  const listed = await request(app).get(`/api/matches?gameId=${gameId}`);
+  assert.equal(listed.body.find((m: { id: string }) => m.id === match.body.id).drawId, draw.body.id);
 });
 
 test('POST /api/matches re-snapshots the linked draw to the actually-submitted teams (player moved before saving)', async () => {
