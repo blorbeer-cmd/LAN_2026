@@ -307,7 +307,7 @@ function canRemoveDrawPlayer(draw, team) {
 // the same choices in the native team picker, keyboards use arrows/Entf.
 function drawPlayerRowHtml(draw, team, teamIndex, player, { teamNames, movable, content }) {
   const removable = canRemoveDrawPlayer(draw, team);
-  const hint = [movable ? 'auf ein anderes Team ziehen zum Verschieben' : '', removable ? 'aus den Teams ziehen zum Entfernen' : '']
+  const hint = [movable ? 'auf ein anderes Team ziehen zum Verschieben' : '', removable ? 'unten auf „Hier ablegen zum Entfernen“ ziehen zum Entfernen' : '']
     .filter(Boolean).join(', ');
   return `<div class="team-player-move-row"><button type="button" class="team-player tournament-drag-player" draggable="true" data-move-draw="${draw.id}" data-move-player="${player.id}" data-team-index="${teamIndex}"${removable ? ' data-removable="true"' : ''} aria-label="${escapeHtml(player.name)}${movable ? ' verschieben' : ''}${removable ? `${movable ? ' oder' : ''} entfernen` : ''}" title="${escapeHtml(hint.charAt(0).toUpperCase() + hint.slice(1))}">
       ${content}
@@ -594,9 +594,10 @@ function applyUpdatedDraw(updated) {
   if (openIndex !== -1) openDrawsCache[openIndex] = updated;
 }
 
-// Drag-out removal is page-wide: a player dragged out of its own lineup and
-// dropped anywhere else in the view is removed after confirmation. The
-// document listeners are registered once and read the draw being dragged.
+// Drag removal works like the Jam queue: dragging a removable player reveals
+// a fixed bottom target, and only a drop on that target removes (after
+// confirmation). The document listeners are registered once and read the
+// draw being dragged.
 let draggedDrawPlayer = null;
 let drawRemovalCtx = null;
 let dragOutWired = false;
@@ -630,13 +631,11 @@ async function removeDrawPlayer(drawId, playerId) {
 
 function isDragOutTarget(event) {
   if (!draggedDrawPlayer?.removable || !(event.target instanceof Element)) return false;
-  if (!event.target.closest('#view-container')) return false;
-  return !event.target.closest(`[data-draw-teams="${CSS.escape(draggedDrawPlayer.drawId)}"]`);
+  return Boolean(event.target.closest('[data-draw-remove-zone]'));
 }
 
-// Same bottom drop target as the Jam queue. It lives in #view-container, so a
-// drop on it counts as a drop outside the lineup; a rerender drops the node
-// and the next drag creates it again.
+// Same bottom drop target as the Jam queue. A rerender of the view drops the
+// node and the next drag creates it again.
 function dragRemoveZone() {
   const view = document.getElementById('view-container');
   if (!view) return null;
@@ -659,9 +658,9 @@ function wireDragOutRemoval() {
   if (dragOutWired) return;
   dragOutWired = true;
   document.addEventListener('dragover', (event) => {
-    const zone = draggedDrawPlayer?.removable ? document.querySelector('[data-draw-remove-zone]') : null;
-    zone?.classList.toggle('is-over', event.target instanceof Node && zone.contains(event.target));
-    if (!isDragOutTarget(event)) return;
+    const over = isDragOutTarget(event);
+    document.querySelector('[data-draw-remove-zone]')?.classList.toggle('is-over', over);
+    if (!over) return;
     event.preventDefault();
     event.dataTransfer.dropEffect = 'move';
   });
