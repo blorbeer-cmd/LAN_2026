@@ -1073,6 +1073,11 @@ input[type='number'].tournament-result-score {
 .result-dialog-subtitle {
   margin-bottom: var(--space-4);
 }
+/* The settled-bet correction reason sits between subtitle and result form;
+   it keeps the same distance to the form as the subtitle does. */
+.result-correction {
+  margin-bottom: var(--space-4);
+}
 .result-mode-switch,
 .result-save-row {
   display: flex;
