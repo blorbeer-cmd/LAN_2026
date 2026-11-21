@@ -136,19 +136,27 @@ function validateTeams(
 // GET /api/matches - list, newest first, optionally filtered by ?gameId=
 // and/or ?eventId=. Always scoped to the request's retained group_id, so an
 // event whose stored group_id does not match simply returns no matches.
+// Each entry names where it came from — the linked Match draw (`drawId`) or
+// the status of its tournament (`tournamentStatus`) — so a client can tell a
+// result Match's Historie lists from a round of a still-running tournament.
 matchesRouter.get('/', (req, res) => {
   const { gameId, eventId } = req.query;
   const scope = resolveRequestGroupEventScope(req, eventId);
   if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
   if (!requireGroupEventAccess(req, res, scope.eventId)) return;
-  const clauses: string[] = ['group_id = ?', 'event_id = ?'];
+  const clauses: string[] = ['m.group_id = ?', 'm.event_id = ?'];
   const params: string[] = [req.group!.id, scope.eventId!];
   if (typeof gameId === 'string') {
-    clauses.push('game_id = ?');
+    clauses.push('m.game_id = ?');
     params.push(gameId);
   }
-  const rows = db.prepare(`SELECT * FROM matches WHERE ${clauses.join(' AND ')} ORDER BY played_at DESC`).all(...params) as MatchRow[];
-  res.json(rows.map(parseMatch));
+  const rows = db.prepare(`SELECT m.*,
+      (SELECT md.id FROM matchmaking_draws md WHERE md.match_id = m.id LIMIT 1) AS draw_id,
+      (SELECT t.status FROM tournament_matches tm JOIN tournaments t ON t.id = tm.tournament_id
+        WHERE tm.match_id = m.id LIMIT 1) AS tournament_status
+    FROM matches m WHERE ${clauses.join(' AND ')} ORDER BY m.played_at DESC`)
+    .all(...params) as Array<MatchRow & { draw_id: string | null; tournament_status: string | null }>;
+  res.json(rows.map((row) => ({ ...parseMatch(row), drawId: row.draw_id, tournamentStatus: row.tournament_status })));
 });
 
 // POST /api/matches - record a new result.

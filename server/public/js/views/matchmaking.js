@@ -10,7 +10,7 @@ import { api } from '../api.js';
 import { icon } from '../icons.js';
 import { domainIcon } from '../domainIcons.js';
 import { confirmDialog, openModal } from '../modal.js';
-import { state, gameById, catalogGames, gamesWithHistory, eventPlayers } from '../state.js';
+import { state, gameById, catalogGames, gamesWithHistory, eventPlayers, defaultCatalogGameId } from '../state.js';
 import { escapeHtml, avatarHtml, formatDateTime, seatConflictIconHtml } from '../format.js';
 import { showToast } from '../toast.js';
 import { getMyId } from '../whoami.js';
@@ -508,6 +508,9 @@ function openDrawResultDialog(draw, ctx) {
       } else {
         await api.matches.create({ gameId: draw.gameId, drawId: draw.id, teams: payloadTeams, winnerTeamIndex: winnerIndex, isDraw: winnerIndex === null });
         if (state.lastMatchmaking?.id === draw.id) state.lastMatchmaking = null;
+        // Open lineups of every game are listed, but Historie shows the
+        // selected game only: follow the result so it appears there.
+        state.selectedGameId = draw.gameId;
       }
       expandedHistoryIds.add(draw.id);
       historySectionOpen = true;
@@ -1394,7 +1397,7 @@ export function renderMatchmaking(container, ctx) {
   draftCaptainIds = new Set([...draftCaptainIds].filter((id) => draftPlayerIds.has(id)));
   teamCountValue = capTeamCountValue(teamCountValue, checkedIds.size);
 
-  const selectedGameId = pickableGames.some((g) => g.id === state.selectedGameId) ? state.selectedGameId : catalogGames()[0].id;
+  const selectedGameId = pickableGames.some((g) => g.id === state.selectedGameId) ? state.selectedGameId : defaultCatalogGameId();
 
   if (avoidAdjacentOpponentsGameId !== selectedGameId) {
     avoidAdjacentOpponentsGameId = selectedGameId;
