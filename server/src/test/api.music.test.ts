@@ -117,10 +117,11 @@ test('local controller pairs without sending Spotify credentials to Respawn', as
   controllerToken = registered.body.controllerToken;
   assert.ok(controllerToken);
 
-  await request(app).post('/api/music/controller/heartbeat').set('x-music-controller-token', controllerToken).send({
+  const idleHeartbeat = await request(app).post('/api/music/controller/heartbeat').set('x-music-controller-token', controllerToken).send({
     playback: null,
     connectionStatus: { spotify: 'connected', message: null },
   });
+  assert.equal(idleHeartbeat.body.sessionActive, false, 'without a Jam the controller may poll Spotify rarely');
   const status = await request(app).get('/api/music/status');
   assert.equal(status.status, 200);
   assert.deepEqual(status.body.controller.label, 'LAN Pi');
@@ -229,16 +230,23 @@ test('local controller pairs without sending Spotify credentials to Respawn', as
     .send({ playerId: bob.id });
   assert.equal(unknownPlaylist.status, 404);
 
+  const trackLookupsBeforeRequests = controllerCommands.filter((command) => command.type === 'track').length;
   const first = await request(app).post('/api/music/requests').send({ playerId: bob.id, trackId: tracks.AAAAAAAAAAAAAAAAAAAAAA.id });
   const second = await request(app).post('/api/music/requests').send({ playerId: bob.id, trackId: tracks.BBBBBBBBBBBBBBBBBBBBBB.id });
   const third = await request(app).post('/api/music/requests').send({ playerId: alice.id, trackId: tracks.CCCCCCCCCCCCCCCCCCCCCC.id });
+  assert.equal(controllerCommands.filter((command) => command.type === 'track').length, trackLookupsBeforeRequests,
+    'song wishes from search results need no extra Spotify lookup');
+  const unknownTrack = await request(app).post('/api/music/requests').send({ playerId: bob.id, trackId: 'ZZZZZZZZZZZZZZZZZZZZZZ' });
+  assert.equal(unknownTrack.status, 404, 'a song outside the search results is still looked up at Spotify');
+  assert.equal(controllerCommands.filter((command) => command.type === 'track').length, trackLookupsBeforeRequests + 1);
   assert.equal(first.status, 201);
   assert.equal(second.status, 201);
   assert.equal(third.status, 201);
 
-  await request(app).post('/api/music/controller/heartbeat').set('x-music-controller-token', controllerToken).send({
+  const activeHeartbeat = await request(app).post('/api/music/controller/heartbeat').set('x-music-controller-token', controllerToken).send({
     connectionStatus: { spotify: 'unavailable', message: 'Spotify ist vorübergehend nicht erreichbar.' },
   });
+  assert.equal(activeHeartbeat.body.sessionActive, true, 'a running Jam needs live Spotify playback');
   const degradedStatus = await request(app).get('/api/music/status');
   assert.equal(degradedStatus.body.controller.online, true, 'Spotify errors do not make the local controller look offline');
   assert.equal(degradedStatus.body.controller.connectionStatus.spotify, 'unavailable');
