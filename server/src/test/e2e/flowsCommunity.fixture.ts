@@ -854,6 +854,44 @@ flowTest('Kiosk: centers tournament content and shows only the latest feature pu
     assert.equal(longName.text, longGame);
     assert.ok(longName.cut <= 0, `a largest game that fits on its own is not shortened: ${JSON.stringify(longName)}`);
 
+    // A largest game that fits on its own but not beside "+1" shortens its
+    // name instead of dropping the label, so no running game goes uncounted.
+    // The name is measured against this strip, which makes the case
+    // independent of the fonts installed on the test machine.
+    const tightGame = await page.locator('#kiosk-live-games > .kiosk-live-active').evaluate((strip) => {
+      const pill = strip.querySelector('.kiosk-live-game')!;
+      const name = pill.querySelector('strong')!;
+      const more = strip.querySelector('.kiosk-live-more')!;
+      const nameRoomAlone = strip.clientWidth - (pill.getBoundingClientRect().width - name.getBoundingClientRect().width);
+      const nameRoomBesideMore = nameRoomAlone - parseFloat(getComputedStyle(strip).columnGap) - more.getBoundingClientRect().width;
+      const context = document.createElement('canvas').getContext('2d')!;
+      context.font = getComputedStyle(name).font;
+      let text = 'Kiosk-Spiel';
+      while (context.measureText(text).width < (nameRoomAlone + nameRoomBesideMore) / 2) text += 'x';
+      return text;
+    });
+    liveBoardEdit = (board) => [
+      playing(board[0], 'kiosk-tight-player-1', 'Spieler Knapp 1', tightGame),
+      playing(board[0], 'kiosk-tight-player-2', 'Spieler Knapp 2', tightGame),
+      playing(board[0], 'kiosk-tight-small', 'Spieler Klein Knapp', 'Factorio'),
+    ];
+    await setOwnNote(null);
+    await page.waitForSelector('#kiosk-live > .kiosk-live-grid >> text=Spieler Klein Knapp');
+    const tight = await page.locator('#kiosk-live-games > .kiosk-live-active').evaluate((element) => {
+      const name = element.querySelector('.kiosk-live-game strong')!;
+      return {
+        overflow: element.scrollWidth - element.clientWidth,
+        more: element.querySelector('.kiosk-live-more:not([hidden])')?.textContent ?? null,
+        cut: name.scrollWidth - name.clientWidth,
+        readable: name.getBoundingClientRect().width >= parseFloat(getComputedStyle(name).fontSize) * 3,
+      };
+    });
+    assert.deepEqual(
+      { fits: tight.overflow <= 1, more: tight.more, shortened: tight.cut > 0, readable: tight.readable },
+      { fits: true, more: '+1', shortened: true, readable: true },
+      JSON.stringify({ tightGame, ...tight }),
+    );
+
     // A single game whose name alone is wider than the strip shortens only
     // its name, never to nothing, also beside a smaller group; its count
     // stays whole inside the card.
