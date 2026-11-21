@@ -234,7 +234,14 @@ async function loadHistory(gameId, ctx, { append = false } = {}) {
     } while (oldestId && cursor && loaded.length < maxRows);
     if (version === historyRequestVersion) {
       historyCache = append ? [...(historyCache ?? []), ...loaded] : loaded;
-      if (!append) openDrawsCache = openDraws ?? [];
+      if (!append) {
+        openDrawsCache = openDraws ?? [];
+        // The "Neue Auslosung" card keeps its own copy of the draw. A lineup
+        // change whose live signal was missed (reconnect, conflict) must
+        // reach it too, or its dialogs keep acting on the old teams.
+        const fresh = state.lastMatchmaking && openDrawsCache.find((draw) => draw.id === state.lastMatchmaking.id);
+        if (fresh) state.lastMatchmaking = { ...state.lastMatchmaking, ...fresh };
+      }
       historyCursor = nextCursor;
       historyForGameId = gameId;
       historyError = false;
@@ -526,6 +533,16 @@ function openDrawServerDialog(draw, ctx) {
   });
 }
 
+// A dialog acted on teams another device changed meanwhile (409
+// draw_lineup_changed): close it and reload the open draws, which also
+// replace the "Neue Auslosung" copy, so reopening starts from the new teams.
+function reloadAfterLineupConflict(close, ctx, message) {
+  close();
+  invalidateMatchmakingHistory();
+  ctx.rerender();
+  showToast(message, { error: true });
+}
+
 // Adds a participant who is not drawn yet. "Automatisch" lets the server put
 // them into the smallest team (the weaker one on a tie), so the common case
 // needs only the player.
@@ -576,12 +593,10 @@ function openDrawAddPlayerDialog(draw, ctx) {
       showToast(`${player.name} hinzugefügt.`);
     } catch (err) {
       if (err.code === 'draw_lineup_changed') {
-        close();
-        invalidateMatchmakingHistory();
-        await ctx.refresh();
-      } else {
-        submit.disabled = false;
+        reloadAfterLineupConflict(close, ctx, err.message);
+        return;
       }
+      submit.disabled = false;
       showToast(err.message, { error: true });
     }
   });
@@ -616,11 +631,7 @@ function openDrawResultDialog(draw, ctx) {
           await api.matches.create({ gameId: draw.gameId, drawId: draw.id, drawLineup, teams: payloadTeams, winnerTeamIndex: winnerIndex, isDraw: winnerIndex === null });
         } catch (err) {
           if (err.code !== 'draw_lineup_changed') throw err;
-          // Reopening shows the current teams; this dialog's lineup is gone.
-          close();
-          invalidateMatchmakingHistory();
-          await ctx.refresh();
-          showToast(err.message, { error: true });
+          reloadAfterLineupConflict(close, ctx, err.message);
           return;
         }
         if (state.lastMatchmaking?.id === draw.id) state.lastMatchmaking = null;
@@ -656,7 +667,7 @@ const TOURNAMENT_FORMAT_LABELS = {
 // Turns a drawn lineup into a tournament: the teams are fixed by the draw,
 // only format, names and lobby details are chosen here. The draw is claimed
 // server-side in the same step, so it can no longer become a single result.
-function openDrawTournamentDialog(draw) {
+function openDrawTournamentDialog(draw, ctx) {
   const form = { format: 'single_elimination', twoLegged: false, trackScore: false, thirdPlaceMatch: false, groupCount: 2, advancers: 1 };
   let bodyEl;
   const names = draw.teams.map((team, index) => defaultDrawTeamName(draw, team, index));
@@ -750,11 +761,9 @@ function openDrawTournamentDialog(draw) {
           detail: { view: 'tournaments', localRoute: { kind: 'detail', id: created.id } },
         }));
       } catch (err) {
-        // The card already follows the newer lineup live; reopening the
-        // dialog starts from it.
         if (err.code === 'draw_lineup_changed') {
-          close();
-          invalidateMatchmakingHistory();
+          reloadAfterLineupConflict(close, ctx, err.message);
+          return;
         }
         showToast(err.message, { error: true });
       }
@@ -936,7 +945,7 @@ function wireDrawCards(container, ctx) {
   container.querySelectorAll('[data-draw-tournament]').forEach((btn) => {
     btn.addEventListener('click', () => {
       const draw = findDrawById(btn.dataset.drawTournament);
-      if (draw) openDrawTournamentDialog(draw);
+      if (draw) openDrawTournamentDialog(draw, ctx);
     });
   });
   container.querySelectorAll('[data-open-draw-tournament]').forEach((btn) => {

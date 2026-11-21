@@ -851,7 +851,7 @@ matchmakingRouter.post('/draws/:id/players', (req, res) => {
     withBettingAccounting(existing.event_id, () => {
       const row = loadOpenDrawForEdit(existing.id);
       const teams = JSON.parse(row.teams) as DrawTeamSnapshot[];
-      if (drawLineup) assertDrawLineup(existing.id, drawLineup as string[][]);
+      if (drawLineup) assertDrawLineup(existing.id, drawLineup as string[][], typeof teamIndex === 'number' ? teamIndex : undefined);
       if (teams.some((team) => team.players.some((p) => p.id === playerId))) {
         throw new PointsError(`${player.name} ist bereits in dieser Auslosung.`);
       }

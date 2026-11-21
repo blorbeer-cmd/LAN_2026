@@ -21,11 +21,16 @@ export function isDrawLineup(value: unknown): value is string[][] {
 
 // Call inside the writing transaction; throws DrawLineupChangedError when the
 // stored lineup differs from the one the dialog showed. Team order and the
-// order within a team do not matter.
-export function assertDrawLineup(drawId: string, expected: string[][]): void {
+// order within a team do not matter, except for `teamIndex`: a dialog that
+// chose a team by its position also needs that position to hold the same
+// players, since two reshuffles can return the same teams in another order.
+export function assertDrawLineup(drawId: string, expected: string[][], teamIndex?: number): void {
   const stored = db.prepare('SELECT teams FROM matchmaking_draws WHERE id = ?').pluck().get(drawId) as string | undefined;
   const current = stored
     ? (JSON.parse(stored) as Array<{ players: Array<{ id: string }> }>).map((team) => team.players.map((player) => player.id))
     : [];
   if (lineupKey(current) !== lineupKey(expected)) throw new DrawLineupChangedError();
+  if (teamIndex !== undefined && lineupKey([current[teamIndex] ?? []]) !== lineupKey([expected[teamIndex] ?? []])) {
+    throw new DrawLineupChangedError();
+  }
 }

@@ -1112,3 +1112,22 @@ test('parallel: a lineup change and a tournament from the old lineup never both 
   assert.equal(Boolean(row.tournament_id), created.status === 201);
   assert.equal(storedLineup(draw.body.id).flat().includes(playerIds[3]), added.status === 200);
 });
+
+test('POST /api/matchmaking/draws/:id/players refuses a chosen position that now holds another team', async () => {
+  const game = await request(app).post('/api/games').send({ name: 'Swapped Team Order' });
+  const draw = await request(app).post('/api/matchmaking')
+    .send({ gameId: game.body.id, playerIds: playerIds.slice(0, 4), teamCount: 2 });
+  const opened = teamIds(draw.body.teams);
+  // Same teams, other order: what two reshuffles can produce.
+  const swapped = [opened[1], opened[0]];
+  db.prepare('UPDATE matchmaking_draws SET teams = ? WHERE id = ?')
+    .run(JSON.stringify([draw.body.teams[1], draw.body.teams[0]]), draw.body.id);
+  const late = await request(app).post('/api/players').send({ name: 'Swapped Order Arrival' });
+
+  const stale = await addPlayer(draw.body.id, { playerId: late.body.id, teamIndex: 0, drawLineup: opened });
+  assert.equal(stale.status, 409);
+  assert.equal(stale.body.code, 'draw_lineup_changed');
+  assert.deepEqual(storedLineup(draw.body.id), swapped);
+  // The same lineup without a chosen team is still the current one.
+  assert.equal((await addPlayer(draw.body.id, { playerId: late.body.id, drawLineup: opened })).status, 200);
+});
