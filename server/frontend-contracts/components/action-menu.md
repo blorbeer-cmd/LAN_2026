@@ -99,8 +99,9 @@ Eine dauerhaft geöffnete, verschachtelte oder mehrspaltige Variante existiert n
   sofort an, damit die Fokuswiederherstellung den fokussierten Eintrag erreicht; ist der Fokus
   durch den Neuaufbau verloren gegangen, setzt das Wiring ihn auf denselben Eintrag (über sein
   erstes `data-*`-Attribut) oder, falls dieser nicht mehr existiert, auf den Trigger. Schließen
-  über Aktionswahl, Escape, Außen-Pointer oder Trigger beendet dieses Gedächtnis; ein anderer View
-  verwirft es. Aufrufer wählen den `key` so, dass er den fachlichen Zustand benennt, wenn ein
+  über Aktionswahl, Escape, Außen-Pointer oder Trigger beendet dieses Gedächtnis; jeder
+  Ansichtswechsel verwirft es, auch über eine Ansicht ohne Aktionsmenüs. Menüs ohne `key` werden
+  nie gemerkt. Aufrufer wählen den `key` so, dass er den fachlichen Zustand benennt, wenn ein
   geänderter Zustand andere Einträge bedeutet (Matchkarten: offen, erfasst, Turnier).
 
 Registry-Bezüge: `action-menu-trigger`, `action-menu-entry`, `button`, `button-small` und

@@ -27,11 +27,21 @@ let controller;
 // views build parts of their markup only after the render (lazy sections), so
 // the memory waits for the next wiring of the same view rather than expiring
 // when one wiring does not contain the menu. Closing the menu by any user path
-// forgets it.
+// forgets it, and so does leaving the view, even through a view that never
+// wires action menus.
 let remembered = null;
+let observedViewRoot = null;
 
-function viewOf(container) {
-  return (container.closest('#view-container') ?? container).dataset.view ?? null;
+function viewRootOf(container) {
+  return container.closest('#view-container') ?? container;
+}
+
+function forgetOnViewChange(root) {
+  if (observedViewRoot === root || typeof MutationObserver === 'undefined') return;
+  observedViewRoot = root;
+  new MutationObserver((records) => {
+    if (records.some((record) => record.oldValue !== root.dataset.view)) remembered = null;
+  }).observe(root, { attributes: true, attributeFilter: ['data-view'], attributeOldValue: true });
 }
 
 // The entry's first data attribute identifies it across renders; entries
@@ -47,7 +57,9 @@ export function wireActionMenus(container) {
   controller = new AbortController();
   const { signal } = controller;
   const menus = [...container.querySelectorAll('.action-menu')];
-  const view = viewOf(container);
+  const viewRoot = viewRootOf(container);
+  forgetOnViewChange(viewRoot);
+  const view = viewRoot.dataset.view ?? null;
   if (remembered && remembered.view !== view) remembered = null;
   const anchors = new WeakMap();
   const forget = (menu) => {
@@ -90,15 +102,17 @@ export function wireActionMenus(container) {
       }
       else if (!menu.open && menu.isConnected) forget(menu);
     }, { signal });
+    // Only a keyed menu is remembered; an unkeyed one never matches.
+    const isRemembered = () => Boolean(menu.dataset.actionMenu) && remembered?.key === menu.dataset.actionMenu;
     menu.addEventListener('focusin', (event) => {
-      if (remembered?.key === menu.dataset.actionMenu && event.target instanceof Element) {
+      if (isRemembered() && event.target instanceof Element) {
         remembered.entry = entrySelector(event.target);
       }
     }, { signal });
     menu.addEventListener('focusout', (event) => {
       // Moving focus to another control ends the remembered focus; focus
       // that is lost because the menu was removed has no related target.
-      if (remembered?.key === menu.dataset.actionMenu && event.relatedTarget instanceof Element
+      if (isRemembered() && event.relatedTarget instanceof Element
         && !menu.contains(event.relatedTarget)) remembered.entry = null;
     }, { signal });
     menu.querySelector('.action-menu-panel').addEventListener('click', (event) => {
