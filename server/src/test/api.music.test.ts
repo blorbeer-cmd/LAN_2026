@@ -432,6 +432,24 @@ test('local controller pairs without sending Spotify credentials to Respawn', as
   const noPlaylistLeft = await request(app).delete('/api/music/playlist').send({ playerId: bob.id });
   assert.equal(noPlaylistLeft.status, 409);
 
+  // Song wishes made during a playlist wait behind it; ending the playlist
+  // hands the queue to those wishes instead of pausing.
+  const restartedPlaylist = await request(app).post(`/api/music/playlists/${playlist.id}/play`).send({ playerId: bob.id });
+  assert.equal(restartedPlaylist.status, 200);
+  const wishBehindPlaylist = await request(app).post('/api/music/requests')
+    .send({ playerId: alice.id, trackId: tracks.AAAAAAAAAAAAAAAAAAAAAA.id });
+  assert.equal(wishBehindPlaylist.status, 201);
+  const endedWithWish = await request(app).delete('/api/music/playlist').send({ playerId: alice.id });
+  assert.equal(endedWithWish.status, 204);
+  live = await request(app).get('/api/music/status').set('x-test-player-id', alice.id);
+  assert.equal(live.body.session.playbackContext, null);
+  assert.equal(live.body.session.currentTrack?.uri, tracks.AAAAAAAAAAAAAAAAAAAAAA.uri,
+    'the wish waiting behind the ended playlist plays next');
+  assert.deepEqual(live.body.session.requests.map((entry: { id: string; status: string }) => [entry.id, entry.status]),
+    [[wishBehindPlaylist.body.requestId, 'playing']]);
+  assert.deepEqual(controllerCommands.filter((command) => command.type === 'playUris').at(-1)?.payload?.uris,
+    [tracks.AAAAAAAAAAAAAAAAAAAAAA.uri]);
+
   live = await request(app).get('/api/music/kiosk');
   assert.equal(live.status, 200);
   assert.equal(live.body.session.deviceName, 'LAN Boxen');
