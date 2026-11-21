@@ -1563,12 +1563,14 @@ flowTest('match history keeps loaded older games after a realtime refresh', asyn
   let template: Record<string, unknown> | null = null;
   await page.route(historyUrl, async (route) => {
     const url = new URL(route.request().url());
-    if (url.searchParams.get('gameId') !== gameId) return route.continue();
+    // Historie lists all games unless its own game filter narrows it.
+    const requestedGameId = url.searchParams.get('gameId');
+    if (requestedGameId && requestedGameId !== gameId) return route.continue();
     if (!template) {
       const response = await route.fetch();
       const payload = await response.json();
       template = payload.history[0];
-      assert.ok(template, 'the selected game needs a real recorded match as a template');
+      assert.ok(template, 'Historie needs a real recorded match as a template');
     }
     const entries = Array.from({ length: 45 }, (_, index) => ({
       ...template, id: `history-refresh-${index}`, generatedAt: baseTime - index * 1000,
