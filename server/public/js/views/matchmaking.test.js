@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { capTeamCountValue, defaultDrawTeamName, teamCountMax } from './matchmaking.js';
+import { capTeamCountValue, defaultDrawTeamName, defaultRosterSelection, teamCountMax } from './matchmaking.js';
 
 test('the team count is capped at the number of selected players', () => {
   assert.equal(capTeamCountValue('12', 10), '10');
@@ -45,4 +45,13 @@ test('derived team names fit the tournament team name limit', () => {
   const emojiCut = defaultDrawTeamName({ source: 'balanced' }, { players: players(`${'x'.repeat(29)}🔥`) }, 0);
   assert.equal(emojiCut, 'x'.repeat(29), 'a cut through an emoji drops its orphaned half');
   assert.equal(defaultDrawTeamName({ source: 'balanced' }, { players: players(`${'x'.repeat(28)}🔥`) }, 0), `${'x'.repeat(28)}🔥`);
+});
+
+test('the draw selection waits for the roster instead of fixing an empty one', () => {
+  // A render before the startup snapshot has no players yet: no decision.
+  assert.equal(defaultRosterSelection([], []), null);
+  const players = [{ id: 'a' }, { id: 'b' }, { id: 'c' }];
+  assert.deepEqual([...defaultRosterSelection([], players)], ['a', 'b', 'c']);
+  const live = [{ player_id: 'b', state: 'playing' }, { player_id: 'c', state: 'paused' }];
+  assert.deepEqual([...defaultRosterSelection(live, players)], ['b']);
 });
