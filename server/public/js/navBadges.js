@@ -17,6 +17,7 @@ import {
   navBadgeLabel,
   navBadgeText,
   navTargetForView,
+  pruneSeenTodoIds,
   rememberSeenTodoIds,
   settleOpenedArea,
   todoIdsSettledBy,
@@ -26,9 +27,14 @@ import {
 const STORAGE_PREFIX = 'respawn_nav_seen_todos:';
 
 let openView = null;
+let openRoute = null;
 // The area opened before the feed and the workspace had loaded: applied once
 // both are there, so a reload straight into a view still counts it as seen.
 let pendingFeedOpen = null;
+// A failed "read" write restores the unread entry; the same visit retries it
+// a bounded number of times instead of leaving it unread while open.
+const MAX_SEEN_RETRIES = 2;
+let seenRetries = 0;
 
 function readSeenTodoIds(playerId) {
   if (!playerId) return [];
@@ -64,6 +70,31 @@ function currentItems() {
       activeEventId: state.activeEvent?.id ?? null,
     }),
   };
+}
+
+// Forgets seen marks of To-Dos that are no longer open, once the full list
+// is loaded, so a reopened task counts again (see pruneSeenTodoIds).
+function pruneSeenTodos(playerId, seenIds) {
+  const rows = myTodoRows({ skillNudges: [] });
+  if (!playerId || rows === null) return seenIds;
+  const activeEventId = state.activeEvent?.id ?? null;
+  const openIds = [
+    ...rows.map((row) => `todo:${row.id}`),
+    ...pendingVoteRounds().map((round) => `todo:vote-ballot:${activeEventId}:${round}`),
+  ];
+  const next = pruneSeenTodoIds(seenIds, openIds, activeEventId);
+  if (next.length !== seenIds.length) writeSeenTodoIds(playerId, next);
+  return next;
+}
+
+function readFeedEntries(view, entryIds) {
+  if (entryIds.length === 0) return;
+  void markFeedEntriesSeen(entryIds).then((saved) => {
+    if (saved || view !== openView || seenRetries >= MAX_SEEN_RETRIES) return;
+    seenRetries += 1;
+    pendingFeedOpen = view;
+    renderNavBadges();
+  });
 }
 
 function markTodosSeen(playerId, items, seenIds) {
@@ -104,15 +135,15 @@ export function renderNavBadges() {
   const { items, feedReady } = playerId ? currentItems() : { items: [], feedReady: false };
 
   if (playerId && pendingFeedOpen) {
-    const settled = settleOpenedArea({ pendingView: pendingFeedOpen, openView, feedReady, items });
+    const settled = settleOpenedArea({ pendingView: pendingFeedOpen, openView, openRoute, feedReady, items });
     pendingFeedOpen = settled.pendingView;
-    if (settled.feedEntryIds.length > 0) void markFeedEntriesSeen(settled.feedEntryIds);
+    readFeedEntries(openView, settled.feedEntryIds);
   }
 
   // To-Dos that turn up while their area is open are seen right there; they
   // stay listed on Home either way.
-  let seenIds = readSeenTodoIds(playerId);
-  if (playerId) seenIds = markTodosSeen(playerId, itemsSeenByOpening(items, openView), seenIds);
+  let seenIds = pruneSeenTodos(playerId, readSeenTodoIds(playerId));
+  if (playerId) seenIds = markTodosSeen(playerId, itemsSeenByOpening(items, openView, openRoute), seenIds);
   const visible = unseenNavBadgeItems(items, new Set(seenIds));
   const activeTarget = openView ? navTargetForView(openView) : null;
 
@@ -136,17 +167,20 @@ export function renderNavBadges() {
 }
 
 // Called by switchView() for every navigation, including a repeated tap on
-// the area that is already open.
-export function noteNavViewOpened(view) {
+// the area that is already open. `route` is the view's local route, such as
+// the betting round a notification link opened.
+export function noteNavViewOpened(view, route = null) {
   openView = view;
+  openRoute = route;
+  seenRetries = 0;
   const playerId = getMyId();
   if (!playerId) return;
   ensureMyTodosLoaded();
   const { items, feedReady } = currentItems();
-  markTodosSeen(playerId, itemsSeenByOpening(items, view), readSeenTodoIds(playerId));
-  const settled = settleOpenedArea({ pendingView: view, openView: view, feedReady, items });
+  markTodosSeen(playerId, itemsSeenByOpening(items, view, route), readSeenTodoIds(playerId));
+  const settled = settleOpenedArea({ pendingView: view, openView: view, openRoute: route, feedReady, items });
   pendingFeedOpen = settled.pendingView;
-  if (settled.feedEntryIds.length > 0) void markFeedEntriesSeen(settled.feedEntryIds);
+  readFeedEntries(view, settled.feedEntryIds);
 }
 
 export function initNavBadges() {

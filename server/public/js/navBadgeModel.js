@@ -47,8 +47,8 @@ function coveredTodoId(targetId, activeEventId) {
 }
 
 // Where a notification counts. A betting round is offered on Match's cards,
-// so its notification counts there; its own link opens the round on the
-// points page, which therefore settles it as well.
+// so its notification counts there; its own link opens exactly that round on
+// the points page, which therefore settles it too, but no other round.
 function feedItem(entry, activeEventId) {
   const view = feedLinkView(entry.url);
   if (!view) return null;
@@ -60,8 +60,9 @@ function feedItem(entry, activeEventId) {
     entryId: entry.id,
     coversTodoId: coveredTodoId(entry.targetId, activeEventId),
   };
-  if (view === 'points' && feedLinkTarget(entry.url)?.type === 'betting-round') {
-    return { ...base, view: 'matchmaking', alsoSeenOn: ['points'] };
+  const target = feedLinkTarget(entry.url);
+  if (view === 'points' && target?.type === 'betting-round') {
+    return { ...base, view: 'matchmaking', alsoSeenOnRoute: { view: 'points', kind: 'round', id: target.id } };
   }
   return { ...base, view };
 }
@@ -132,25 +133,41 @@ export function countForMoreCard(items, cardView) {
   return items.filter((item) => moreAreaKey(item.view) === key).length;
 }
 
-// Items a reader has seen by opening `view`. The "Mehr" hub itself is a
-// list of areas, not one of them, so opening it settles nothing.
-export function itemsSeenByOpening(items, view) {
+// Items a reader has seen by opening `view` (with its local `route`, such as
+// one betting round). The "Mehr" hub itself is a list of areas, not one of
+// them, so opening it settles nothing.
+export function itemsSeenByOpening(items, view, route = null) {
   if (!view || view === 'more') return [];
   const target = navTargetForView(view);
-  return items.filter((item) => [item.view, ...(item.alsoSeenOn ?? [])].some((itemView) => navTargetForView(itemView) === target));
+  return items.filter((item) => {
+    if (navTargetForView(item.view) === target) return true;
+    const exact = item.alsoSeenOnRoute;
+    return Boolean(exact) && exact.view === view && route?.kind === exact.kind && route?.id === exact.id;
+  });
 }
 
 // Settling the opened area waits until the feed and the open workspace are
 // both known: before that, the workspace filter would hide the very
 // notifications the reader is looking at. Returns the notifications to mark
 // read now and the area still waiting to be settled.
-export function settleOpenedArea({ pendingView, openView, feedReady, items }) {
+export function settleOpenedArea({ pendingView, openView, openRoute = null, feedReady, items }) {
   if (!pendingView || pendingView !== openView) return { feedEntryIds: [], pendingView: null };
   if (!feedReady) return { feedEntryIds: [], pendingView };
-  const feedEntryIds = itemsSeenByOpening(items, pendingView)
+  const feedEntryIds = itemsSeenByOpening(items, pendingView, openRoute)
     .filter((item) => item.kind === 'feed')
     .map((item) => item.entryId);
   return { feedEntryIds, pendingView: null };
+}
+
+// A To-Do keeps its id when it is reopened (a task taken again), so the
+// "seen" mark must end with the open phase it was given in: once the full
+// list is loaded, ids of To-Dos that are no longer open are forgotten and a
+// To-Do that comes back counts again. Missing ballots only exist for the open
+// workspace, so another workspace's ballot ids are kept.
+export function pruneSeenTodoIds(seenIds, openTodoIds, activeEventId) {
+  const open = new Set(openTodoIds);
+  const activeBallotPrefix = `todo:vote-ballot:${activeEventId}:`;
+  return seenIds.filter((id) => open.has(id) || (id.startsWith('todo:vote-ballot:') && !id.startsWith(activeBallotPrefix)));
 }
 
 export function rememberSeenTodoIds(previousIds, newIds) {

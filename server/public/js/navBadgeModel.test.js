@@ -11,6 +11,7 @@ import {
   navBadgeItems,
   navBadgeLabel,
   navBadgeText,
+  pruneSeenTodoIds,
   rememberSeenTodoIds,
   settleOpenedArea,
   todoIdsSettledBy,
@@ -90,14 +91,31 @@ test('a pending invitation and its notification count once and settle together',
   assert.deepEqual(todoIdsSettledBy(itemsSeenByOpening(items, 'events')), ['todo:event-invitation:e1']);
 });
 
-test('a betting round counts on Match and is settled by Match or by its own link', () => {
-  const items = navBadgeItems({ feedEntries: [feed('bet', '/?eventId=lan#points/round/r1')], activeEventId: 'lan', now: NOW });
-  assert.equal(countForBottomNav(items, 'matchmaking', LAN), 1);
+test('a betting round counts on Match and is settled by Match or by its own link only', () => {
+  const items = navBadgeItems({
+    feedEntries: [feed('bet1', '/?eventId=lan#points/round/r1'), feed('bet2', '/?eventId=lan#points/round/r2')],
+    activeEventId: 'lan',
+    now: NOW,
+  });
+  assert.equal(countForBottomNav(items, 'matchmaking', LAN), 2);
   assert.equal(countForBottomNav(items, 'more', LAN), 0);
-  assert.equal(countForDesktopNav(items, 'matchmaking'), 1);
+  assert.equal(countForDesktopNav(items, 'matchmaking'), 2);
   assert.equal(countForDesktopNav(items, 'points'), 0);
-  assert.deepEqual(itemsSeenByOpening(items, 'matchmaking').map((item) => item.id), ['feed:bet']);
-  assert.deepEqual(itemsSeenByOpening(items, 'points').map((item) => item.id), ['feed:bet']);
+  assert.deepEqual(itemsSeenByOpening(items, 'matchmaking').map((item) => item.id), ['feed:bet1', 'feed:bet2']);
+  assert.deepEqual(itemsSeenByOpening(items, 'points', { kind: 'round', id: 'r1' }).map((item) => item.id), ['feed:bet1']);
+  assert.deepEqual(itemsSeenByOpening(items, 'points'), [], 'the points overview opens no particular round');
+});
+
+test('a To-Do that closes and opens again counts again', () => {
+  // Seen while open, then the task is done: the next full list drops it.
+  const seen = ['todo:task:1', 'todo:vote-ballot:summer:4', 'todo:vote-ballot:lan:2'];
+  const afterClose = pruneSeenTodoIds(seen, [], 'lan');
+  assert.deepEqual(afterClose, ['todo:vote-ballot:summer:4'], 'another workspace\'s ballots stay remembered');
+  // Reopened with the same id, it is unseen again.
+  const items = navBadgeItems({ todoRows: [{ id: 'task:1', switchesEvent: false, navigate: { view: 'checklist' } }], activeEventId: 'lan' });
+  assert.deepEqual(unseenNavBadgeItems(items, new Set(afterClose)).map((item) => item.id), ['todo:task:1']);
+  // Still open: the mark is kept.
+  assert.deepEqual(pruneSeenTodoIds(['todo:task:1'], ['todo:task:1'], 'lan'), ['todo:task:1']);
 });
 
 test('opening an area waits for the feed and the workspace before reading notifications', () => {

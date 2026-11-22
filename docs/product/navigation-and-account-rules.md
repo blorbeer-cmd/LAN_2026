@@ -80,18 +80,21 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Routen, Rolle
   (`event-invitation:<event>:<account>`) covers its pending answer; opening the area settles both.
   Live skill nudges stay on Home only.
 - **Where it shows** — On the entry that leads to the item's area: tournaments and betting rounds
-  count on Match (a betting-round notification is also settled by opening its own link to the
-  points page), Admin's tools on Admin, Orga's pages and other secondary destinations on „Mehr“ on
+  count on Match (a betting-round notification is also settled by opening its own link to that
+  round on the points page, but not by another round), Admin's tools on Admin, Orga's pages and other secondary destinations on „Mehr“ on
   compact layouts and on their own rail entry on Desktop. A „Mehr“ card counts its whole area
   (Orga: To-Do, An & Abreise, Packliste, Umfragen). The entry that is open shows no number.
 - **Clearing** — Opening an area (also by tapping its entry again) marks its notifications read on
   the server, so the bell's count and other devices follow at once. Its To-Dos are remembered as
   seen per account on this device (`respawn_nav_seen_todos:<account-id>`, the newest 200 ids) and
-  keep their row on Home until done; a To-Do that newly appears counts again, and To-Dos that
+  keep their row on Home until done; a To-Do that newly appears counts again — including one
+  reopened with the same id, because the mark is dropped once the loaded list no longer has it
+  open — and To-Dos that
   appear while their area is open count as seen. Opening the „Mehr“ hub alone clears nothing.
   Reading a notification from the bell clears it here too. After a reload straight into an area,
   it is settled once both the notification feed and the open workspace have loaded; a failed feed
-  load keeps the visit pending until a retry succeeds.
+  load keeps the visit pending until a retry succeeds, and a failed „read“ write is retried up to
+  twice while the area stays open.
 
 ## Benachrichtigungszentrum
 

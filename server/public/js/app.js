@@ -800,7 +800,7 @@ function switchView(
   if (view === 'events' && searchTarget?.type === 'event') prepareEventTarget(searchTarget.id);
   currentView = view;
   currentLocalRoute = nextLocalRoute;
-  noteNavViewOpened(view);
+  noteNavViewOpened(view, nextLocalRoute);
   document.title = `${viewDefinition(view)?.label ?? 'Respawn'} · Respawn`;
   if (view !== 'more') lastSubstantiveView = view;
   // Realtime game modules use this marker to ignore updates while another

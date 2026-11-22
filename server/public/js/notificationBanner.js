@@ -374,10 +374,11 @@ export function notificationFeedEntries() {
 
 // Opening a navigation area reads its notifications: one batch, applied
 // locally first like markSeen, and reconciled from the server on failure.
+// Resolves false when the write failed, so the caller can retry the visit.
 export async function markFeedEntriesSeen(entryIds) {
   const playerId = getMyId();
   const matching = entries.filter((entry) => entryIds.includes(entry.id) && !entry.seen);
-  if (!playerId || matching.length === 0) return;
+  if (!playerId || matching.length === 0) return true;
   matching.forEach((entry) => {
     entry.seen = true;
   });
@@ -385,10 +386,12 @@ export async function markFeedEntriesSeen(entryIds) {
   renderBanner();
   try {
     await Promise.all(matching.map((entry) => api.push.seen(entry.id, playerId)));
+    return true;
   } catch {
     // Quietly restore the server's view: the reader did nothing that failed,
     // they only opened a page.
     await refreshNotificationBanner();
+    return false;
   }
 }
 

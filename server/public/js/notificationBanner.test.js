@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { api } from './api.js';
 import { lockMyIdToSession } from './whoami.js';
-import { entryHtml, notificationFeedEntries, refreshNotificationBanner } from './notificationBanner.js';
+import { entryHtml, markFeedEntriesSeen, notificationFeedEntries, refreshNotificationBanner } from './notificationBanner.js';
 
 const baseEntry = {
   id: 'entry-1',
@@ -110,8 +110,8 @@ test('the center names the creator next to the title and in the link label', () 
   assert.match(html, /aria-label="Durchsage von Anna: Zu den Durchsagen"/);
 });
 
-test('a failed feed load is not a loaded empty feed for the navigation counters', async () => {
-  const previous = { log: api.push.log, current: api.push.current, window: globalThis.window, document: globalThis.document };
+test('the feed for the navigation counters is only known after a successful load and read', async () => {
+  const previous = { log: api.push.log, current: api.push.current, seen: api.push.seen, window: globalThis.window, document: globalThis.document };
   globalThis.window = new EventTarget();
   globalThis.document = { querySelector: () => null, getElementById: () => null };
   let fail = true;
@@ -128,9 +128,19 @@ test('a failed feed load is not a loaded empty feed for the navigation counters'
     fail = false;
     await refreshNotificationBanner();
     assert.deepEqual(notificationFeedEntries().map((entry) => entry.id), ['entry-1']);
+
+    // A failed "read" write reports false, so the opened area can retry,
+    // and the reloaded entry is unread again.
+    api.push.seen = async () => { throw new Error('Service Unavailable'); };
+    assert.equal(await markFeedEntriesSeen(['entry-1']), false);
+    assert.equal(notificationFeedEntries()[0].seen, false);
+    api.push.seen = async () => ({});
+    assert.equal(await markFeedEntriesSeen(['entry-1']), true);
+    assert.equal(notificationFeedEntries()[0].seen, true);
   } finally {
     api.push.log = previous.log;
     api.push.current = previous.current;
+    api.push.seen = previous.seen;
     globalThis.window = previous.window;
     globalThis.document = previous.document;
   }
