@@ -16,6 +16,13 @@
   --accent-2: #9163f5;
   --accent-3: #ef5da8;
   --accent-gradient: linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 55%, var(--accent-3) 100%);
+  /* Deeper stops of the same brand hues for small white text on the gradient
+     (navigation and bell counters): white stays at least 4.6:1 everywhere
+     along it, where the regular stops only reach 3.1-4.0:1. */
+  --accent-strong: #3d6fe0;
+  --accent-2-strong: #6a3fd8;
+  --accent-3-strong: #c2357f;
+  --accent-gradient-strong: linear-gradient(135deg, var(--accent-strong) 0%, var(--accent-2-strong) 55%, var(--accent-3-strong) 100%);
   --color-wheel-gradient: conic-gradient(
     var(--danger),
     var(--state-paused),
@@ -460,11 +467,15 @@ textarea {
   justify-content: center;
   padding: 0 var(--space-1);
   border-radius: var(--radius-full);
-  background: var(--danger);
+  /* Same look as the navigation counter (.nav-badge): brand gradient, a ring
+     in the surface colour and the digit in a .nav-count-value box, trimmed
+     to cap height so it sits in the middle of the circle. */
+  background: var(--accent-gradient-strong);
   color: var(--accent-text);
   font-size: var(--font-size-2xs);
   font-weight: var(--font-weight-bold);
   line-height: var(--line-height-tight);
+  box-shadow: 0 0 0 2px var(--bg-elevated);
 }
 .notification-center-panel {
   position: absolute;
@@ -1526,6 +1537,47 @@ textarea {
   border-radius: 50%;
   background: var(--state-paused);
   box-shadow: 0 0 0 2px var(--bg-elevated);
+}
+
+/* Navigation counter: unread notifications plus open To-Dos of an area (see
+   navBadges.js). It points at something new rather than warning, so it uses
+   the brand gradient (its deeper, readable variant) instead of the danger red. The number is aria-hidden;
+   the button's name carries „N neu“ instead. */
+.nav-icon,
+.more-card .list-row-icon {
+  position: relative;
+}
+.nav-badge {
+  position: absolute;
+  top: calc(-1 * var(--space-2));
+  right: calc(-1 * var(--space-3));
+  min-width: var(--space-4);
+  height: var(--space-4);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 var(--space-1);
+  border-radius: var(--radius-full);
+  background: var(--accent-gradient-strong);
+  color: var(--accent-text);
+  font-size: var(--font-size-2xs);
+  font-weight: var(--font-weight-bold);
+  line-height: var(--line-height-tight);
+  box-shadow: 0 0 0 2px var(--bg-elevated);
+  pointer-events: none;
+}
+/* The line box reserves room for descenders, which digits never use, so the
+   number sat visibly high. Trimming to cap height and baseline centres the
+   glyph itself; browsers without text-box keep the previous rendering. */
+.nav-count-value {
+  text-box: trim-both cap alphabetic;
+}
+/* In the desktop rail the counter ends the row instead of covering the label. */
+.desktop-nav-btn > .nav-badge {
+  position: static;
+  flex: 0 0 auto;
+  margin-left: auto;
+  box-shadow: none;
 }
 
 .view-container {

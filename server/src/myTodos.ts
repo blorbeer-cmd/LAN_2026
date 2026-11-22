@@ -62,6 +62,10 @@ export interface MyTodosResult {
   // Open Vote rounds of the active workspace without a ballot of this
   // account, for "Aktuell"'s "Du hast noch nicht abgestimmt".
   pendingVoteRounds: number[];
+  // The workspace those rounds belong to, as this request resolved it. A
+  // client may still show the previous workspace while the server has
+  // already switched, so it must not guess the owner of the rounds.
+  pendingVoteEventId: string | null;
 }
 
 export interface MyTodosContext {
@@ -618,5 +622,5 @@ export function buildMyTodos(context: MyTodosContext): MyTodosResult {
     ...staleVoteRounds(ctx),
     ...staleTournaments(ctx),
   ].sort(compareMyTodos);
-  return { todos, pendingVoteRounds: pendingVoteRounds(ctx) };
+  return { todos, pendingVoteRounds: pendingVoteRounds(ctx), pendingVoteEventId: ctx.activeEventId };
 }
