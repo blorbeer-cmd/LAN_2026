@@ -47,11 +47,12 @@ test('derived team names fit the tournament team name limit', () => {
   assert.equal(defaultDrawTeamName({ source: 'balanced' }, { players: players(`${'x'.repeat(28)}🔥`) }, 0), `${'x'.repeat(28)}🔥`);
 });
 
-test('the draw selection waits for the roster instead of fixing an empty one', () => {
-  // A render before the startup snapshot has no players yet: no decision.
-  assert.equal(defaultRosterSelection([], []), null);
+test('the draw selection defaults to playing roster members and ignores stale live entries', () => {
   const players = [{ id: 'a' }, { id: 'b' }, { id: 'c' }];
   assert.deepEqual([...defaultRosterSelection([], players)], ['a', 'b', 'c']);
   const live = [{ player_id: 'b', state: 'playing' }, { player_id: 'c', state: 'paused' }];
   assert.deepEqual([...defaultRosterSelection(live, players)], ['b']);
+  // A deleted test player still shown as playing must not empty the default.
+  const stale = [{ player_id: 'gone', state: 'playing' }];
+  assert.deepEqual([...defaultRosterSelection(stale, players)], ['a', 'b', 'c']);
 });

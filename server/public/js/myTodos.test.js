@@ -142,20 +142,30 @@ test('once the navigation counters read the list, a change signal reloads it off
   }
 });
 
-test('missing ballots are only handed out for the workspace they were loaded in', async () => {
+test('missing ballots belong to the workspace the server answered for', async () => {
   const previous = { get: api.myTodos.get, window: globalThis.window, document: globalThis.document, activeEvent: state.activeEvent };
-  api.myTodos.get = async () => ({ todos: [], pendingVoteRounds: [1] });
+  let requests = 0;
+  // The server has already switched to B while this client still shows A.
+  api.myTodos.get = async () => {
+    requests += 1;
+    return { todos: [], pendingVoteRounds: [2], pendingVoteEventId: 'b' };
+  };
   globalThis.document = { getElementById: () => ({ dataset: { view: 'votes' } }) };
   globalThis.window = new EventTarget();
+  const nextChange = () => new Promise((resolve) => window.addEventListener('respawn:my-todos-changed', resolve, { once: true }));
   try {
+    keepMyTodosFresh();
     state.activeEvent = { id: 'a' };
-    const changed = new Promise((resolve) => window.addEventListener('respawn:my-todos-changed', resolve, { once: true }));
+    const loaded = nextChange();
     invalidateMyTodos();
-    await changed;
-    assert.deepEqual(pendingVoteRoundsFor('a'), [1]);
-    // Switched to B before B's list answered: A's rounds are not B's.
-    state.activeEvent = { id: 'b' };
-    assert.equal(pendingVoteRoundsFor('b'), null);
+    await loaded;
+    assert.deepEqual(pendingVoteRoundsFor('b'), [2], 'B\'s rounds stay B\'s');
+    // Read for A, the list is not A's: one reload is asked for, not one per render.
+    const reloaded = nextChange();
+    assert.equal(pendingVoteRoundsFor('a'), null);
+    await reloaded;
+    assert.equal(pendingVoteRoundsFor('a'), null);
+    assert.equal(requests, 2);
   } finally {
     api.myTodos.get = previous.get;
     globalThis.window = previous.window;

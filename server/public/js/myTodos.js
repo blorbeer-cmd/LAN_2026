@@ -41,15 +41,21 @@ function notifyChanged() {
 function load() {
   if (request) return request;
   const requestGeneration = generation;
-  // pendingVoteRounds belong to the workspace this request was made in; the
-  // navigation counters must not read them as another workspace's.
+  // Fallback owner of pendingVoteRounds for a server without
+  // pendingVoteEventId; the server's own answer is authoritative, because it
+  // may already have switched workspaces while this client still shows the
+  // previous one.
   const requestEventId = state.activeEvent?.id ?? null;
   const run = (async () => {
     let loaded = false;
     try {
       const result = await api.myTodos.get();
       if (requestGeneration !== generation) return;
-      cache = { todos: result.todos ?? [], pendingVoteRounds: result.pendingVoteRounds ?? [], eventId: requestEventId };
+      cache = {
+        todos: result.todos ?? [],
+        pendingVoteRounds: result.pendingVoteRounds ?? [],
+        eventId: result.pendingVoteEventId === undefined ? requestEventId : result.pendingVoteEventId,
+      };
       loadedAt = Date.now();
       failedAt = null;
       stale = false;
@@ -100,9 +106,20 @@ export function pendingVoteRounds() {
 
 // Open Vote rounds without this account's ballot, but only when the list was
 // loaded for `eventId`; null while the loaded list belongs to another
-// workspace (a switch whose reload has not answered yet) or none is loaded.
+// workspace or none is loaded. A list that belongs to another workspace than
+// the open one is reloaded once per workspace, so the counters do not stay
+// empty until the next unrelated change signal.
+let refetchedForEventId = null;
 export function pendingVoteRoundsFor(eventId) {
-  return cache && cache.eventId === eventId ? cache.pendingVoteRounds : null;
+  if (cache && cache.eventId === eventId) {
+    refetchedForEventId = null;
+    return cache.pendingVoteRounds;
+  }
+  if (cache && keptFresh && !request && refetchedForEventId !== eventId) {
+    refetchedForEventId = eventId;
+    void load();
+  }
+  return null;
 }
 
 // `null` while nothing is loaded yet, so Home can stay quiet instead of

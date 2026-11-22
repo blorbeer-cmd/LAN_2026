@@ -30,9 +30,6 @@ import { actionMenuHtml } from '../actionMenu.js';
 // Persists across re-renders of this view (but not across a full page
 // reload) so toggling checkboxes survives a re-roll without extra plumbing.
 let checkedIds = null;
-// True while checkedIds is only the placeholder of a render before the roster
-// loaded (see defaultRosterSelection); the first render with players decides.
-let rosterSelectionProvisional = false;
 let avoidAdjacentOpponents = false;
 // Tracks which game's default `avoidAdjacentOpponents` currently reflects, so
 // switching games re-applies that game's stored default (considerSeatNeighborsDefault)
@@ -82,14 +79,16 @@ let drawPlayerSearchQuery = '';
 // reads as one linear step instead of two competing panels.
 let teamsMode = 'draw';
 
-// The draw's first selection: whoever is shown as playing, else everyone.
-// Null while the roster is still empty: the app renders the start view before
-// its first snapshot, and fixing an empty selection then kept "Teams
-// auslosen" disabled for good once the players arrived.
+// The draw's first selection: whoever on this roster is shown as playing,
+// else everyone. Live entries of players no longer on the roster (deleted test
+// players, another workspace) must not count: they were pruned right after,
+// leaving an empty selection that kept "Teams auslosen" disabled for good.
 export function defaultRosterSelection(live, players) {
-  if (players.length === 0) return null;
-  const playing = new Set(live.filter((p) => p.state === 'playing').map((p) => p.player_id));
-  return playing.size > 0 ? playing : new Set(players.map((p) => p.id));
+  const rosterIds = new Set(players.map((p) => p.id));
+  const playing = new Set(
+    live.filter((p) => p.state === 'playing' && rosterIds.has(p.player_id)).map((p) => p.player_id),
+  );
+  return playing.size > 0 ? playing : rosterIds;
 }
 
 // Vote's "Match generieren" hands its result over before navigating here:
@@ -99,7 +98,6 @@ export function defaultRosterSelection(live, players) {
 export function prepareDrawFromVote({ gameId, playerIds }) {
   state.selectedGameId = gameId;
   checkedIds = new Set(playerIds);
-  rosterSelectionProvisional = false;
   drawPlayerSearchQuery = '';
   teamsMode = 'draw';
 }
@@ -1588,12 +1586,7 @@ export function renderMatchmaking(container, ctx) {
     return;
   }
 
-  if (checkedIds === null || rosterSelectionProvisional) {
-    const selection = defaultRosterSelection(state.live, eventPlayers());
-    rosterSelectionProvisional = selection === null;
-    checkedIds = selection ?? new Set();
-    draftPlayerIds = new Set(checkedIds);
-  }
+  if (checkedIds === null) checkedIds = defaultRosterSelection(state.live, eventPlayers());
   if (draftPlayerIds === null) draftPlayerIds = new Set(checkedIds);
   // Both selections predate the active event's participant scoping (a stale
   // `state.live`-based default, or leftover from an event switch) and must be
