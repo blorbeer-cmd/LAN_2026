@@ -460,11 +460,15 @@ textarea {
   justify-content: center;
   padding: 0 var(--space-1);
   border-radius: var(--radius-full);
-  background: var(--danger);
+  /* Same look as the navigation counter (.nav-badge): brand gradient, a ring
+     in the surface colour and the digit in a .nav-count-value box, trimmed
+     to cap height so it sits in the middle of the circle. */
+  background: var(--accent-gradient);
   color: var(--accent-text);
   font-size: var(--font-size-2xs);
   font-weight: var(--font-weight-bold);
   line-height: var(--line-height-tight);
+  box-shadow: 0 0 0 2px var(--bg-elevated);
 }
 .notification-center-panel {
   position: absolute;

@@ -75,4 +75,9 @@ verdeckt kein Label und verschiebt keine Nachbarn.
 
 ## 11. Permanente Varianten und befristete Ausnahmen
 
+Die Glockenzahl `.notification-count` (Kopfzeile, `notificationBanner.js`) übernimmt Farbe
+(`--accent-gradient`), Ring und die zentrierte Ziffer in `.nav-count-value`. Sie bleibt mit
+`--space-5` bewusst größer, weil die Glocke als Kopfzeilen-Control größer ist als ein Nav-Icon.
+
+
 Keine.

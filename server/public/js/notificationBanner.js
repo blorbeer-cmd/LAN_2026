@@ -303,7 +303,15 @@ export function renderBanner() {
   const myId = getMyId();
   const unreadCount =
     myId === loadedForId ? entries.filter((entry) => !entry.seen && !isFeedEntryObsolete(entry)).length : 0;
-  count.textContent = unreadCount > 9 ? '9+' : String(unreadCount);
+  // The digit sits in its own box so CSS can trim it to cap height and
+  // centre it in the circle, like the navigation counter (.nav-count-value).
+  const countText = unreadCount > 9 ? '9+' : String(unreadCount);
+  if (count.textContent !== countText) {
+    const value = document.createElement('span');
+    value.className = 'nav-count-value';
+    value.textContent = countText;
+    count.replaceChildren(value);
+  }
   count.hidden = unreadCount === 0;
   button.classList.toggle('has-unread', unreadCount > 0);
   button.setAttribute('aria-expanded', String(isOpen));
