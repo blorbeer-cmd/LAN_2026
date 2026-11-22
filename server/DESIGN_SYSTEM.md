@@ -443,6 +443,9 @@ Components are plain CSS classes (no JS component library) in `style.css`:
 - **Notification center** — presents personal notification state with text as well as visual
   treatment. Product lifecycles, actions and expiry rules live in
   [Product rules](../docs/product/README.md).
+- **Navigation counter** — `.nav-badge` puts the number of new notifications and open To-Dos of an
+  area on its navigation icon and disappears once the area is opened; geometry and accessibility
+  follow the [Navigationszähler](frontend-contracts/components/nav-badge.md) contract.
 - **Connection status** — `.connection-status` is the single global technical-state strip below the
   topbar. A short initial Socket.IO connection stays hidden to avoid startup flicker; offline and
   reconnect states remain visible with explicit German text until a confirmed reconnect hides the

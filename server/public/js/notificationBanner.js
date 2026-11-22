@@ -309,6 +309,8 @@ export function renderBanner() {
     unreadCount > 0 ? `Mitteilungen, ${unreadCount} ungelesen` : 'Mitteilungen'
   );
 
+  window.dispatchEvent(new CustomEvent('respawn:notifications-changed'));
+
   panel.hidden = !isOpen;
   if (!isOpen) return;
   panel.innerHTML = `
@@ -348,6 +350,33 @@ export function renderBanner() {
       })
     );
   });
+}
+
+// The loaded personal feed for the navigation counters (navBadges.js), or
+// null while nothing is loaded for the current identity yet.
+export function notificationFeedEntries() {
+  const myId = getMyId();
+  return myId && myId === loadedForId ? entries : null;
+}
+
+// Opening a navigation area reads its notifications: one batch, applied
+// locally first like markSeen, and reconciled from the server on failure.
+export async function markFeedEntriesSeen(entryIds) {
+  const playerId = getMyId();
+  const matching = entries.filter((entry) => entryIds.includes(entry.id) && !entry.seen);
+  if (!playerId || matching.length === 0) return;
+  matching.forEach((entry) => {
+    entry.seen = true;
+  });
+  if (matching.some((entry) => entry.id === highlightEntry?.id)) highlightEntry = null;
+  renderBanner();
+  try {
+    await Promise.all(matching.map((entry) => api.push.seen(entry.id, playerId)));
+  } catch {
+    // Quietly restore the server's view: the reader did nothing that failed,
+    // they only opened a page.
+    await refreshNotificationBanner();
+  }
 }
 
 export async function refreshNotificationBanner({ throwOnError = false } = {}) {

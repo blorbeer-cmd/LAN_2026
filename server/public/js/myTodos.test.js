@@ -2,7 +2,15 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { api } from './api.js';
-import { ensureMyTodosLoaded, MY_TODOS_RETRY_AFTER_FAILURE_MS, myTodoRow, myTodoRows } from './myTodos.js';
+import {
+  ensureMyTodosLoaded,
+  invalidateMyTodos,
+  keepMyTodosFresh,
+  MY_TODOS_RETRY_AFTER_FAILURE_MS,
+  myTodoRow,
+  myTodoRows,
+  myTodos,
+} from './myTodos.js';
 
 const NOW = Date.UTC(2026, 9, 2, 12);
 
@@ -98,6 +106,33 @@ test('a failing load neither redraws Home nor retries before its back-off has pa
     // The successful load redraws once; that redraw finds a fresh list.
     assert.equal(redraws, 1);
     assert.equal(requests, 2);
+  } finally {
+    api.myTodos.get = previous.get;
+    globalThis.window = previous.window;
+    globalThis.document = previous.document;
+  }
+});
+
+// Runs last: keepMyTodosFresh() stays switched on for the rest of the module.
+test('once the navigation counters read the list, a change signal reloads it off Home too', async () => {
+  const previous = { get: api.myTodos.get, window: globalThis.window, document: globalThis.document };
+  let requests = 0;
+  api.myTodos.get = async () => {
+    requests += 1;
+    return { todos: [{ id: 'task:1', kind: 'task', eventId: 'lan', title: 'Kabel', dueAt: null, overdue: false }], pendingVoteRounds: [] };
+  };
+  globalThis.document = { getElementById: () => ({ dataset: { view: 'votes' } }) };
+  globalThis.window = new EventTarget();
+  try {
+    invalidateMyTodos();
+    assert.equal(requests, 0, 'without a reader outside Home nothing is fetched');
+
+    keepMyTodosFresh();
+    const changed = new Promise((resolve) => window.addEventListener('respawn:my-todos-changed', resolve, { once: true }));
+    invalidateMyTodos();
+    await changed;
+    assert.equal(requests, 1);
+    assert.deepEqual(myTodos().map((todo) => todo.id), ['task:1']);
   } finally {
     api.myTodos.get = previous.get;
     globalThis.window = previous.window;

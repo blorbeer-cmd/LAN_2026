@@ -1528,6 +1528,41 @@ textarea {
   box-shadow: 0 0 0 2px var(--bg-elevated);
 }
 
+/* Navigation counter: unread notifications plus open To-Dos of an area (see
+   navBadges.js). Same colour pair as the bell's .notification-count, sized
+   down to sit on a nav icon. The number is aria-hidden; the button's name
+   carries „N neu“ instead. */
+.nav-icon,
+.more-card .list-row-icon {
+  position: relative;
+}
+.nav-badge {
+  position: absolute;
+  top: calc(-1 * var(--space-2));
+  right: calc(-1 * var(--space-3));
+  min-width: var(--space-4);
+  height: var(--space-4);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 var(--space-1);
+  border-radius: var(--radius-full);
+  background: var(--danger);
+  color: var(--accent-text);
+  font-size: var(--font-size-2xs);
+  font-weight: var(--font-weight-bold);
+  line-height: var(--line-height-tight);
+  box-shadow: 0 0 0 2px var(--bg-elevated);
+  pointer-events: none;
+}
+/* In the desktop rail the counter ends the row instead of covering the label. */
+.desktop-nav-btn > .nav-badge {
+  position: static;
+  flex: 0 0 auto;
+  margin-left: auto;
+  box-shadow: none;
+}
+
 .view-container {
   flex: 1;
   min-height: 0; /* allow this flex item to actually shrink and scroll internally, see .app */

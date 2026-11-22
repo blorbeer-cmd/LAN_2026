@@ -28,6 +28,9 @@ let failedAt = null;
 let stale = false;
 let request = null;
 let generation = 0;
+// Set once the navigation counters (navBadges.js) read this list; from then
+// on a change signal reloads it on every view, not only on an open Home.
+let keptFresh = false;
 
 const homeIsOpen = () => document.getElementById('view-container')?.dataset.view === 'home';
 
@@ -56,7 +59,7 @@ function load() {
     } finally {
       if (request === run) request = null;
       if (loaded) notifyChanged();
-      else if (requestGeneration !== generation && homeIsOpen()) void load();
+      else if (requestGeneration !== generation && (keptFresh || homeIsOpen())) void load();
     }
   })();
   request = run;
@@ -80,7 +83,11 @@ export function invalidateMyTodos({ hard = false } = {}) {
   request = null;
   stale = true;
   if (hard) cache = null;
-  if (homeIsOpen()) void load();
+  if (keptFresh || homeIsOpen()) void load();
+}
+
+export function keepMyTodosFresh() {
+  keptFresh = true;
 }
 
 // Open Vote rounds of the active workspace without this account's ballot.

@@ -53,8 +53,9 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Routen, Rolle
   hides the duplicate tabs and shows the opened page's title in the compact header. Every tab row
   remains outside any card, distinct from the in-card controls further down. Each tab is a real
   route, so the row is `<nav>` navigation rather than a toggle: the active tab carries
-  `aria-current="page"` plus `.btn-primary`, never `aria-pressed`. Tabs and rail entries carry
-  their plain label, never a count. Tabs share the full width on phones for a comfortable tap
+  `aria-current="page"` plus `.btn-primary`, never `aria-pressed`. Tabs carry their plain label,
+  never a count; rail and bottom-nav entries keep their plain label and may only add the
+  [Navigationszähler](#navigationszähler) on their icon. Tabs share the full width on phones for a comfortable tap
   target and size to their own label from `--bp-md`, because two tabs stretched across the wide
   content column would read as banners rather than navigation. A primary action belongs in the
   first relevant card header when that card exists (for example „Ergebnis eintragen“ in the
@@ -63,6 +64,28 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Routen, Rolle
   shell, so a sub-view that reads its own previous DOM before redrawing (the Packliste's add-item
   draft and focus, the same survives-its-own-rerender pattern the Checkliste's To-Do form uses)
   keeps working across a background refresh triggered from outside that tab.
+
+## Navigationszähler
+
+- **Purpose** — A small number on a bottom-nav entry, a desktop-rail entry or a „Mehr“ card says
+  how many new things wait in that area: unread, still-active notifications plus open „Meine
+  To-Dos“. It disappears once the area has been opened; it is a pointer, not the list itself.
+- **What counts** — Notifications of the open workspace and of the base workspace (event
+  invitations), excluding read and obsolete ones, assigned through their deep link. To-Dos count
+  when they can be handled from the open workspace (`switchesEvent` false), plus pending
+  invitations and every open Vote round without the own ballot („noch nicht abgestimmt“). A round
+  counts once: while its „Neue Abstimmung“ notification is unread, that notification stands for the
+  missing ballot. Live skill nudges stay on Home only.
+- **Where it shows** — On the entry that leads to the item's area: tournaments and betting count
+  on Match, Admin's tools on Admin, Orga's pages and other secondary destinations on „Mehr“ on
+  compact layouts and on their own rail entry on Desktop. A „Mehr“ card counts its whole area
+  (Orga: To-Do, An & Abreise, Packliste, Umfragen). The entry that is open shows no number.
+- **Clearing** — Opening an area (also by tapping its entry again) marks its notifications read on
+  the server, so the bell's count and other devices follow at once. Its To-Dos are remembered as
+  seen per account on this device (`respawn_nav_seen_todos:<account-id>`, the newest 200 ids) and
+  keep their row on Home until done; a To-Do that newly appears counts again, and To-Dos that
+  appear while their area is open count as seen. Opening the „Mehr“ hub alone clears nothing.
+  Reading a notification from the bell clears it here too.
 
 ## Benachrichtigungszentrum
 
