@@ -1529,9 +1529,9 @@ textarea {
 }
 
 /* Navigation counter: unread notifications plus open To-Dos of an area (see
-   navBadges.js). Same colour pair as the bell's .notification-count, sized
-   down to sit on a nav icon. The number is aria-hidden; the button's name
-   carries „N neu“ instead. */
+   navBadges.js). It points at something new rather than warning, so it uses
+   the brand gradient instead of the danger red. The number is aria-hidden;
+   the button's name carries „N neu“ instead. */
 .nav-icon,
 .more-card .list-row-icon {
   position: relative;
@@ -1547,13 +1547,19 @@ textarea {
   justify-content: center;
   padding: 0 var(--space-1);
   border-radius: var(--radius-full);
-  background: var(--danger);
+  background: var(--accent-gradient);
   color: var(--accent-text);
   font-size: var(--font-size-2xs);
   font-weight: var(--font-weight-bold);
   line-height: var(--line-height-tight);
   box-shadow: 0 0 0 2px var(--bg-elevated);
   pointer-events: none;
+}
+/* The line box reserves room for descenders, which digits never use, so the
+   number sat visibly high. Trimming to cap height and baseline centres the
+   glyph itself; browsers without text-box keep the previous rendering. */
+.nav-count-value {
+  text-box: trim-both cap alphabetic;
 }
 /* In the desktop rail the counter ends the row instead of covering the label. */
 .desktop-nav-btn > .nav-badge {

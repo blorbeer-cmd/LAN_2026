@@ -37,8 +37,12 @@ Keine. Die Platzierung (Icon-Ecke beziehungsweise Zeilenende in der Rail) ist ko
 
 ## 6. Komponenteneigene Invarianten
 
-- MUSS die Farbkombination der Glockenzahl verwenden (`--danger` mit `--accent-text`) sowie
-  `--space-4` Höhe/Mindestbreite, `--radius-full`, `--font-size-2xs` und `--font-weight-bold`.
+- MUSS den Marken-Verlauf `--accent-gradient` mit `--accent-text` verwenden, nicht `--danger`:
+  Die Zahl weist auf Neues hin und ist keine Warnung. Dazu `--space-4` Höhe/Mindestbreite,
+  `--radius-full`, `--font-size-2xs` und `--font-weight-bold`.
+- MUSS die Ziffer optisch mittig zeigen: `.nav-count-value` schneidet den Textkasten auf
+  Versalhöhe und Grundlinie zu (`text-box: trim-both cap alphabetic`). Abnahme bei 390 px: Die
+  Mitte der Ziffer weicht höchstens 0,5 px von der Kreismitte ab.
 - MUSS ab zehn „9+“ zeigen und bei null vollständig aus dem DOM verschwinden.
 - MUSS ohne Animation erscheinen; es gibt keinen Bewegungszustand.
 - DARF Klicks nicht abfangen (`pointer-events: none`) und die Geometrie des Eintrags nicht ändern.
