@@ -6,11 +6,10 @@ import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import { db } from '../db';
 import { config } from '../config';
 import { requireUser, requireRecentReauthentication } from '../sessions';
-import { isEventFeatureEnabled } from '../eventFeatures';
 import { context, overview, gameOptions, gameOptionsSchema, competitions, statistics, statisticsSchema,
   previewTeams, teamPreviewSchema, eventSummary } from './data';
 import { cleanupPlanDetails, executeCleanup, previewCleanup } from './cleanup';
-import { IntegrationError, mcpBaseUrl, resolvePrincipal } from './access';
+import { IntegrationError, mcpBaseUrl } from './access';
 import { limitRequests, mountOAuth, resolveConnection, route, sameOrigin } from './oauth';
 
 async function createMcpServer(token: string): Promise<Server> {
@@ -100,7 +99,7 @@ async function createMcpServer(token: string): Promise<Server> {
 export function mountMcp(app: Express): void {
   const router = Router();
   router.use(['/mcp', '/.well-known/oauth-protected-resource', '/.well-known/oauth-authorization-server'], (req, res, next) => {
-    // Management and cleanup are useful even when external MCP access is off.
+    // Personal connection management is available even when external MCP access is off.
     if (req.originalUrl.split('?')[0] === '/mcp/manage') return next();
     if (!config.mcpEnabled) { res.status(404).json({ error: 'MCP ist deaktiviert.' }); return; }
     try { mcpBaseUrl(); next(); } catch (error) {
@@ -112,7 +111,11 @@ export function mountMcp(app: Express): void {
   });
   router.use('/mcp/oauth', express.urlencoded({ extended: false, limit: '16kb' }));
   mountOAuth(router);
-  router.get(['/mcp/connect', '/mcp/manage', '/admin/draw-cleanup'], (_req, res) => {
+  router.get(['/mcp/connect', '/mcp/manage', '/admin/draw-cleanup'], (req, res) => {
+    if (req.path === '/admin/draw-cleanup' && (typeof req.query.plan !== 'string' || !req.query.plan)) {
+      res.status(404).send('Öffne den Bestätigungslink aus ChatGPT.');
+      return;
+    }
     res.sendFile(path.join(__dirname, '..', '..', 'public', 'mcp.html'));
   });
   router.options('/mcp', (_req, res) => {
@@ -164,19 +167,11 @@ export function mountMcp(app: Express): void {
       c.expires_at AS expiresAt FROM mcp_connections c JOIN events e ON e.id=c.event_id
       WHERE c.player_id=? AND c.revoked_at IS NULL AND c.expires_at>? ORDER BY c.created_at DESC`)
       .all(req.player!.id, Date.now());
-    const games = db.prepare(`SELECT g.id,g.name FROM games g JOIN group_memberships gm ON gm.group_id=g.group_id
-      WHERE gm.player_id=? AND gm.status='active' AND g.status='catalog' ORDER BY g.name LIMIT 500`).all(req.player!.id);
-    res.json({ enabled: config.mcpEnabled, endpoint, configurationError, name: req.player!.name,
-      events: events.map((event) => ({ ...event, cleanupEnabled: isEventFeatureEnabled(event.id, 'competition') })), connections, games });
+    res.json({ enabled: config.mcpEnabled, endpoint, configurationError, name: req.player!.name, events, connections });
   }));
   browser.delete('/connections/:id', sameOrigin, route((req, res) => {
     db.prepare('UPDATE mcp_connections SET revoked_at=? WHERE id=? AND player_id=?').run(Date.now(), req.params.id, req.player!.id);
     res.status(204).end();
-  }));
-  browser.post('/cleanup/preview', sameOrigin, route((req, res) => {
-    if (typeof req.body?.eventId !== 'string') throw new IntegrationError('Bitte ein Event auswählen.');
-    const principal = resolvePrincipal(req.player!.id, req.body.eventId);
-    res.json(previewCleanup(principal, req.body));
   }));
   browser.get('/cleanup/:id', route((req, res) => { res.json(cleanupPlanDetails(req.player!.id, req.params.id)); }));
   browser.post('/cleanup/:id/confirm', sameOrigin, requireRecentReauthentication, route((req, res) => {

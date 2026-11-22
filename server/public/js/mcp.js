@@ -4,14 +4,13 @@ import { apiFetch } from './api.js';
 import { escapeHtml, formatDateTime } from './format.js';
 import { confirmDialog } from './modal.js';
 import { withStepUp } from './reauth.js';
-import { initNumberStepper } from './numberStepper.js';
 
 const content = document.querySelector('#mcp-content');
 const status = document.querySelector('#mcp-status');
 const query = new URLSearchParams(location.search);
 const requestId = query.get('request');
-const cleanupPage = location.pathname === '/admin/draw-cleanup' || query.has('plan');
-const title = requestId ? 'Respawn mit ChatGPT verbinden' : cleanupPage ? 'Auslosungen aufräumen' : 'ChatGPT-Verbindungen';
+const planId = query.get('plan');
+const title = requestId ? 'Respawn mit ChatGPT verbinden' : planId ? 'Auslosungen aufräumen' : 'ChatGPT-Verbindungen';
 document.title = `${title} – Respawn`;
 document.querySelector('.view-title').textContent = title;
 let account;
@@ -110,8 +109,7 @@ async function showPlan(id) {
 
 function manage() {
   message(`Angemeldet als ${account.name}`);
-  const adminEvents = account.events.filter((event) => event.cleanupEnabled && ['owner', 'admin'].includes(event.role));
-  const connectionsSection = `<section class="card stack grouped-page-section">
+  content.innerHTML = `<section class="card stack grouped-page-section">
     <h2>ChatGPT-Verbindungen</h2>
     ${account.endpoint ? `<label class="field-label" for="mcp-endpoint">MCP-Server-URL</label>
       <input id="mcp-endpoint" readonly value="${escapeHtml(account.endpoint)}" />
@@ -123,46 +121,23 @@ function manage() {
         <span class="profile-row-meta">Bis ${escapeHtml(formatDateTime(connection.expiresAt))} · ${escapeHtml(scopeLabels(connection.scopes))}</span>
       </span></div><div class="profile-row-action"><button class="btn btn-sm" data-revoke="${escapeHtml(connection.id)}">Widerrufen</button></div></div>`).join('') : '<p>Keine aktiven Verbindungen.</p>'}</div>
     </section>`;
-  const cleanupSection = adminEvents.length ? `<section class="card stack grouped-page-section">
-      <h2>Alte Match-Auslosungen aufräumen</h2>
-      <form id="mcp-cleanup" class="stack">
-        <label class="field-label is-required" for="cleanup-event">Event</label>
-        <select id="cleanup-event" name="eventId" required>${eventOptions(adminEvents)}</select>
-        <label class="field-label" for="cleanup-game">Spiel</label>
-        <select id="cleanup-game" name="gameId"><option value="">Alle Spiele</option>${eventOptions(account.games)}</select>
-        <label class="field-label is-required" for="cleanup-age">Älter als</label>
-        <input id="cleanup-age" type="number" name="age" min="1" max="876000" step="1" value="7" required />
-        <label class="field-label" for="cleanup-unit">Einheit</label>
-        <select id="cleanup-unit" name="unit"><option value="days">Tage (24 Stunden)</option><option value="hours">Stunden</option></select>
-        <p>Automatische Auslosungen ohne Ergebnis werden berücksichtigt.</p>
-        <label><input type="checkbox" name="draft" /> Abgeschlossene Captain-Drafts einbeziehen</label>
-        <label><input type="checkbox" name="rematch" /> Rematches einbeziehen</label>
-        <div class="row" style="justify-content:flex-end;"><button class="btn btn-primary" type="submit">Vorschau erstellen</button></div>
-      </form></section>` : '<section class="card"><p>Keine zugänglichen Events mit Admin-Berechtigung zur Bereinigung vorhanden.</p></section>';
-  content.innerHTML = cleanupPage ? cleanupSection : connectionsSection;
   content.querySelectorAll('[data-revoke]').forEach((button) => button.addEventListener('click', () => busy(button, async () => {
     if (!(await confirmDialog('Diese ChatGPT-Verbindung widerrufen?', { confirmText: 'Widerrufen' }))) return;
     await apiFetch(`/api/integrations/connections/${encodeURIComponent(button.dataset.revoke)}`, { method: 'DELETE' });
     message('Verbindung widerrufen. Bereits im Chat angezeigte Daten bleiben dort sichtbar.');
     await start();
   })));
-  content.querySelector('#mcp-cleanup')?.addEventListener('submit', (event) => {
-    event.preventDefault(); const form = event.currentTarget;
-    busy(form.querySelector('[type="submit"]'), async () => {
-      const plan = await post('/api/integrations/cleanup/preview', { eventId: form.elements.eventId.value,
-        age: Number(form.elements.age.value), unit: form.elements.unit.value,
-        gameId: form.elements.gameId.value || undefined,
-        sources: ['automatic', ...(form.elements.draft.checked ? ['draft'] : []), ...(form.elements.rematch.checked ? ['rematch'] : [])] });
-      await showPlan(plan.id); message('Vorschau erstellt. Noch nichts gelöscht.');
-    });
-  });
 }
 
 async function start() {
   try {
     account = await apiFetch('/api/integrations/status');
     if (requestId) await consent();
-    else { manage(); if (query.get('plan')) await showPlan(query.get('plan')); }
+    else if (planId) {
+      message(`Angemeldet als ${account.name}`);
+      content.replaceChildren();
+      await showPlan(planId);
+    } else manage();
   } catch (error) {
     if (error.status === 401) login();
     else {
@@ -173,5 +148,4 @@ async function start() {
   }
 }
 
-initNumberStepper();
 start();

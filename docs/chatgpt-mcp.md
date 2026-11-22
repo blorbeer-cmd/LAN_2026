@@ -30,8 +30,7 @@ an die App weiter. Es muss `/mcp` einschließlich POST und die OAuth-Metadaten d
 eine vorgeschaltete interaktive Cloudflare-Access-Anmeldung darf diese Serveraufrufe nicht
 blockieren. Die MCP-Endpunkte selbst verlangen die persönliche OAuth-Freigabe.
 
-Ohne `MCP_ENABLED=1` bleibt der externe MCP-Zugang geschlossen. Die manuelle Admin-Bereinigung
-ist unabhängig davon unter `/admin/draw-cleanup` verfügbar. Eine ungültige `PUBLIC_BASE_URL` wird
+Ohne `MCP_ENABLED=1` bleibt der externe MCP-Zugang geschlossen. Eine ungültige `PUBLIC_BASE_URL` wird
 in der Verbindungsverwaltung als Konfigurationsfehler angezeigt; das übrige LAN-Tool bleibt erreichbar.
 
 Prüfen:
@@ -123,18 +122,16 @@ werden durch eine einzelne Event-Freigabe nicht zugänglich.
 
 ## Admin-Bereinigung
 
-Über **Admin → Auslosungen aufräumen** oder direkt `/admin/draw-cleanup` erreichbar. Die Seite
-enthält ausschließlich die Bereinigung und ist auch ohne ChatGPT oder aktiviertes MCP nutzbar.
+Admins mit der OAuth-Freigabe `draws:cleanup` können in ChatGPT einen Löschplan vorbereiten.
+Der Bestätigungslink öffnet die zugehörige Vorschau in Respawn.
 
-1. Ein zugängliches Event und ein positives Alter in ganzen Stunden oder Tagen auswählen.
-   Ein Tag entspricht 24 Stunden. Standard sind sieben Tage und automatische Auslosungen.
-   Captain-Drafts und Rematches müssen ausdrücklich einbezogen werden.
-2. Vorschau erstellen. Sie zeigt einen festen Stichtag, genaue betroffene IDs und geschützte
-   Einträge mit Gründen. Vor diesem Zeitpunkt bedeutet strikt `<`; ein Eintrag genau am
-   Stichtag wird nicht gelöscht.
-3. Die konkrete Auswahl prüfen und dauerhaftes Löschen bestätigen. Falls erforderlich das
-   persönliche Passwort in Respawn erneut bestätigen. Die Freigabe gilt wie bei bestehenden
-   Admin-Aktionen fünf Minuten, der Löschplan zehn Minuten.
+1. In ChatGPT ein positives Alter in ganzen Stunden oder Tagen angeben. Ein Tag entspricht
+   24 Stunden. Standard sind sieben Tage und automatische Auslosungen. Captain-Drafts und
+   Rematches müssen ausdrücklich einbezogen werden.
+2. Den Bestätigungslink öffnen. Die Vorschau zeigt Stichtag, betroffene Auslosungen und Gründe
+   für geschützte Einträge. Einträge müssen strikt älter als der Stichtag sein.
+3. Die Auswahl prüfen und das dauerhafte Löschen bestätigen. Falls erforderlich das persönliche
+   Passwort erneut eingeben. Die Freigabe gilt fünf Minuten, der Löschplan zehn Minuten.
 
 Auslosungen mit Ergebnis sind nicht Bestandteil der Auswahl. Turniergebundene Auslosungen und
 alle mit verknüpften Wettrunden oder Abrechnungen bleiben geschützt. Die Ausführung prüft
@@ -180,7 +177,7 @@ Die Integrationssuite `src/test/api.mcp.test.ts` prüft unter anderem OAuth/PKCE
 Token-Widerruf, Schema-Validierung, nebenwirkungsfreie Vorschauen, Statistikdefinitionen,
 Umfragen ohne Antworten und veränderte/geschützte Löschkandidaten. Migration 141 wird mit
 Legacy-Daten, Fehlerrollback und Wiederholung geprüft. Der bestehende Shell-Browser-Owner
-prüft die persönliche Verwaltungsseite und die leere Bereinigungsvorschau auf Handy und Laptop.
+prüft die persönliche Verwaltungsseite auf Handy und Laptop sowie das Verhalten ohne Bestätigungslink.
 
 Eine Verbindung im tatsächlichen ChatGPT-Konto und das produktive HTTPS-Routing müssen nach
 dem Deployment separat geprüft werden. Lokale Tests sind kein Nachweis eines Live-Deployments.

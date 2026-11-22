@@ -136,22 +136,23 @@ test('cleanup protects boundaries and linked results, requires browser approval,
   const protectedDraw = f.draw('betting', now - 7_200_000);
   db.prepare(`INSERT INTO betting_rounds(id,group_id,event_id,source_type,source_id,title,outcomes,status,closes_at,created_at)
     VALUES(?,?,?,'draw',?,'Protected','[]','open',?,?)`).run(`${f.prefix}-bet`, DEFAULT_GROUP_ID, f.event, protectedDraw, now + 100_000, now);
-  assert.equal((await request(app).post('/api/integrations/cleanup/preview').set('Cookie', f.cookie)
-    .send({ eventId: f.event, age: 1, unit: 'hours' })).status, 403, 'cross-site/absent Origin cannot create plans');
-  assert.equal((await request(app).post('/api/integrations/cleanup/preview').set('Cookie', f.memberCookie).set('Origin', base)
-    .send({ eventId: f.event, age: 1, unit: 'hours' })).status, 403);
-  assert.equal((await request(app).post('/api/integrations/cleanup/preview').set('Cookie', f.cookie).set('Origin', base)
-    .send({ eventId: f.event, age: 1, unit: 'hours', gameId: 'missing-game' })).status, 404);
   const auth = await connect(f, true);
   const preview = await rpc(auth.token, 'tools/call', { name: 'preview_draw_cleanup', arguments: { age: 1, unit: 'hours' } });
   const plan = preview.body.result.structuredContent.data;
   assert.equal(plan.confirmationUrl, `${base}/admin/draw-cleanup?plan=${plan.id}`);
+  assert.equal((await request(app).get(`/admin/draw-cleanup?plan=${plan.id}`)).status, 200);
+  const missingGame = await rpc(auth.token, 'tools/call', {
+    name: 'preview_draw_cleanup', arguments: { age: 1, unit: 'hours', gameId: 'missing-game' },
+  });
+  assert.equal(missingGame.body.result.isError, true);
   assert.equal(plan.deletable, 1, JSON.stringify(preview.body));
   assert.equal(plan.protectedCount, 1);
   assert.deepEqual(plan.entries.filter((entry: { protectedReason: string | null }) => !entry.protectedReason).map((entry: { id: string }) => entry.id), [old]);
   const unapproved = await rpc(auth.token, 'tools/call', { name: 'execute_draw_cleanup', arguments: { planId: plan.id } });
   assert.equal(unapproved.body.result.isError, true);
   const confirm = () => request(app).post(`/api/integrations/cleanup/${plan.id}/confirm`).set('Cookie', f.cookie).set('Origin', base).send({ confirmedCount: 1 });
+  assert.equal((await request(app).post(`/api/integrations/cleanup/${plan.id}/confirm`).set('Cookie', f.cookie)
+    .send({ confirmedCount: 1 })).status, 403, 'confirmation requires same origin');
   const results = await Promise.all([confirm(), confirm()]);
   assert.deepEqual(results.map((r) => r.status), [200, 200], JSON.stringify(results.map((r) => r.body)));
   assert.deepEqual(results.map((r) => r.body.deleted), [1, 1]);
@@ -168,10 +169,12 @@ test('cleanup refuses changed candidates, expired plans, and revoked roles witho
   t.mock.method(Date, 'now', () => now);
   const f = fixture();
   const a = f.draw('a', now - 7_200_000), b = f.draw('b', now - 7_200_000);
+  const auth = await connect(f, true);
   const preview = async () => {
-    const response = await request(app).post('/api/integrations/cleanup/preview').set('Cookie', f.cookie).set('Origin', base)
-      .send({ eventId: f.event, age: 1, unit: 'hours' });
-    assert.equal(response.status, 200, JSON.stringify(response.body)); return response.body.id as string;
+    const response = await rpc(auth.token, 'tools/call', { name: 'preview_draw_cleanup', arguments: { age: 1, unit: 'hours' } });
+    const plan = response.body.result?.structuredContent?.data;
+    assert.ok(plan?.id, JSON.stringify(response.body));
+    return plan.id as string;
   };
   const plan = await preview();
   db.prepare('UPDATE matchmaking_draws SET teams=? WHERE id=?').run('[]', a);
@@ -196,13 +199,14 @@ test('concurrent result entry and cleanup cannot remove a recorded match', async
   t.mock.method(Date, 'now', () => now);
   const f = fixture();
   const id = f.draw('race', now - 7_200_000);
-  const preview = await request(app).post('/api/integrations/cleanup/preview').set('Cookie', f.cookie).set('Origin', base)
-    .send({ eventId: f.event, age: 1, unit: 'hours' });
-  assert.equal(preview.status, 200);
+  const auth = await connect(f, true);
+  const preview = await rpc(auth.token, 'tools/call', { name: 'preview_draw_cleanup', arguments: { age: 1, unit: 'hours' } });
+  const plan = preview.body.result?.structuredContent?.data;
+  assert.ok(plan?.id, JSON.stringify(preview.body));
   const [recorded, cleaned] = await Promise.all([
     request(app).post('/api/matches').set('Cookie', f.cookie).send({ gameId: f.game, drawId: id,
       teams: [{ playerIds: [f.actor] }, { playerIds: [f.member] }], winnerTeamIndex: 0 }),
-    request(app).post(`/api/integrations/cleanup/${preview.body.id}/confirm`).set('Cookie', f.cookie).set('Origin', base).send({ confirmedCount: 1 }),
+    request(app).post(`/api/integrations/cleanup/${plan.id}/confirm`).set('Cookie', f.cookie).set('Origin', base).send({ confirmedCount: 1 }),
   ]);
   if (recorded.status === 201) {
     assert.equal(cleaned.status, 409, JSON.stringify(cleaned.body));
@@ -278,14 +282,14 @@ test('MCP rechecks event access and excludes public info secrets from summaries'
   assert.equal((await rpc(auth.token, 'tools/list')).status, 404, 'loss of participation takes effect immediately');
 });
 
-test('disabled MCP does not affect health, personal management or browser cleanup', async (t) => {
+test('disabled MCP leaves health and personal management available without standalone cleanup', async (t) => {
   const f = fixture();
   Object.assign(config, { mcpEnabled: false });
   t.after(() => Object.assign(config, { mcpEnabled: true }));
   assert.equal((await request(app).post('/mcp').send({})).status, 404);
   assert.equal((await request(app).get('/api/health')).status, 200);
   assert.equal((await request(app).get('/mcp/manage')).status, 200);
-  assert.equal((await request(app).get('/admin/draw-cleanup')).status, 200);
+  assert.equal((await request(app).get('/admin/draw-cleanup')).status, 404);
   assert.equal((await request(app).post('/api/integrations/cleanup/preview').set('Cookie', f.cookie).set('Origin', base)
-    .send({ eventId: f.event, age: 7, unit: 'days' })).status, 200);
+    .send({ eventId: f.event, age: 7, unit: 'days' })).status, 404);
 });

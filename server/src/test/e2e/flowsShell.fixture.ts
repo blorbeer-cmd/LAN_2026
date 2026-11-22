@@ -33,7 +33,7 @@ import { clickActionMenuEntry } from './actionMenuHelpers';
 
 registerFlowFixture('shell');
 
-flowTest('personal MCP management and standalone admin cleanup work on phone and laptop', async (t) => {
+flowTest('personal MCP management is available without a standalone cleanup form', async (t) => {
   const server = await startE2EServer(authenticatedServerEnv());
   t.after(() => server.process.kill());
   const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
@@ -41,36 +41,16 @@ flowTest('personal MCP management and standalone admin cleanup work on phone and
   await trackE2EContext(context, 'mcp-management');
   const cookie = await loginE2EAdmin(server.baseUrl);
   await addSessionCookie(context, server.baseUrl, cookie);
-  const meResponse = await context.request.get(`${server.baseUrl}/api/me`);
-  const me = await meResponse.json();
-  const created = await context.request.post(`${server.baseUrl}/api/events`, { data: {
-    name: 'MCP browser test', eventType: 'lan', startsAt: Date.now(), endsAt: Date.now() + 86_400_000,
-  } });
-  assert.equal(created.status(), 201, await created.text());
-  const event = await created.json();
-  const participants = await context.request.put(`${server.baseUrl}/api/events/${event.id}/participants`, { data: { playerIds: [me.id] } });
-  assert.equal(participants.status(), 200, await participants.text());
   const integrationPage = await context.newPage();
   await integrationPage.goto(`${server.baseUrl}/mcp/manage`);
   await integrationPage.getByRole('heading', { name: 'ChatGPT-Verbindungen', level: 2, exact: true }).waitFor();
   assert.equal(await integrationPage.locator('#mcp-cleanup').count(), 0);
-  await integrationPage.goto(`${server.baseUrl}/admin/draw-cleanup`);
-  await integrationPage.locator('#mcp-cleanup').waitFor({ state: 'visible' });
-  assert.equal(await integrationPage.getByRole('heading', { name: 'Auslosungen aufräumen', level: 1, exact: true }).count(), 1);
-  assert.equal(await integrationPage.getByRole('heading', { name: 'ChatGPT-Verbindungen', exact: true }).count(), 0);
-  const options = await integrationPage.locator('#cleanup-event option').count();
-  assert.ok(options > 0, 'admin has an accepted event for scoped cleanup');
-  await integrationPage.locator('#cleanup-age').fill('876000');
-  await integrationPage.getByRole('button', { name: 'Vorschau erstellen' }).click();
-  await integrationPage.getByRole('heading', { name: 'Bereinigung prüfen' }).waitFor({ state: 'visible' });
-  assert.equal(await integrationPage.getByRole('button', { name: '0 Auslosungen löschen' }).isDisabled(), true);
-  assert.match(await integrationPage.locator('#mcp-status').innerText(), /Noch nichts gelöscht/);
+  assert.equal(await integrationPage.getByRole('button', { name: 'Vorschau erstellen' }).count(), 0);
   await assertNoOverflow(integrationPage.locator('body'));
   await integrationPage.setViewportSize({ width: 1024, height: 768 });
   await assertNoOverflow(integrationPage.locator('body'));
-  await integrationPage.locator('#cleanup-age').focus();
-  await integrationPage.keyboard.press('ArrowDown');
-  assert.equal(await integrationPage.locator('#cleanup-age').inputValue(), '875999');
+  const standaloneCleanup = await integrationPage.goto(`${server.baseUrl}/admin/draw-cleanup`);
+  assert.equal(standaloneCleanup?.status(), 404);
 });
 
 const GROUP_NAME = 'E2E Skatrunde';
@@ -1566,9 +1546,8 @@ flowTest('the authenticated admin role owns the seating editor and backup tools'
   assert.equal(await page.locator('[data-navigate="adminFeedback"]').count(), 1);
   assert.equal(await page.locator('#admin-feature-usage-refresh').count(), 0);
   assert.equal(await page.locator('#admin-feedback-title').count(), 0);
-  assert.equal(await page.locator('[aria-label="Werkzeuge"] .profile-row').count(), 7);
-  const drawCleanupTool = page.locator('[aria-label="Werkzeuge"] .profile-row').filter({ hasText: 'Auslosungen aufräumen' });
-  assert.equal(await drawCleanupTool.locator('a[href="/admin/draw-cleanup"]').count(), 1);
+  assert.equal(await page.locator('[aria-label="Werkzeuge"] .profile-row').count(), 6);
+  assert.equal(await page.locator('[aria-label="Werkzeuge"] a[href="/admin/draw-cleanup"]').count(), 0);
   assert.equal(await page.locator('[data-navigate="pointsAdmin"]').count(), 1);
   await page.click('[data-navigate="adminFeatureUsage"]');
   await page.waitForSelector('#admin-feature-usage-refresh');

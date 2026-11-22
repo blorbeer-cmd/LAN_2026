@@ -158,14 +158,11 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Routen, Rolle
 - Unter „Mein Profil → ChatGPT-Verbindungen“ öffnet „Verwalten“ die persönliche Seite
   `/mcp/manage`. Sie zeigt Event-Freigaben und erlaubt deren sofortigen Widerruf. Die Verbindung
   erfordert eine persönliche Anmeldung und gilt genau für das bei OAuth ausgewählte Event.
-- Admin bietet „Auslosungen aufräumen“ unter `/admin/draw-cleanup` als eigenständiges Werkzeug,
-  getrennt von der persönlichen ChatGPT-Verbindungsverwaltung. Dort lassen sich alte
-  automatische Match-Auslosungen ohne Ergebnis nach Alter in Stunden oder Tagen vorschauen.
-  Captain-Drafts und Rematches werden nur bei ausdrücklicher Auswahl einbezogen. Turnier- und
-  Wettverknüpfungen bleiben geschützt. Der Löschplan zeigt Stichtag, genaue Auswahl und
-  geschützte Einträge. Dauerhaftes Löschen verlangt eine konkrete Bestätigung und die bestehende
-  erneute Passwortbestätigung. Änderungen seit der Vorschau machen den Plan ungültig.
-  Diese manuelle Funktion ist auch bei deaktiviertem MCP verfügbar.
+- Admins können alte Match-Auslosungen ohne Ergebnis über eine dafür freigegebene
+  ChatGPT-Verbindung zur Bereinigung auswählen. Der Bestätigungslink öffnet in Respawn
+  die konkrete Auswahl mit Stichtag und geschützten Einträgen. Die dauerhafte Löschung
+  erfordert die Bestätigung im Browser und eine aktuelle Passwortbestätigung.
+  Änderungen seit der Vorschau machen den Plan ungültig.
 
 - **Player profiles** — There is no separate roster area: Home's Live-Status already lists everyone,
   so every card there is a button that opens that participant's read-only detail dialog. The card

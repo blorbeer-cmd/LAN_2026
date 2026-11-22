@@ -129,13 +129,8 @@ for (const width of [390, 1024]) {
       const row = page.locator('[data-admin-section="accounts"] .profile-row').filter({ hasText: 'Alex Referenz' });
       await row.waitFor();
       await scenes.capture(`core-admin-row-${width}`, row, async () => {
-        // The extra admin tools can leave this row behind the fixed navigation.
-        // Capture the account row itself, fully visible and actionable.
-        await row.evaluate((element) => element.scrollIntoView({ block: 'center', behavior: 'instant' }));
         assert.equal(await row.locator('.player-name').innerText(), 'Alex Referenz');
         const trigger = row.locator('.action-menu > summary');
-        await trigger.click({ trial: true });
-        await page.mouse.move(0, 0);
         assert.equal((await trigger.innerText()).trim(), 'Aktion');
         await assertControlHeights(trigger);
         const centers = await row.evaluate((element) => {
