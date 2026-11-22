@@ -43,6 +43,9 @@ function trackSeenWrite(request) {
   return request;
 }
 let loadError = false;
+// Whether `entries` came from a successful load for `loadedForId`: a failed
+// load leaves an empty list that must not read as "no notifications".
+let entriesLoaded = false;
 let isOpen = false;
 let expiryRefreshTimer = null;
 
@@ -325,7 +328,15 @@ export function renderBanner() {
   const myId = getMyId();
   const unreadCount =
     myId === loadedForId ? entries.filter((entry) => !entry.seen && !isFeedEntryObsolete(entry)).length : 0;
-  count.textContent = unreadCount > 9 ? '9+' : String(unreadCount);
+  // The digit sits in its own box so CSS can trim it to cap height and
+  // centre it in the circle, like the navigation counter (.nav-count-value).
+  const countText = unreadCount > 9 ? '9+' : String(unreadCount);
+  if (count.textContent !== countText) {
+    const value = document.createElement('span');
+    value.className = 'nav-count-value';
+    value.textContent = countText;
+    count.replaceChildren(value);
+  }
   count.hidden = unreadCount === 0;
   button.classList.toggle('has-unread', unreadCount > 0);
   button.setAttribute('aria-expanded', String(isOpen));
@@ -333,6 +344,8 @@ export function renderBanner() {
     'aria-label',
     unreadCount > 0 ? `Mitteilungen, ${unreadCount} ungelesen` : 'Mitteilungen'
   );
+
+  window.dispatchEvent(new CustomEvent('respawn:notifications-changed'));
 
   panel.hidden = !isOpen;
   if (!isOpen) return;
@@ -375,6 +388,38 @@ export function renderBanner() {
   });
 }
 
+// The loaded personal feed for the navigation counters (navBadges.js), or
+// null while nothing is loaded for the current identity yet. A failed load
+// leaves an empty list behind, which is not a loaded feed: an area opened in
+// the meantime must wait for the retry instead of being settled against it.
+export function notificationFeedEntries() {
+  const myId = getMyId();
+  return myId && myId === loadedForId && entriesLoaded ? entries : null;
+}
+
+// Opening a navigation area reads its notifications: one batch, applied
+// locally first like markSeen, and reconciled from the server on failure.
+// Resolves false when the write failed, so the caller can retry the visit.
+export async function markFeedEntriesSeen(entryIds) {
+  const playerId = getMyId();
+  const matching = entries.filter((entry) => entryIds.includes(entry.id) && !entry.seen);
+  if (!playerId || matching.length === 0) return true;
+  matching.forEach((entry) => {
+    entry.seen = true;
+  });
+  if (matching.some((entry) => entry.id === highlightEntry?.id)) highlightEntry = null;
+  renderBanner();
+  try {
+    await Promise.all(matching.map((entry) => api.push.seen(entry.id, playerId)));
+    return true;
+  } catch {
+    // Quietly restore the server's view: the reader did nothing that failed,
+    // they only opened a page.
+    await refreshNotificationBanner();
+    return false;
+  }
+}
+
 export async function refreshNotificationBanner({ throwOnError = false } = {}) {
   const myId = getMyId();
   const thisEpoch = ++epoch;
@@ -397,8 +442,10 @@ export async function refreshNotificationBanner({ throwOnError = false } = {}) {
     entries = res.entries;
     highlightEntry = current.entry;
     loadedForId = myId;
+    entriesLoaded = true;
   } catch (error) {
     if (thisEpoch !== epoch) return;
+    entriesLoaded = false;
     entries = [];
     highlightEntry = null;
     loadedForId = myId;

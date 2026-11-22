@@ -79,6 +79,18 @@ let drawPlayerSearchQuery = '';
 // reads as one linear step instead of two competing panels.
 let teamsMode = 'draw';
 
+// The draw's first selection: whoever on this roster is shown as playing,
+// else everyone. Live entries of players no longer on the roster (deleted test
+// players, another workspace) must not count: they were pruned right after,
+// leaving an empty selection that kept "Teams auslosen" disabled for good.
+export function defaultRosterSelection(live, players) {
+  const rosterIds = new Set(players.map((p) => p.id));
+  const playing = new Set(
+    live.filter((p) => p.state === 'playing' && rosterIds.has(p.player_id)).map((p) => p.player_id),
+  );
+  return playing.size > 0 ? playing : rosterIds;
+}
+
 // Vote's "Match generieren" hands its result over before navigating here:
 // the winning game and the players who want to play it replace the current
 // draw setup, so only the team count is left to choose. The search is
@@ -1574,11 +1586,7 @@ export function renderMatchmaking(container, ctx) {
     return;
   }
 
-  if (checkedIds === null) {
-    // First render: default to whoever is currently shown as playing.
-    checkedIds = new Set(state.live.filter((p) => p.state === 'playing').map((p) => p.player_id));
-    if (checkedIds.size === 0) checkedIds = new Set(eventPlayers().map((p) => p.id));
-  }
+  if (checkedIds === null) checkedIds = defaultRosterSelection(state.live, eventPlayers());
   if (draftPlayerIds === null) draftPlayerIds = new Set(checkedIds);
   // Both selections predate the active event's participant scoping (a stale
   // `state.live`-based default, or leftover from an event switch) and must be

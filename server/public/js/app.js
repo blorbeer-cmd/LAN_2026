@@ -16,6 +16,7 @@ import { isAdmin } from './admin.js';
 import { currentPlayerHasAdminRole } from './adminAccess.js';
 import { filterTestUsers } from './testFilter.js';
 import { initNotificationBanner, refreshNotificationBanner } from './notificationBanner.js';
+import { initNavBadges, noteNavViewOpened, renderNavBadges } from './navBadges.js';
 import { setDraftState } from './views/matchmaking.js';
 import { openInfoBoard } from './views/infoBoard.js';
 import { openPlayerDetail } from './views/playerDetail.js';
@@ -189,6 +190,7 @@ function syncFeatureNavigation() {
     button.dataset.view = item.view;
     button.id = item.id ?? '';
     button.setAttribute('aria-label', item.ariaLabel);
+    button.dataset.baseLabel = item.ariaLabel;
     const labelElement = button.querySelector('.nav-label');
     labelElement.textContent = item.label;
     if (item.labelBreakAfter) {
@@ -220,6 +222,7 @@ function syncBottomNavigationActiveState() {
     if (active) button.setAttribute('aria-current', 'page');
     else button.removeAttribute('aria-current');
   });
+  renderNavBadges();
 }
 
 function syncDesktopNavigationActiveState() {
@@ -635,6 +638,8 @@ function renderCurrent({ preserveState = true } = {}) {
   if (renderer) {
     renderer(viewContainer, ctx);
     finishRenderedViewFocus(renderState);
+    // The "Mehr" hub rebuilds its cards, and with them their counters.
+    if (view === 'more') renderNavBadges();
     return;
   }
 
@@ -795,6 +800,7 @@ function switchView(
   if (view === 'events' && searchTarget?.type === 'event') prepareEventTarget(searchTarget.id);
   currentView = view;
   currentLocalRoute = nextLocalRoute;
+  noteNavViewOpened(view, nextLocalRoute);
   document.title = `${viewDefinition(view)?.label ?? 'Respawn'} · Respawn`;
   if (view !== 'more') lastSubstantiveView = view;
   // Realtime game modules use this marker to ignore updates while another
@@ -1319,6 +1325,7 @@ async function main() {
   wireAdminMode();
   initConnectionStatus();
   initNotificationBanner();
+  initNavBadges();
   wireEventContextSwitcher();
   // Socket connection and REST cache recovery are background concerns. The
   // app shell and onboarding must still become usable when a single refresh
