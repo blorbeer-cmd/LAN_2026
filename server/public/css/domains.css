@@ -3260,6 +3260,9 @@ input.food-order-price-input {
 #view-container[data-view='points'] .collapsible-section-header > :nth-child(2) { flex-basis: auto; overflow-wrap: anywhere; }
 #view-container[data-view='points'] .collapsible-section-header > .muted { font-size: var(--font-size-sm); }
 .points-journal { margin: 0; padding: 0; list-style: none; }
+/* Rules page: paragraphs and the numbered betting steps follow the card's stack gap. */
+.points-rules p, .points-rules-steps { margin: 0; }
+.points-rules-steps { padding-inline-start: var(--space-5); }
 .points-journal li { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: var(--space-3); padding-block: var(--space-3); border-bottom: 1px solid var(--border); }
 .points-journal li[hidden] { display: none; }
 .points-journal li > div { min-width: 0; overflow-wrap: anywhere; }

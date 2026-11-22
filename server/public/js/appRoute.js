@@ -41,6 +41,7 @@ export function parseAppHash(hash) {
     };
   }
   if (view === 'points') {
+    if (segment === 'regeln') return { view, localRoute: { kind: 'rules' }, searchTarget: null };
     const id = parts[2] ? decodeSegment(parts[2]) : null;
     return { view, localRoute: segment === 'round' && id ? { kind: 'round', id } : null, searchTarget: null };
   }
@@ -60,6 +61,7 @@ export function appHash(view, localRoute = null, searchTarget = null) {
   if (view === 'points' && localRoute?.kind === 'round' && localRoute.id) {
     return `#points/round/${encodeURIComponent(localRoute.id)}`;
   }
+  if (view === 'points' && localRoute?.kind === 'rules') return '#points/regeln';
   if (view === 'tournaments') {
     if (localRoute?.kind === 'detail' && localRoute.id) {
       return `#tournaments/${encodeURIComponent(localRoute.id)}`;

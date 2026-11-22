@@ -44,6 +44,12 @@ test('arcade game routes and existing targeted hashes stay distinct', () => {
   assert.equal(appHash('events', null, { type: 'event', id: 'lan 1' }), '#events/lan%201');
 });
 
+test('the points rules page round-trips through its hash and unknown segments open the account', () => {
+  assert.deepEqual(parseAppHash('#points/regeln').localRoute, { kind: 'rules' });
+  assert.equal(appHash('points', { kind: 'rules' }), '#points/regeln');
+  assert.equal(parseAppHash('#points/unbekannt').localRoute, null);
+});
+
 test('invalid encoded segments fall back to their parent view', () => {
   assert.deepEqual(parseAppHash('#tournaments/%E0%A4%A'), {
     view: 'tournaments',

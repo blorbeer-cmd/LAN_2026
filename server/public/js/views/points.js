@@ -14,6 +14,7 @@ import { actionMenuHtml, wireActionMenus } from '../actionMenu.js';
 import { captureViewRenderState, restoreViewRenderState } from '../viewRenderState.js';
 import { profileRow } from '../profileRow.js';
 import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
+import { pointsRulesHtml } from '../pointsRules.js';
 
 let cached = null;
 let stale = true;
@@ -718,10 +719,12 @@ export function renderPoints(container, ctx) {
   }
   ensurePoints(ctx);
   const data = currentData();
-  const header = `<div class="row-between page-title-row points-actions"><h1 class="view-title">Meine LAN-Punkte</h1><div class="row points-actions"><button type="button" class="btn btn-sm" data-points-reports>Meldungen</button>${isGroupAdmin() ? '<button type="button" class="btn btn-sm" data-navigate="pointsAdmin">Punkte verwalten</button>' : ''}</div></div>`;
+  if (ctx.localRoute?.()?.kind === 'rules') return renderPointsRules(container, ctx, data);
+  const header = `<div class="row-between page-title-row points-actions"><h1 class="view-title">Meine LAN-Punkte</h1><div class="row points-actions"><button type="button" class="btn btn-sm" data-points-rules>Regeln</button><button type="button" class="btn btn-sm" data-points-reports>Meldungen</button>${isGroupAdmin() ? '<button type="button" class="btn btn-sm" data-navigate="pointsAdmin">Punkte verwalten</button>' : ''}</div></div>`;
   if (!data?.settings) {
     container.innerHTML = `${header}${emptyStateHtml(loadError || (data ? 'Für diese LAN ist noch keine Punktewertung aktiviert.' : state.activeEvent?.eventType === 'lan' ? 'Punktekonto wird geladen…' : 'Wähle ein LAN-Event.'))}${loadError ? '<button type="button" class="btn" data-points-retry>Erneut laden</button>' : ''}`;
     wirePointsReportButtons(container);
+    wireRulesLink(container, ctx);
     container.querySelector('[data-points-retry]')?.addEventListener('click', () => refreshPoints(ctx));
     return;
   }
@@ -738,6 +741,7 @@ export function renderPoints(container, ctx) {
     });
   }
   wireCompetitionBetting(container, ctx);
+  wireRulesLink(container, ctx);
   container.querySelector('[data-points-retry]')?.addEventListener('click', () => refreshPoints(ctx));
   wireSavedStandings(container);
   container.querySelector('[data-category-account]').addEventListener('change', (event) => {
@@ -764,6 +768,20 @@ export function renderPoints(container, ctx) {
       ),
     ),
   );
+}
+
+function wireRulesLink(container, ctx) {
+  container.querySelector('[data-points-rules]')?.addEventListener('click', () => ctx.navigateLocal({ kind: 'rules' }));
+}
+
+// The rules page is a local route of the points view (#points/regeln). Its
+// only exit besides navigation and history is the account it explains.
+function renderPointsRules(container, ctx, data) {
+  const rules = pointsRulesHtml(data);
+  container.innerHTML = `<div class="row-between page-title-row points-actions"><h1 class="view-title">So funktionieren LAN-Punkte</h1><div class="row points-actions"><button type="button" class="btn btn-sm" data-points-account>Mein Punktekonto</button></div></div>
+    ${rules || `${emptyStateHtml(loadError || 'Regeln werden geladen…')}${loadError ? '<button type="button" class="btn" data-points-retry>Erneut laden</button>' : ''}`}`;
+  container.querySelector('[data-points-account]').addEventListener('click', () => ctx.backLocal(null));
+  container.querySelector('[data-points-retry]')?.addEventListener('click', () => refreshPoints(ctx));
 }
 
 function loadAdminCategories(ctx) {
