@@ -4,6 +4,9 @@ export class PointsError extends Error {
   constructor(
     message: string,
     public status: 400 | 403 | 404 | 409 = 409,
+    // Optional stable identifier for a client that must react to this case
+    // without reading points data it may not see.
+    public code?: string,
   ) {
     super(message);
   }

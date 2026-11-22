@@ -184,6 +184,13 @@ export function pointsHomeHtml(ctx) {
     <p class="muted">${data.settings.closed_at ? 'Die Endwertung steht fest.' : 'Orga- und Spielpunkte sammeln und mit separatem Wettguthaben tippen.'}</p></section>`;
 }
 
+// A free Match with six or more teams tips its top two, from nine its top
+// three, instead of the winner. Older payloads carry no market and tip winners.
+const TOP_PLACES = { top2: 2, top3: 3 };
+function topPlaces(round) {
+  return TOP_PLACES[round.market] ?? 0;
+}
+
 function bettingRound(type, id) {
   if (!state.activeEvent?.pointsEnabled) return null;
   // A round replaced after a lineup change stays only in the points history.
@@ -257,7 +264,7 @@ function tipperText(outcome) {
 function roundOutcomesHtml(round) {
   return rankedListHtml(round.outcomes.map((outcome) => ({
     title: `<span title="${e(outcome.label)}">${e(outcome.label)}</span>`, sortKey: outcome.label,
-    meta: e([round.result === outcome.id ? 'Gewinner' : '', round.mine?.outcomeId === outcome.id ? 'Dein Tipp' : '', tipperText(outcome)].filter(Boolean).join(' · ')),
+    meta: e([(round.winners ?? [round.result]).includes(outcome.id) ? (topPlaces(round) ? `In den Top ${topPlaces(round)}` : 'Gewinner') : '', round.mine?.outcomeId === outcome.id ? 'Dein Tipp' : '', tipperText(outcome)].filter(Boolean).join(' · ')),
     value: `${outcome.stake} P.`,
   })), { label: 'Einsätze nach Ergebnis', columns: 1 });
 }
@@ -274,6 +281,25 @@ export function competitionBettingHtml(type, id, ctx, options = {}) {
   ensurePoints(ctx);
   const round = bettingRound(type, id);
   return round ? bettingControlsHtml(round, { ...options, ...(type === 'tournament' ? { tournamentId: id } : {}) }) : '';
+}
+
+// A top-two or top-three market is decided by complete ranks only, so a Match
+// whose market holds such tips records point totals.
+function needsPlacements(round) {
+  return Boolean(round && topPlaces(round) && round.tipCount > 0
+    && (['open', 'locked', 'settled'].includes(round.status) || round.rebooksOnCorrection));
+}
+export function competitionNeedsPlacements(type, id) {
+  return needsPlacements(bettingRound(type, id));
+}
+// Tips can arrive while a result dialog is open, so a result without every
+// team's place first asks the server for the current market. A winner market
+// cannot turn into a top market without a lineup change, which closes the dialog anyway.
+export async function competitionNeedsPlacementsNow(type, id) {
+  const known = bettingRound(type, id);
+  if (!state.activeEvent?.pointsEnabled || (known && !topPlaces(known))) return false;
+  const data = await pointsRequest('', {}, state.activeEvent.id);
+  return needsPlacements(data.rounds.find((round) => !round.replaced && round.sourceType === type && round.sourceId === id));
 }
 
 // The "Spiel starten" entry for a caller that renders the betting controls
@@ -305,7 +331,8 @@ export function competitionBettingSummaryHtml(type, id) {
     return `<span class="muted points-betting-summary">${e(tournamentBettingSummary(rounds, Boolean(data.settings.closed_at)))}</span>`;
   }
   const round = bettingRound(type, id);
-  return round ? `<span class="muted points-betting-summary" data-betting-summary="${e(round.id)}">${e(roundSummary(round))}</span>` : '';
+  const kind = round && topPlaces(round) ? `Top-${topPlaces(round)}-Tipp · ` : '';
+  return round ? `<span class="muted points-betting-summary" data-betting-summary="${e(round.id)}">${e(kind + roundSummary(round))}</span>` : '';
 }
 
 function tipFixtureLabel(round) {
@@ -395,9 +422,11 @@ function openTip(initialRound, ctx, { data: initialData, rounds: initialRounds }
     const index = rounds.indexOf(round);
     const next = [...rounds.slice(index + 1), ...rounds.slice(0, index)].find((row) => row.status === 'open' && !row.mine && !data.settings.closed_at);
     const draft = drafts.get(roundId) ?? { outcomeId: round.mine?.outcomeId, stake: round.mine?.stake ?? 1 };
-    dialog.setTitle(editable ? (round.sourceType === 'tournament' ? 'Turniersieger tippen' : 'Sieger tippen')
+    const top = topPlaces(round);
+    dialog.setTitle(editable ? (round.sourceType === 'tournament' ? 'Turniersieger tippen' : top ? `Top ${top} tippen` : 'Sieger tippen')
       : round.sourceType === 'tournament' ? 'Dein Turniersiegertipp' : 'Dein Tipp');
-    const rules = `${round.payoutPolicy === 'stake_cap_v1' ? 'Gewinn höchstens in Höhe deines Einsatzes; übrige Einsätze gehen anteilig zurück. ' : ''}Tipps auf das eigene Team sind erlaubt. Auszahlung inklusive Einsatz; Rundung auf ganze Punkte.`;
+    const topRule = top ? `Dein Tipp gewinnt, wenn deine Wahl unter den ersten ${top === 2 ? 'zwei' : 'drei'} landet; ein geteilter Platz ${top} zählt mit. Abgerechnet wird erst, wenn für jedes Team ein Punktestand eingetragen ist. ` : '';
+    const rules = `${topRule}${round.payoutPolicy === 'stake_cap_v1' ? 'Gewinn höchstens in Höhe deines Einsatzes; übrige Einsätze gehen anteilig zurück. ' : ''}Tipps auf das eigene Team sind erlaubt. Auszahlung inklusive Einsatz; Rundung auf ganze Punkte.`;
     const report = pointsReportButton('tip', round.mine?.id, ['settled', 'refunded'].includes(round.status));
     const groups = tournamentTipGroups(rounds);
     const group = groups.find((item) => item.rounds.some((row) => row.id === roundId));
@@ -411,7 +440,7 @@ function openTip(initialRound, ctx, { data: initialData, rounds: initialRounds }
         : notice?.roundId === roundId ? `<p role="status" data-tip-notice>${e(notice.text)}</p>` : ''}
       ${!visible ? '<p class="muted">LAN-Punkte sind ausgeblendet. Diese Admin-Tippdetails sind nur lesbar.</p>' : ''}
       <form class="stack" data-tip-form>${editable ? `
-        <span class="field-label is-required" id="tip-outcome-label">${round.sourceType === 'tournament' ? 'Team' : 'Sieger'}</span>
+        <span class="field-label is-required" id="tip-outcome-label">${round.sourceType === 'tournament' ? 'Team' : top ? `Kommt in die Top ${top}` : 'Sieger'}</span>
         <div class="stack result-winner-list" role="radiogroup" aria-labelledby="tip-outcome-label">${round.outcomes.map((o) => `<label class="tournament-result-pick${draft.outcomeId === o.id ? ' is-selected' : ''}">
           <input type="radio" class="visually-hidden" name="outcomeId" value="${e(o.id)}" required${draft.outcomeId === o.id ? ' checked' : ''}>
           <span>${e(o.label)}</span><span class="tournament-result-pick-players">${e(o.tippers?.length ? `${o.stake} P. · ${tipperText(o)}` : 'Noch kein Tipp')}</span></label>`).join('')}</div>

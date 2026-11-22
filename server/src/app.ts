@@ -76,7 +76,7 @@ export function createApp(): express.Express {
       _next: express.NextFunction
     ) => {
       if (res.headersSent) return;
-      if (err instanceof PointsError) { res.status(err.status).json({ error: err.message }); return; }
+      if (err instanceof PointsError) { res.status(err.status).json({ error: err.message, ...(err.code ? { code: err.code } : {}) }); return; }
       if (typeof err === 'object' && err !== null && 'type' in err && err.type === 'entity.too.large') {
         return res.status(413).json({ error: 'Die Anfrage ist zu groß.' });
       }

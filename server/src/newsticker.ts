@@ -496,14 +496,17 @@ function loadBettingFacts(groupId: string, eventId: string, names: Map<string, s
     const label = (o: BetOutcome) => o.playerIds.some((id) => !names.has(id)) ? 'Anonymes Team' : o.label;
     const tips = db.prepare('SELECT outcome_id, stake FROM betting_tips WHERE round_id = ?').all(round.id) as
       Array<{ outcome_id: string; stake: number }>;
+    const top = round.market === 'top2' ? 'Top 2' : round.market === 'top3' ? 'Top 3' : null;
+    const results = round.result_key === null ? [] : top ? round.result_key.split(',') : [round.result_key];
     const winner = outcomes.find((o) => o.id === round.result_key);
     const pot = tips.reduce((sum, t) => sum + t.stake, 0);
-    const wrong = tips.filter((t) => t.outcome_id !== round.result_key).length;
+    const wrong = tips.filter((t) => !results.includes(t.outcome_id)).length;
     const text = round.status === 'open'
       ? round.source_type === 'tournament'
         ? `Wetten offen: Turniersieger · ${round.title}`
-        : `Wetten offen: ${outcomes.filter((o) => o.playerIds.length).map(label).join(' gegen ')}`
-      : `${winner ? label(winner) : 'Unentschieden'}${winner?.id === '__draw__' ? '' : ' gewinnt'}, ${wrong} von ${tips.length} lagen daneben, Topf ${pot} P.`;
+        : `Wetten offen${top ? ` (${top})` : ''}: ${outcomes.filter((o) => o.playerIds.length).map(label).join(' gegen ')}`
+      : `${top ? `${top}: ${outcomes.filter((o) => results.includes(o.id)).map(label).join(', ')}`
+        : `${winner ? label(winner) : 'Unentschieden'}${winner?.id === '__draw__' ? '' : ' gewinnt'}`}, ${wrong} von ${tips.length} lagen daneben, Topf ${pot} P.`;
     return { kind: 'betting', key: `betting:${round.id}:${round.revision}:${round.status}:${text}`,
       at: round.settled_at ?? round.created_at, text, meta: round.title,
       playerIds: outcomes.flatMap((o) => o.playerIds.filter((id) => names.has(id))) };

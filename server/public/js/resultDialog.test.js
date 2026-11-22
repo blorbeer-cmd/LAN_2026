@@ -17,6 +17,14 @@ test('six teams get identical score rows and one explicit save action', () => {
   assert.doesNotMatch(html, /data-result-rank[^>]*type="number"/);
 });
 
+test('required scores drop the 0 placeholder and mark every field as required', () => {
+  const teams = Array.from({ length: 6 }, (_, index) => ({ name: `Team ${index + 1}` }));
+  const html = resultFormHtml({ teams, prefix: 'top', mode: 'score', fixedMode: true, requireAllScores: true });
+  assert.equal((html.match(/ required /g) ?? []).length, 6);
+  assert.doesNotMatch(html, /placeholder="0"|data-result-mode/);
+  assert.match(resultFormHtml({ teams, prefix: 'free', mode: 'score' }), /placeholder="0"/);
+});
+
 test('knockout winner choices omit draw and the fixed mode has no switch', () => {
   const html = resultFormHtml({ teams: [{ name: 'A' }, { name: 'B' }], prefix: 'ko', fixedMode: true, allowDraw: false });
   assert.equal((html.match(/type="radio"/g) ?? []).length, 2);

@@ -567,6 +567,126 @@ test('creators decide match betting, tournament markets open automatically, and 
     .send({ outcomeId: opened.outcomes[0].id, stake: 1 })).status, 409, 'ended LANs retain results but accept no new tips');
 });
 
+test('large free-for-all Matches tip the top two from six and the top three from nine teams, settling on complete ranks', async () => {
+  const f = await fixture();
+  const extras: string[] = [];
+  for (let i = 0; i < 5; i++) extras.push((await request(app).post('/api/players').send({ name: `Points ${sequence}-field-${i}` })).body.id);
+  const everyone = [TEST_ADMIN_ID, ...f.players, ...extras];
+  setParticipants(f.eventId, everyone);
+  for (const id of extras) setActiveEventForPlayer(id, f.eventId);
+  const ffa = async (playerIds: string[]) => {
+    const draw = await request(app).post('/api/matchmaking').send({ gameId: f.gameId, playerIds, teamCount: playerIds.length });
+    assert.equal(draw.status, 200, JSON.stringify(draw.body));
+    return draw.body as { id: string; teams: Array<{ players: Array<{ id: string }> }> };
+  };
+  const tip = (roundId: string, playerId: string, outcomeId: string, stake: number) => request(app)
+    .put(`/api/points/rounds/${roundId}/tip`).set('x-test-player-id', playerId).send({ outcomeId, stake });
+  const record = (drawId: string, round: ReturnType<typeof roundView>, ranks?: number[], confirmed = true) => request(app).post('/api/matches').send({
+    gameId: f.gameId, drawId, winnerTeamIndex: 0,
+    teams: round.outcomes.filter((o) => o.playerIds.length).map((o, index) =>
+      ({ playerIds: o.playerIds, ...(ranks ? { score: 100 - ranks[index], rank: ranks[index] } : {}) })),
+    ...(ranks && confirmed ? { placementsConfirmed: true } : {}) });
+  for (const [size, market] of [[5, 'winner'], [6, 'top2'], [8, 'top2'], [9, 'top3']] as const)
+    assert.equal((await automaticMarket(f, 'draw', (await ffa(everyone.slice(0, size))).id)).market, market, `${size} teams`);
+
+  const six = await ffa(everyone.slice(0, 6));
+  const top2 = await automaticMarket(f, 'draw', six.id);
+  assert.match(top2.title, / · Top 2$/);
+  assert.equal(top2.outcomes.some((outcome) => outcome.id === '__draw__'), false, 'top markets offer no draw');
+  for (const [playerId, outcomeId, stake] of [[f.players[0], '0', 10], [f.players[1], '5', 10], [f.players[2], '2', 4]] as const)
+    assert.equal((await tip(top2.id, playerId, outcomeId, stake)).status, 200);
+  // Ranks 1, 2, 2, 4, 5, 6: a shared second place is in the top two.
+  assert.equal((await record(six.id, top2, [1, 2, 2, 4, 5, 6])).status, 201);
+  const settled = await automaticMarket(f, 'draw', six.id);
+  assert.deepEqual([settled.status, settled.winners], ['settled', ['0', '1', '2']]);
+  // 14 winning against 10 losing points: 10 change hands, the remainder goes to the larger fraction.
+  assert.deepEqual(f.players.map((id) => wallet(f.eventId, id).total), [107, 90, 103]);
+  assert.ok(loadNewsInput(DEFAULT_GROUP_ID, f.eventId, Date.now()).facts.some((fact) => fact.kind === 'betting' && fact.text.startsWith('Top 2: ')));
+
+  const nine = await ffa(everyone);
+  const top3 = await automaticMarket(f, 'draw', nine.id);
+  for (const [playerId, outcomeId] of [[f.players[0], '0'], [f.players[1], '4']] as const)
+    assert.equal((await tip(top3.id, playerId, outcomeId, 5)).status, 200);
+  assert.equal((await record(nine.id, top3, [1, 2, 3, 3, 5, 6, 7, 8, 9])).status, 201);
+  assert.deepEqual((await automaticMarket(f, 'draw', nine.id)).winners, ['0', '1', '2', '3'], 'a shared third place is in the top three');
+  assert.deepEqual(f.players.slice(0, 2).map((id) => wallet(f.eventId, id).total), [112, 85]);
+
+  // Once the top-two market holds tips, a winner-only result is refused, so
+  // a dialog opened before the tips arrived cannot refund them.
+  const unranked = await ffa(everyone.slice(0, 6));
+  const unrankedMarket = await automaticMarket(f, 'draw', unranked.id);
+  for (const [playerId, outcomeId] of [[f.players[0], '0'], [f.players[1], '1']] as const)
+    assert.equal((await tip(unrankedMarket.id, playerId, outcomeId, 5)).status, 200);
+  const refused = await record(unranked.id, unrankedMarket);
+  const placementError = 'Für die Top-2-Wette bitte für jedes Team einen Punktestand eintragen.';
+  assert.deepEqual([refused.status, refused.body.error, refused.body.code], [409, placementError, 'placements_required']);
+  assert.equal(db.prepare('SELECT match_id FROM matchmaking_draws WHERE id=?').pluck().get(unranked.id), null);
+  assert.equal((await automaticMarket(f, 'draw', unranked.id)).status, 'open');
+  assert.deepEqual(f.players.slice(0, 2).map((id) => wallet(f.eventId, id).held), [5, 5]);
+  // Complete ranks without the writer's confirmation that every value was
+  // entered (an empty field read as 0) are refused as well.
+  assert.deepEqual([(await record(unranked.id, unrankedMarket, [1, 3, 2, 4, 5, 6], false)).status], [409]);
+  // A draw flag does not stand in for missing ranks: everyone sharing first
+  // place would refund the pool. An all-way tie is equal ranks instead.
+  const partialDraw = await request(app).post('/api/matches').send({ gameId: f.gameId, drawId: unranked.id, isDraw: true,
+    placementsConfirmed: true, teams: unrankedMarket.outcomes.filter((o) => o.playerIds.length)
+      .map((o, index) => ({ playerIds: o.playerIds, ...(index < 2 ? { score: 5, rank: 1 } : {}) })) });
+  assert.deepEqual([partialDraw.status, partialDraw.body.code], [409, 'placements_required']);
+  const ranked = await record(unranked.id, unrankedMarket, [1, 3, 2, 4, 5, 6]);
+  assert.equal(ranked.status, 201);
+  const paid = await automaticMarket(f, 'draw', unranked.id);
+  assert.equal(paid.status, 'settled');
+  const correction = await request(app).patch(`/api/matches/${ranked.body.id}`).send({
+    teams: paid.outcomes.map((o) => ({ playerIds: o.playerIds })), winnerTeamIndex: 0,
+    bettingCorrection: { reason: 'Nur Sieger', revisions: [{ id: paid.id, revision: paid.revision }] } });
+  assert.deepEqual([correction.status, correction.body.error], [409, placementError],
+    'a correction cannot drop the places a settled top-two market was paid on');
+  assert.equal((await automaticMarket(f, 'draw', unranked.id)).status, 'settled');
+  // Both tipped teams in the top two refund the pool, which a correction can
+  // still settle: its places cannot be replaced by a bare winner either.
+  const bothIn = await ffa(everyone.slice(2, 8));
+  const bothInMarket = await automaticMarket(f, 'draw', bothIn.id);
+  for (const [playerId, outcomeId] of [[f.players[0], '0'], [f.players[1], '1']] as const)
+    assert.equal((await tip(bothInMarket.id, playerId, outcomeId, 3)).status, 200);
+  const bothInResult = await record(bothIn.id, bothInMarket, [1, 2, 3, 4, 5, 6]);
+  assert.equal(bothInResult.status, 201);
+  const bothInRefund = await automaticMarket(f, 'draw', bothIn.id);
+  assert.deepEqual([bothInRefund.status, bothInRefund.rebooksOnCorrection], ['refunded', true]);
+  const bareWinner = await request(app).patch(`/api/matches/${bothInResult.body.id}`).send({
+    teams: bothInRefund.outcomes.map((o) => ({ playerIds: o.playerIds })), winnerTeamIndex: 0,
+    bettingCorrection: { reason: 'Nur Sieger', revisions: [{ id: bothInRefund.id, revision: bothInRefund.revision }] } });
+  assert.deepEqual([bareWinner.status, bareWinner.body.error], [409, placementError]);
+
+  // A tip racing a winner-only result: either the tip lands first and the
+  // result is refused, or the result closes the market and the tip is refused.
+  const racing = await ffa(everyone.slice(0, 6));
+  const racingMarket = await automaticMarket(f, 'draw', racing.id);
+  assert.equal((await tip(racingMarket.id, f.players[0], '0', 2)).status, 200);
+  const [raceTip, raceResult] = await Promise.all([tip(racingMarket.id, f.players[1], '1', 2), record(racing.id, racingMarket)]);
+  assert.deepEqual([raceTip.status, raceResult.status], [200, 409], 'the existing tip already demands every place');
+  const lone = await ffa(everyone.slice(1, 7));
+  const loneMarket = await automaticMarket(f, 'draw', lone.id);
+  const [loneTip, loneResult] = await Promise.all([tip(loneMarket.id, f.players[0], '0', 2), record(lone.id, loneMarket)]);
+  assert.ok((loneTip.status === 200 && loneResult.status === 409) || (loneTip.status === 409 && loneResult.status === 201),
+    JSON.stringify([loneTip.status, loneResult.status]));
+  const loneRow = db.prepare('SELECT status FROM betting_rounds WHERE id=?').pluck().get(loneMarket.id);
+  assert.equal(loneRow, loneTip.status === 200 ? 'open' : 'refunded', 'no accepted tip is refunded by a winner-only result');
+  // Without tips a winner-only result simply refunds the empty market.
+  const untipped = await ffa(everyone.slice(0, 7));
+  assert.equal((await record(untipped.id, await automaticMarket(f, 'draw', untipped.id))).status, 201);
+  assert.equal((await automaticMarket(f, 'draw', untipped.id)).status, 'refunded');
+
+  // Removing the only player of a team removes that team: six become five
+  // teams and the top-two market gives way to a winner market.
+  const shrinking = await ffa(everyone.slice(0, 6));
+  const before = await automaticMarket(f, 'draw', shrinking.id);
+  assert.equal((await request(app).delete(`/api/matchmaking/draws/${shrinking.id}/players/${shrinking.teams[5].players[0].id}`)).status, 200);
+  assert.deepEqual(db.prepare('SELECT status,refund_cause AS cause FROM betting_rounds WHERE id=?').get(before.id),
+    { status: 'refunded', cause: 'replaced' });
+  const after = await automaticMarket(f, 'draw', shrinking.id);
+  assert.deepEqual([after.market, after.status, after.outcomes.filter((o) => o.playerIds.length).length], ['winner', 'open', 5]);
+});
+
 test('manual betting closure can be reopened before play without changing money; rights, deadlines and races remain guarded', async () => {
   const f = await fixture();
   const r = await round(f);

@@ -161,6 +161,44 @@ korrigiertes Vorrundenspiel im K.-o.-Baum, gilt:
 - Ein bereits geschlossener Markt mit Tipps oder abgelaufener Frist wird erstattet; die Tippabgabe
   bleibt geschlossen.
 
+### Top-2- und Top-3-Wetten bei Matches mit vielen Teams
+
+Bei freien Matches richtet sich die Art der Wette nach der Teamzahl (Nutzerentscheidung,
+Migration 141, Spalte `market`):
+
+| Teams | Wette | Gewinnt, wenn die gewählte Seite … |
+|---|---|---|
+| bis 5 | Sieger | gewinnt (wie bisher, einschließlich wählbarem „Unentschieden“) |
+| 6 bis 8 | **Top 2** | auf Platz 1 oder 2 landet |
+| ab 9 | **Top 3** | auf Platz 1, 2 oder 3 landet |
+
+Top 2 und Top 3 ersetzen den Siegertipp; pro Match gibt es weiterhin genau eine Wette, und alle
+übrigen Regeln zu Tippabgabe, Einsatzgrenze, Mitteilung, Start und Wiederöffnen gelten unverändert.
+Ein geteilter Platz an der Grenze zählt mit, sodass mehrere Ausgänge zugleich gewinnen können.
+„Unentschieden“ ist dort nicht wählbar. Turniere tippen weiterhin immer den Sieger.
+
+Überschreitet eine Aufstellungsänderung vor dem Spiel eine Schwelle, etwa weil ein Spieler
+entfernt wird und dadurch aus sechs Teams fünf werden, gelten die Regeln oben mit einer Ergänzung:
+Auch ein offener Markt ohne Tipps übernimmt die neue Aufstellung nicht, sondern wird wie ein
+offener Markt mit Tipps ersetzt, damit die passende Wettart neu öffnet. Ein bereits geschlossener
+Markt wird wie bisher erstattet und die Tippabgabe bleibt geschlossen. Offene Siegermärkte, die vor
+dieser Regel für große Matches entstanden sind, bleiben bis zu einer Aufstellungsänderung bestehen.
+
+Top 2 und Top 3 brauchen die Platzierung aller Teams. Sobald eine solche Wette Tipps hat, fragt der
+Ergebnisdialog des Matches daher nur den Punktestand ab und verlangt für jedes Team einen
+ausdrücklich eingetragenen Wert; 0 ist dabei ein gültiger Wert. Gehen die ersten Tipps erst ein,
+während der Dialog schon offen ist, öffnet er sich beim Speichern in diesem Modus neu und behält
+bereits eingetippte Werte. Der Server lehnt ein Ergebnis oder eine Ergebniskorrektur ohne
+vollständige Platzierung in diesem Fall mit 409 ab („Für die Top-2-Wette bitte für jedes Team einen
+Punktestand eintragen.“). Vollständige Ränge genügen dafür nicht: Die Schnittstelle verlangt
+zusätzlich `placementsConfirmed: true`, das der Dialog nur sendet, wenn wirklich jedes Feld
+ausgefüllt ist. So kann ein leeres, als 0 gelesenes Feld auch dann keine Wette entscheiden, wenn
+die ersten Tipps erst während des Speicherns eingehen; der Dialog öffnet sich dann im Pflichtmodus
+neu. Wird ein Dialog geschlossen, während er vor dem Speichern den Wettstand prüft, speichert er
+nichts. Ohne Tipps erstattet ein reines Siegerergebnis die leere Wette; eine
+mit dem Grund „Keine vollständige Platzierung eingetragen“ erstattete Wette rechnet eine spätere
+Ergebniskorrektur mit Platzierung regulär ab.
+
 ## Abrechnung und Korrektur
 
 Der Pool besteht ausschließlich aus den Einsätzen. Der Nettogewinn ist je Person auf den eigenen
@@ -193,7 +231,12 @@ wenn eine Teilbuchung scheitert.
 
 Ein nicht am Markt wählbares Remis, fehlende Tipps auf das eingetretene Ergebnis, Einsätze
 auf nur einen Ausgang und ein abgebrochener Wettbewerb führen zur vollständigen Erstattung.
-Ein angebotenes Remis kann dagegen regulär gewinnen und wird genauso abgerechnet wie ein Sieger-Tipp.
+Bei Siegerwetten kann ein angebotenes Remis dagegen regulär gewinnen und wird genauso abgerechnet
+wie ein Sieger-Tipp. Bei Top-2- und Top-3-Wetten bilden alle gewinnenden Ausgänge gemeinsam die
+Gewinnerseite; erstattet wird, wenn alle Tipps auf der Gewinner- oder alle auf der Verliererseite
+liegen. Ein Remis aller Teams macht dort jeden Ausgang zum Gewinner und wird deshalb erstattet.
+Ein Remis-Kennzeichen ersetzt dabei keine Ränge: Ein Remis aller Teams wird über gleiche Ränge für
+jedes Team eingetragen, ein Remis über eine unvollständige Rangliste wird abgelehnt.
 Bei freien Matches gilt dieselbe Ergebnisinterpretation wie für Spielpunkte: vollständige
 Teamränge haben Vorrang vor einem separaten Siegerfeld, ein geteilter erster Rang gilt als Remis.
 Ein geteilter Turniersieg ist im Gesamtsieger-Markt nicht wählbar und führt deshalb zur

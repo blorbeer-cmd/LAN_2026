@@ -18,6 +18,11 @@ test('pools distribute existing stakes exactly, refund invalid rounds, and alloc
   ], 'blue').values()], [4, 2, 5, 2], 'gains and losses are proportional across all losing outcomes');
   assert.deepEqual([...distributePool(tips, null).values()], [10, 30, 20]);
   assert.deepEqual([...distributePool(tips, 'unknown').values()], [10, 30, 20]);
+  const topTwo = [...tips, { ...tips[2], id: 'd', outcomeId: 'green', stake: 10, createdAt: 4, sequence: 4 }];
+  assert.deepEqual([...distributePool(topTwo, ['blue', 'green']).values()], [14, 42, 0, 14],
+    'several winning outcomes share the losing stakes by stake');
+  assert.deepEqual([...distributePool(tips, ['blue', 'red']).values()], [10, 30, 20], 'a pool without losers is refunded');
+  assert.deepEqual([...distributePool(tips, []).values()], [10, 30, 20]);
   assert.deepEqual([...distributePool([
     { ...tips[0], stake: 5 }, { ...tips[1], stake: 3 }, { ...tips[2], stake: 2 },
   ], 'blue').values()], [6, 4, 0], 'the larger fractional share receives the remainder, not the larger stake');
@@ -38,7 +43,7 @@ test('pools distribute existing stakes exactly, refund invalid rounds, and alloc
       createdAt: i,
       sequence: i,
     }));
-    for (const winner of ['a', 'b', 'c']) {
+    for (const winner of ['a', 'b', 'c', ['a', 'c']]) {
       const result = distributePool(pool, winner);
       assert.equal(
         [...result.values()].reduce((a, b) => a + b, 0),
@@ -49,7 +54,7 @@ test('pools distribute existing stakes exactly, refund invalid rounds, and alloc
       for (const tip of pool) {
         const net = result.get(tip.id)! - tip.stake;
         assert.ok(Math.abs(net) <= tip.stake, 'rounding never exceeds the individual stake');
-        assert.ok(tip.outcomeId === winner ? net >= 0 : net <= 0);
+        assert.ok(winner.includes(tip.outcomeId) ? net >= 0 : net <= 0);
       }
     }
   }

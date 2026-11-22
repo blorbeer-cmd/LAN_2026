@@ -1,4 +1,4 @@
-import { withBettingAccounting, assertMatchEditable, correctableDrawRounds, validateBettingCorrection, rebookCorrectedRounds } from '../betting';
+import { withBettingAccounting, assertMatchEditable, assertPlacementResult, correctableDrawRounds, validateBettingCorrection, rebookCorrectedRounds } from '../betting';
 // Recorded match results (FR-22, FR-25). Result details (teams + winner) are
 // stored as JSON with an explicit draw flag so missing results stay unscored.
 // Each match is
@@ -160,7 +160,7 @@ matchesRouter.get('/', (req, res) => {
 });
 
 // POST /api/matches - record a new result.
-// Body: { gameId, teams: [{ playerIds }], winnerTeamIndex?, playedAt?, drawId?, drawLineup? }
+// Body: { gameId, teams: [{ playerIds }], winnerTeamIndex?, playedAt?, drawId?, drawLineup?, placementsConfirmed? }
 // drawId links back to the matchmaking_draws row this result came from (a
 // "Teams auslosen" / draft lineup), moving it from Team-Historie to
 // Ergebnis-Historie — optional since results can also be entered ad-hoc.
@@ -168,8 +168,11 @@ matchesRouter.get('/', (req, res) => {
 // opened with. Checked in the claiming transaction, it stops a stale dialog
 // from overwriting a lineup that was reshuffled, extended or edited since
 // (409 with code draw_lineup_changed).
+// placementsConfirmed: true states that every team's score/rank was entered
+// explicitly; a draw whose top-two or top-three tips exist requires it
+// (409 with code placements_required).
 matchesRouter.post('/', (req, res) => {
-  const { gameId, teams, winnerTeamIndex, isDraw, playedAt, drawId, drawLineup } = req.body ?? {};
+  const { gameId, teams, winnerTeamIndex, isDraw, playedAt, drawId, drawLineup, placementsConfirmed } = req.body ?? {};
 
   if (typeof gameId !== 'string' || !gameId) {
     return res.status(400).json({ error: 'gameId ist erforderlich.' });
@@ -236,6 +239,7 @@ matchesRouter.post('/', (req, res) => {
   try {
     withBettingAccounting(eventId, () => {
       if (drawId && drawLineup) assertDrawLineup(drawId, drawLineup as string[][]);
+      if (drawId) assertPlacementResult(drawId, validated, placementsConfirmed);
       db.prepare('INSERT INTO matches (id, game_id, event_id, played_at, result, group_id, created_by, recorded_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').run(
         row.id,
         row.game_id,
@@ -325,7 +329,7 @@ matchesRouter.patch('/:id', resolveMatch, (req, res) => {
   const existing = req.groupResource as MatchRow;
   if (!requireGroupEventAccess(req, res, existing.event_id)) return;
 
-  const { gameId, teams, winnerTeamIndex, isDraw, playedAt } = req.body ?? {};
+  const { gameId, teams, winnerTeamIndex, isDraw, playedAt, placementsConfirmed } = req.body ?? {};
   const prevResult = JSON.parse(existing.result) as MatchResult;
 
   let nextGameId = existing.game_id;
@@ -373,6 +377,9 @@ matchesRouter.patch('/:id', resolveMatch, (req, res) => {
     const rounds = correctableDrawRounds(req.group!.id, existing.id);
     if (!rounds.length) assertMatchEditable(req.group!.id, existing.id);
     const correction = validateBettingCorrection(req, rounds);
+    if (nextResult !== existing.result)
+      for (const draw of db.prepare('SELECT id FROM matchmaking_draws WHERE group_id = ? AND match_id = ?')
+        .all(req.group!.id, existing.id) as Array<{ id: string }>) assertPlacementResult(draw.id, nextResultObj, placementsConfirmed);
     if (nextGameId !== existing.game_id || nextPlayedAt !== existing.played_at || nextResult !== existing.result) {
       db.prepare('UPDATE matches SET game_id = ?, played_at = ?, result = ?, updated_at = ?, result_revision = result_revision + 1 WHERE id = ?')
         .run(nextGameId, nextPlayedAt, nextResult, Date.now(), existing.id);

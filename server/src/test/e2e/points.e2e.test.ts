@@ -1190,6 +1190,183 @@ test('poll and event-start travel awards update the open personal journal live',
   }
 });
 
+test('a six-team free-for-all Match tips the top two and records its result only with a score for every team', async () => {
+  const extras = [];
+  for (let index = 0; index < 3; index++) extras.push(await createE2EAccount(server.baseUrl, cookie, `Points Field ${index}`));
+  const field = [myId, alice.id, bob.id, ...extras.map((account) => account.id)];
+  const event = await api('/api/events', 'POST', { name: 'Top-2-LAN', eventType: 'lan', startsAt: Date.now(), endsAt: Date.now() + 86_400_000 });
+  await api(`/api/events/${event.id}/participants`, 'PUT', { playerIds: field });
+  for (const session of [cookie, alice.cookie, bob.cookie, ...extras.map((account) => account.cookie)]) {
+    await api(`/api/events/${event.id}/invitation/accept`, 'POST', {}, session);
+    await api('/api/me/active-event', 'PUT', { eventId: event.id }, session);
+  }
+  try {
+    await api(`/api/events/${event.id}/points-visibility`, 'PATCH', { visible: true, revision: 0 });
+    const draw = await api('/api/matchmaking', 'POST', { gameId: pointsGame.id, playerIds: field, teamCount: field.length });
+    const round = (await api(`/api/points?eventId=${event.id}`)).rounds.find((row: { sourceId: string }) => row.sourceId === draw.id);
+    assert.equal(round.market, 'top2');
+    const choice = round.outcomes.find((outcome: { playerIds: string[] }) => outcome.playerIds.includes(bob.id));
+    await member.goto(`${server.baseUrl}/?eventId=${event.id}#points`);
+    await waitForPlayerData(member);
+    await navigate(member, 'points');
+    await openSection(member, 'tips'); await openSection(member, 'tips-untipped');
+    await member.locator(`[data-tip-round="${round.id}"]`).click();
+    const dialog = member.getByRole('dialog', { name: 'Top 2 tippen', exact: true });
+    await dialog.waitFor();
+    await dialog.getByText('Kommt in die Top 2', { exact: true }).waitFor();
+    assert.equal(await dialog.locator('input[name="outcomeId"][value="__draw__"]').count(), 0, 'the top-two market offers no draw');
+    assert.equal(await dialog.locator('input[name="outcomeId"]').count(), 6);
+    await dialog.getByRole('radiogroup').getByText(choice.label, { exact: true }).click();
+    await dialog.locator('[name="stake"]').fill('3');
+    await dialog.getByRole('button', { name: 'Tipp speichern', exact: true }).click();
+    await member.locator('.modal-backdrop').waitFor({ state: 'detached' });
+    await member.getByText(`Tipp gespeichert: ${choice.label}, 3 P.`, { exact: true }).waitFor();
+    const saved = (await api(`/api/points?eventId=${event.id}`, 'GET', undefined, alice.cookie)).rounds
+      .find((row: { id: string }) => row.id === round.id);
+    assert.deepEqual([saved.mine.outcomeId, saved.mine.stake], [choice.id, 3]);
+
+    // A result dialog opened before the first tip offers the winner mode.
+    // Tips placed meanwhile by others make it reopen asking every team's
+    // score: an empty field blocks saving, an entered 0 counts.
+    const raceGame = await api('/api/games', 'POST', { name: 'Top-2-Rennen' });
+    const race = await api('/api/matchmaking', 'POST', { gameId: raceGame.id, playerIds: field, teamCount: field.length });
+    const raceRound = (await api(`/api/points?eventId=${event.id}`)).rounds.find((row: { sourceId: string }) => row.sourceId === race.id);
+    await navigate(member, 'matchmaking');
+    const openDraws = member.locator('.matchmaking-open-draws');
+    if (!await openDraws.evaluate((element) => (element as HTMLDetailsElement).open)) await openDraws.locator(':scope > summary').click();
+    await clickActionMenuEntry(member.locator(`#match-history-open [data-record-draw="${race.id}"]`));
+    const result = member.getByRole('dialog', { name: 'Ergebnis', exact: true });
+    await result.waitFor();
+    assert.equal(await result.locator('[data-result-mode]').count(), 2, 'without tips the winner mode is offered');
+    for (const [session, outcomeId] of [[bob.cookie, '0'], [cookie, '1']] as const)
+      await api(`/api/points/rounds/${raceRound.id}/tip?eventId=${event.id}`, 'PUT', { outcomeId, stake: 4 }, session);
+    await result.locator('[data-result-winners] .tournament-result-pick').first().click();
+    await result.locator('[data-result-save]').click();
+    await member.getByText('Inzwischen gibt es Platzierungstipps: Bitte für jedes Team einen Punktestand eintragen.', { exact: true }).waitFor();
+    await result.locator('[data-result-scores]:not([data-inactive])').waitFor();
+    assert.equal(await result.locator('[data-result-mode]').count(), 0, 'the reopened dialog asks for scores only');
+    const raceStatus = async () => (await api(`/api/points?eventId=${event.id}`)).rounds.find((row: { id: string }) => row.id === raceRound.id);
+    assert.equal((await raceStatus()).status, 'open', 'no winner-only result was recorded');
+    for (const [index, score] of [10, 1, 9, 8, 7].entries()) await result.locator(`#draw-result-score-${index}`).fill(String(score));
+    await result.locator('[data-result-save]').click();
+    await member.getByText('Bitte für jedes Team einen Punktestand eintragen, auch 0.', { exact: true }).waitFor();
+    assert.equal(await result.locator('#draw-result-score-5').evaluate((input) => input === document.activeElement), true);
+    assert.equal((await raceStatus()).status, 'open', 'nothing is recorded while a team has no value');
+    await result.locator('#draw-result-score-5').fill('0');
+    await result.locator('[data-result-save]').click();
+    await result.waitFor({ state: 'detached' });
+    const settled = await raceStatus();
+    assert.deepEqual([settled.status, settled.winners], ['settled', ['0', '2']], 'all six places decide the top two');
+
+    // Deliberate latency as stimulus: hold one kind of request until released.
+    const hold = (pattern: string, method: string) => {
+      let release!: () => void;
+      const held = new Promise<void>((resolve) => {
+        void member.route(pattern, async (route) => {
+          if (route.request().method() !== method) return route.continue();
+          resolve();
+          await new Promise<void>((done) => { release = done; });
+          await route.continue();
+        });
+      });
+      return { held, release: () => release() };
+    };
+    const pointsCheck = `**/api/points?eventId=${event.id}`;
+    const roundStatus = async (id: string) => (await api(`/api/points?eventId=${event.id}`)).rounds.find((row: { id: string }) => row.id === id).status;
+    const resultPosts: string[] = [];
+    member.on('request', (request) => { if (request.method() === 'POST' && request.url().includes('/api/matches')) resultPosts.push(request.url()); });
+
+    // Closing the dialog while the market check before saving is still
+    // underway saves nothing and does not reopen it, with or without tips.
+    const closingGame = await api('/api/games', 'POST', { name: 'Top-2-Abbruch' });
+    const closing = await api('/api/matchmaking', 'POST', { gameId: closingGame.id, playerIds: field, teamCount: field.length });
+    const closingRound = (await api(`/api/points?eventId=${event.id}`)).rounds.find((row: { sourceId: string }) => row.sourceId === closing.id);
+    const closeDuringCheck = async (whileOpen: () => Promise<void> = async () => {}) => {
+      await clickActionMenuEntry(member.locator(`#match-history-open [data-record-draw="${closing.id}"]`));
+      await result.waitFor();
+      await whileOpen();
+      await result.locator('[data-result-winners] .tournament-result-pick').first().click();
+      const check = hold(pointsCheck, 'GET');
+      const posted = resultPosts.length;
+      await result.locator('[data-result-save]').click();
+      await check.held;
+      assert.equal(await result.locator('[data-result-winners] input').first().isDisabled(), true, 'inputs are locked during the check');
+      await member.keyboard.press('Escape');
+      await result.waitFor({ state: 'detached' });
+      const checked = member.waitForResponse((response) => response.url().includes(`/api/points?eventId=${event.id}`));
+      check.release();
+      await checked;
+      await member.unroute(pointsCheck);
+      // Negative window: the released check must neither reopen the dialog nor
+      // send the result. Its response is already delivered, so 500 ms covers
+      // parsing it and the request or reopen it would start right away.
+      await assert.rejects(result.waitFor({ state: 'attached', timeout: 500 }), /Timeout/);
+      assert.equal(resultPosts.length, posted, 'a closed dialog sends no result');
+      assert.equal(await roundStatus(closingRound.id), 'open');
+    };
+    await closeDuringCheck();
+    await closeDuringCheck(async () => {
+      for (const [session, outcomeId] of [[bob.cookie, '0'], [cookie, '1']] as const)
+        await api(`/api/points/rounds/${closingRound.id}/tip?eventId=${event.id}`, 'PUT', { outcomeId, stake: 2 }, session);
+    });
+
+    // Tips accepted after that check but before the result write: the server
+    // refuses scores whose empty field was read as 0, and the dialog reopens
+    // with the typed values, the empty field still empty.
+    const lateGame = await api('/api/games', 'POST', { name: 'Top-2-Nachzügler' });
+    const late = await api('/api/matchmaking', 'POST', { gameId: lateGame.id, playerIds: field, teamCount: field.length });
+    const lateRound = (await api(`/api/points?eventId=${event.id}`)).rounds.find((row: { sourceId: string }) => row.sourceId === late.id);
+    await clickActionMenuEntry(member.locator(`#match-history-open [data-record-draw="${late.id}"]`));
+    await result.waitFor();
+    await result.locator('[data-result-mode="score"]').click();
+    for (const [index, score] of [[0, 10], [2, 8], [3, 7], [4, 6], [5, 5]] as const) await result.locator(`#draw-result-score-${index}`).fill(String(score));
+    const write = hold('**/api/matches', 'POST');
+    await result.locator('[data-result-save]').click();
+    await write.held;
+    assert.equal(await result.locator('#draw-result-score-0').isDisabled(), true, 'the values read on the click cannot change during the write');
+    for (const [session, outcomeId] of [[bob.cookie, '0'], [cookie, '2']] as const)
+      await api(`/api/points/rounds/${lateRound.id}/tip?eventId=${event.id}`, 'PUT', { outcomeId, stake: 2 }, session);
+    write.release();
+    await member.getByText('Inzwischen gibt es Platzierungstipps: Bitte für jedes Team einen Punktestand eintragen.', { exact: true }).last().waitFor();
+    await member.unroute('**/api/matches');
+    await result.locator('[data-result-scores]:not([data-inactive])').waitFor();
+    assert.equal(await result.locator('[data-result-mode]').count(), 0);
+    assert.deepEqual(await Promise.all([0, 1].map((index) => result.locator(`#draw-result-score-${index}`).inputValue())), ['10', '']);
+    assert.equal(await roundStatus(lateRound.id), 'open', 'the refused write recorded nothing');
+    await result.locator('#draw-result-score-1').fill('20');
+    await result.locator('[data-result-save]').click();
+    await result.waitFor({ state: 'detached' });
+    const lateSettled = (await api(`/api/points?eventId=${event.id}`)).rounds.find((row: { id: string }) => row.id === lateRound.id);
+    assert.deepEqual([lateSettled.status, lateSettled.winners], ['settled', ['0', '1']], 'the late value decides the top two');
+
+    // With LAN points hidden the dialog cannot read the market, yet the
+    // server's refusal code still reopens it asking every team's score.
+    await api(`/api/events/${event.id}/points-visibility`, 'PATCH', { visible: false, revision: 1 });
+    await member.goto(`${server.baseUrl}/?eventId=${event.id}#matchmaking`);
+    await waitForPlayerData(member);
+    await navigate(member, 'matchmaking');
+    if (!await openDraws.evaluate((element) => (element as HTMLDetailsElement).open)) await openDraws.locator(':scope > summary').click();
+    await clickActionMenuEntry(member.locator(`#match-history-open [data-record-draw="${closing.id}"]`));
+    await result.waitFor();
+    assert.equal(await result.locator('[data-result-mode]').count(), 2, 'hidden points leave the dialog unaware of the tips');
+    await result.locator('[data-result-winners] .tournament-result-pick').first().click();
+    await result.locator('[data-result-save]').click();
+    await member.getByText('Inzwischen gibt es Platzierungstipps: Bitte für jedes Team einen Punktestand eintragen.', { exact: true }).last().waitFor();
+    await result.locator('[data-result-scores]:not([data-inactive])').waitFor();
+    assert.equal(await result.locator('[data-result-mode]').count(), 0);
+    assert.equal(await result.locator('#draw-result-score-0[required]').count(), 1);
+    for (const [index, score] of [10, 1, 9, 8, 7, 6].entries()) await result.locator(`#draw-result-score-${index}`).fill(String(score));
+    await result.locator('[data-result-save]').click();
+    await result.waitFor({ state: 'detached' });
+    const hiddenSettled = (await api(`/api/points?eventId=${event.id}`)).rounds.find((row: { id: string }) => row.id === closingRound.id);
+    assert.deepEqual([hiddenSettled.status, hiddenSettled.winners], ['settled', ['0', '2']]);
+    assert.deepEqual(pageErrors, []);
+  } finally {
+    // The extra accounts take part in this event only.
+    for (const session of [cookie, alice.cookie, bob.cookie]) await api('/api/me/active-event', 'PUT', { eventId }, session);
+  }
+});
+
 test('a participant reports awarded points, the sole admin reviews anonymously, and finalization refunds both market states', async () => {
   const initial = await api(`/api/points?eventId=${eventId}`);
   if (initial.settings.closed_at) await api('/api/points/reopen', 'POST', { reason: 'Prüfung der endgültigen Wertung' });
