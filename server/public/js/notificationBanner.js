@@ -28,6 +28,9 @@ let highlightEntry = null;
 let loadedForId = null;
 let loading = false;
 let loadError = false;
+// Whether `entries` came from a successful load for `loadedForId`: a failed
+// load leaves an empty list that must not read as "no notifications".
+let entriesLoaded = false;
 let isOpen = false;
 let expiryRefreshTimer = null;
 
@@ -353,10 +356,12 @@ export function renderBanner() {
 }
 
 // The loaded personal feed for the navigation counters (navBadges.js), or
-// null while nothing is loaded for the current identity yet.
+// null while nothing is loaded for the current identity yet. A failed load
+// leaves an empty list behind, which is not a loaded feed: an area opened in
+// the meantime must wait for the retry instead of being settled against it.
 export function notificationFeedEntries() {
   const myId = getMyId();
-  return myId && myId === loadedForId ? entries : null;
+  return myId && myId === loadedForId && entriesLoaded ? entries : null;
 }
 
 // Opening a navigation area reads its notifications: one batch, applied
@@ -401,8 +406,10 @@ export async function refreshNotificationBanner({ throwOnError = false } = {}) {
     entries = res.entries;
     highlightEntry = current.entry;
     loadedForId = myId;
+    entriesLoaded = true;
   } catch (error) {
     if (thisEpoch !== epoch) return;
+    entriesLoaded = false;
     entries = [];
     highlightEntry = null;
     loadedForId = myId;

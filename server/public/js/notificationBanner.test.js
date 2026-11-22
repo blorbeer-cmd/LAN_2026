@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { entryHtml } from './notificationBanner.js';
+import { api } from './api.js';
+import { lockMyIdToSession } from './whoami.js';
+import { entryHtml, notificationFeedEntries, refreshNotificationBanner } from './notificationBanner.js';
 
 const baseEntry = {
   id: 'entry-1',
@@ -106,4 +108,30 @@ test('the center names the creator next to the title and in the link label', () 
   const html = entryHtml({ ...baseEntry, url: '/#broadcast', title: 'Durchsage', actorName: 'Anna' });
   assert.match(html, /notification-center-entry-name">Durchsage von Anna</);
   assert.match(html, /aria-label="Durchsage von Anna: Zu den Durchsagen"/);
+});
+
+test('a failed feed load is not a loaded empty feed for the navigation counters', async () => {
+  const previous = { log: api.push.log, current: api.push.current, window: globalThis.window, document: globalThis.document };
+  globalThis.window = new EventTarget();
+  globalThis.document = { querySelector: () => null, getElementById: () => null };
+  let fail = true;
+  api.push.log = async () => {
+    if (fail) throw new Error('Service Unavailable');
+    return { entries: [{ ...baseEntry, seen: false }] };
+  };
+  api.push.current = async () => ({ entry: null });
+  try {
+    lockMyIdToSession('p1');
+    await refreshNotificationBanner();
+    assert.equal(notificationFeedEntries(), null, 'after a failure the feed is still unknown');
+
+    fail = false;
+    await refreshNotificationBanner();
+    assert.deepEqual(notificationFeedEntries().map((entry) => entry.id), ['entry-1']);
+  } finally {
+    api.push.log = previous.log;
+    api.push.current = previous.current;
+    globalThis.window = previous.window;
+    globalThis.document = previous.document;
+  }
 });

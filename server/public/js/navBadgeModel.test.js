@@ -13,6 +13,7 @@ import {
   navBadgeText,
   rememberSeenTodoIds,
   settleOpenedArea,
+  todoIdsSettledBy,
   unseenNavBadgeItems,
 } from './navBadgeModel.js';
 
@@ -32,6 +33,8 @@ test('only unread, active notifications of the open workspace count', () => {
       feed('expired', '/#votes', { expiresAt: NOW - 1 }),
       feed('other-event', '/#votes', { eventId: 'summer' }),
       feed('invitation', '/#profile', { eventId: BASE_WORKSPACE_ID }),
+      // The base workspace's own Vote belongs to that workspace, not to this one.
+      feed('base-vote', '/#votes', { eventId: BASE_WORKSPACE_ID, targetId: 'vote:20' }),
       feed('no-target', '/'),
     ],
     activeEventId: 'lan',
@@ -74,6 +77,17 @@ test('an unread Vote announcement stands only for the missing ballot of its own 
     now: NOW,
   });
   assert.deepEqual(read.map((item) => item.id), ['todo:vote-ballot:lan:1']);
+});
+
+test('a pending invitation and its notification count once and settle together', () => {
+  const invitation = feed('inv', '/#events/e1', { eventId: BASE_WORKSPACE_ID, targetId: 'event-invitation:e1:me' });
+  const row = { id: 'event-invitation:e1', switchesEvent: false, navigate: { view: 'events' } };
+  const items = navBadgeItems({ feedEntries: [invitation], todoRows: [row], activeEventId: 'lan', now: NOW });
+  assert.deepEqual(items.map((item) => item.id), ['feed:inv']);
+  assert.equal(countForMoreCard(items, 'events'), 1);
+  // Opening the area reads the notification and also settles the To-Do it
+  // stood for, so the count does not reappear once the notification is read.
+  assert.deepEqual(todoIdsSettledBy(itemsSeenByOpening(items, 'events')), ['todo:event-invitation:e1']);
 });
 
 test('a betting round counts on Match and is settled by Match or by its own link', () => {

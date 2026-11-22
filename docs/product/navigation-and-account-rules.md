@@ -70,12 +70,15 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Routen, Rolle
 - **Purpose** — A small number on a bottom-nav entry, a desktop-rail entry or a „Mehr“ card says
   how many new things wait in that area: unread, still-active notifications plus open „Meine
   To-Dos“. It disappears once the area has been opened; it is a pointer, not the list itself.
-- **What counts** — Notifications of the open workspace and of the base workspace (event
-  invitations), excluding read and obsolete ones, assigned through their deep link. To-Dos count
-  when they can be handled from the open workspace (`switchesEvent` false), plus pending
-  invitations and every open Vote round without the own ballot („noch nicht abgestimmt“). A round
-  counts once: while its „Neue Abstimmung“ notification (target `vote:<round>`) is unread, it stands
-  for that round's missing ballot; other open rounds still count. Live skill nudges stay on Home only.
+- **What counts** — Notifications of the open workspace, excluding read and obsolete ones,
+  assigned through their deep link. From the base workspace only those leading to pages that
+  belong to no workspace (Events & Gruppen, Mein Profil — e.g. invitations) count; its own Votes or
+  orders do not. To-Dos count when they can be handled from the open workspace (`switchesEvent`
+  false), plus pending invitations and every open Vote round without the own ballot („noch nicht
+  abgestimmt“). A notification and the To-Do it stands for count once: an unread „Neue Abstimmung“
+  (target `vote:<round>`) covers that round's missing ballot, an unread invitation
+  (`event-invitation:<event>:<account>`) covers its pending answer; opening the area settles both.
+  Live skill nudges stay on Home only.
 - **Where it shows** — On the entry that leads to the item's area: tournaments and betting rounds
   count on Match (a betting-round notification is also settled by opening its own link to the
   points page), Admin's tools on Admin, Orga's pages and other secondary destinations on „Mehr“ on
@@ -87,7 +90,8 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Routen, Rolle
   keep their row on Home until done; a To-Do that newly appears counts again, and To-Dos that
   appear while their area is open count as seen. Opening the „Mehr“ hub alone clears nothing.
   Reading a notification from the bell clears it here too. After a reload straight into an area,
-  it is settled once both the notification feed and the open workspace have loaded.
+  it is settled once both the notification feed and the open workspace have loaded; a failed feed
+  load keeps the visit pending until a retry succeeds.
 
 ## Benachrichtigungszentrum
 

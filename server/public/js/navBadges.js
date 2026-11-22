@@ -19,6 +19,7 @@ import {
   navTargetForView,
   rememberSeenTodoIds,
   settleOpenedArea,
+  todoIdsSettledBy,
   unseenNavBadgeItems,
 } from './navBadgeModel.js';
 
@@ -66,7 +67,7 @@ function currentItems() {
 }
 
 function markTodosSeen(playerId, items, seenIds) {
-  const newIds = items.filter((item) => item.kind === 'todo' && !seenIds.includes(item.id)).map((item) => item.id);
+  const newIds = todoIdsSettledBy(items).filter((id) => !seenIds.includes(id));
   if (newIds.length === 0) return seenIds;
   const next = rememberSeenTodoIds(seenIds, newIds);
   writeSeenTodoIds(playerId, next);

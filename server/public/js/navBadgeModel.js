@@ -30,13 +30,36 @@ export function navBadgeLabel(baseLabel, count) {
   return count > 0 ? `${baseLabel}, ${count} neu` : baseLabel;
 }
 
+// Notifications of other workspaces stay off the navigation. The base
+// workspace carries the cross-workspace ones (event invitations), but also
+// its own Votes or orders; only those leading to pages that belong to no
+// workspace count from elsewhere.
+const WORKSPACE_INDEPENDENT_VIEWS = new Set(['events', 'profile']);
+
+// The To-Do an unread notification already stands for: a Vote round's
+// announcement for its missing ballot, an invitation for its pending answer.
+function coveredTodoId(targetId, activeEventId) {
+  const vote = /^vote:(\d+)$/.exec(targetId ?? '');
+  if (vote) return `todo:vote-ballot:${activeEventId}:${vote[1]}`;
+  const invitation = /^event-invitation:([^:]+):/.exec(targetId ?? '');
+  if (invitation) return `todo:event-invitation:${invitation[1]}`;
+  return null;
+}
+
 // Where a notification counts. A betting round is offered on Match's cards,
 // so its notification counts there; its own link opens the round on the
 // points page, which therefore settles it as well.
-function feedItem(entry) {
+function feedItem(entry, activeEventId) {
   const view = feedLinkView(entry.url);
   if (!view) return null;
-  const base = { id: `feed:${entry.id}`, kind: 'feed', entryId: entry.id, targetId: entry.targetId ?? null };
+  const crossWorkspace = entry.eventId === BASE_WORKSPACE_ID && WORKSPACE_INDEPENDENT_VIEWS.has(view);
+  if (entry.eventId !== activeEventId && !crossWorkspace) return null;
+  const base = {
+    id: `feed:${entry.id}`,
+    kind: 'feed',
+    entryId: entry.id,
+    coversTodoId: coveredTodoId(entry.targetId, activeEventId),
+  };
   if (view === 'points' && feedLinkTarget(entry.url)?.type === 'betting-round') {
     return { ...base, view: 'matchmaking', alsoSeenOn: ['points'] };
   }
@@ -52,23 +75,32 @@ export function navBadgeItems({
 } = {}) {
   const feed = (feedEntries ?? [])
     .filter((entry) => !entry.seen && !isFeedEntryObsolete(entry, now))
-    .filter((entry) => entry.eventId === activeEventId || entry.eventId === BASE_WORKSPACE_ID)
-    .map(feedItem)
+    .map((entry) => feedItem(entry, activeEventId))
     .filter(Boolean);
+  // A Vote round or an invitation counts once: while its notification is
+  // unread, that notification stands for the To-Do (see coveredTodoId).
+  const covered = new Set(feed.map((item) => item.coversTodoId).filter(Boolean));
   // A row of another workspace leads there first (see myTodoRow), so it
   // belongs to no entry of the navigation that is on screen now.
   const todos = (todoRows ?? [])
     .filter((row) => row && !row.switchesEvent && row.navigate?.view)
     .map((row) => ({ id: `todo:${row.id}`, kind: 'todo', view: row.navigate.view }));
-  // A Vote round counts once: its unread announcement ("Neue Abstimmung",
-  // target `vote:<round>`) already stands for that round's missing ballot.
-  const announcedRounds = new Set(feed.map((item) => item.targetId).filter(Boolean));
-  const votes = (pendingVotes ?? []).filter((round) => !announcedRounds.has(`vote:${round}`)).map((round) => ({
+  const votes = (pendingVotes ?? []).map((round) => ({
     id: `todo:vote-ballot:${activeEventId}:${round}`,
     kind: 'todo',
     view: 'votes',
   }));
-  return [...feed, ...todos, ...votes];
+  return [...feed, ...[...todos, ...votes].filter((item) => !covered.has(item.id))];
+}
+
+// To-Do ids settled by `items`: their own, plus the To-Dos their
+// notifications stand for, so a count does not jump back once the
+// notification is read.
+export function todoIdsSettledBy(items) {
+  return items.flatMap((item) => {
+    if (item.kind === 'todo') return [item.id];
+    return item.coversTodoId ? [item.coversTodoId] : [];
+  });
 }
 
 export function unseenNavBadgeItems(items, seenTodoIds) {
