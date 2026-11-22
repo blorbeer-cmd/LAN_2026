@@ -101,6 +101,40 @@ export const EVENT_POLL_REMINDER_TOPIC_PREFIX = 'event-poll-reminder:';
 export const EVENT_REMINDER_TOPIC_PREFIX = 'event-reminder:';
 export const EVENT_POLL_OPEN_TOPIC_PREFIX = 'event-poll-open:';
 
+// Notification types that only report something that already happened (a won
+// bet, a claimed task, a changed event plan). Unlike an invitation or a poll,
+// they never ask for an action, so once read they are as finished as a
+// resolved entry and "Aufräumen" may remove them. Deliberately an allow-list:
+// an unknown or new type stays in the history until it is explicitly
+// classified, so cleanup can never swallow something a player still has to do.
+const INFORMATIONAL_PUSH_TYPES = new Set([
+  'betting-win',
+  'checklist-claimed',
+  'event-participation-removed',
+  'event-updated',
+  'event-withdrawn-acceptance',
+]);
+
+// Before these pushes carried their own type they were stored as the generic
+// 'message'. Their fixed titles and target views identify them unambiguously,
+// so rows written before the update are cleaned up like new ones.
+const LEGACY_INFORMATIONAL_MESSAGES = new Set([
+  'Übernommen\u0000/#checklist',
+  'Eventplanung geändert\u0000/#events',
+  'Eventtermin geändert\u0000/#events',
+  'Eventtermin entfernt\u0000/#events',
+]);
+
+export function isInformationalPushEntry(entry: {
+  notificationType: string | null;
+  title: string;
+  url: string | null;
+}): boolean {
+  if (entry.notificationType == null) return false;
+  if (INFORMATIONAL_PUSH_TYPES.has(entry.notificationType)) return true;
+  return entry.notificationType === 'message' && LEGACY_INFORMATIONAL_MESSAGES.has(`${entry.title}\u0000${entry.url ?? ''}`);
+}
+
 export function isDeduplicatedPushTopic(topicKey: string): boolean {
   return (
     topicKey.startsWith('betting-open:') ||
@@ -360,7 +394,7 @@ export function getPushLogEntriesFor(
   eventId: string | null,
   playerId: string,
   limit = 20,
-): Array<PushLogEntry & { seen: boolean }> {
+): Array<PushLogEntry & { seen: boolean; informational: boolean }> {
   const rows = db
     .prepare(
       `SELECT id, group_id AS groupId, event_id AS eventId, event_name_snapshot AS eventName,
@@ -390,13 +424,14 @@ export function getPushLogEntriesFor(
     .map(({ playerIds: _playerIds, topicKey: _topicKey, hidden: _hidden, seen, ...entry }) => ({
       ...entry,
       seen: seen === 1,
+      informational: isInformationalPushEntry(entry),
     }));
 }
 
 export function getPushLogEntriesForPlayer(
   playerId: string,
   limit = 20,
-): Array<PushLogEntry & { seen: boolean }> {
+): Array<PushLogEntry & { seen: boolean; informational: boolean }> {
   const rows = db
     .prepare(
       `SELECT id, group_id AS groupId, event_id AS eventId, event_name_snapshot AS eventName,
@@ -426,6 +461,7 @@ export function getPushLogEntriesForPlayer(
     .map(({ playerIds: _playerIds, topicKey: _topicKey, hidden: _hidden, seen, ...entry }) => ({
       ...entry,
       seen: seen === 1,
+      informational: isInformationalPushEntry(entry),
     }));
 }
 
@@ -472,12 +508,21 @@ function isPushLogEntryObsolete(entry: { resolvedAt: number | null; expiresAt: n
   return entry.resolvedAt !== null || (entry.expiresAt !== null && entry.expiresAt <= now);
 }
 
+// Mirrors isFeedEntryCleanable in public/js/pushFeed.js: obsolete entries, plus
+// informational ones the player has already read.
+function isPushLogEntryCleanable(
+  entry: { resolvedAt: number | null; expiresAt: number | null; seen: boolean; informational: boolean },
+  now: number,
+): boolean {
+  return isPushLogEntryObsolete(entry, now) || (entry.seen && entry.informational);
+}
+
 // Same per-player scoping as the other bulk actions, but limited to entries
 // a returning player no longer needs to act on - the cleanup someone reaches
-// for after being away, without touching still-open ones.
+// for after being away, without touching still-open or still-unread ones.
 export function hideResolvedPushForPlayer(playerId: string): number {
   const now = Date.now();
-  const entries = getPushLogEntriesForPlayer(playerId, PUSH_LOG_LIMIT).filter((entry) => isPushLogEntryObsolete(entry, now));
+  const entries = getPushLogEntriesForPlayer(playerId, PUSH_LOG_LIMIT).filter((entry) => isPushLogEntryCleanable(entry, now));
   if (entries.length === 0) return 0;
   const insert = db.prepare('INSERT OR IGNORE INTO push_log_hidden (push_id, player_id, hidden_at) VALUES (?, ?, ?)');
   const hiddenAt = Date.now();

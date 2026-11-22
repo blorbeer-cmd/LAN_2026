@@ -38,7 +38,7 @@ export const AREA_TOURS = {
       s('center', 'Deine Mitteilungen', 'Unter Mitteilungen findest du persönliche und gemeinsame Mitteilungen. Push-Benachrichtigungen zeigen sie zusätzlich auf erlaubten Geräten; eine kurze Einblendung informiert dich in der App.', '#notifications-btn'),
       s('open', 'Zum Vorgang springen', 'Ein Tipp auf eine Mitteilung markiert sie als gelesen und führt zum zugehörigen Vorgang. Bei Bedarf wird zuerst dessen Event ausgewählt.', '#notifications-btn'),
       s('read', 'Gelesen heißt noch offen', 'Eine gelesene Mitteilung erledigt keine Zahlung und kein To-Do. Erst die passende Aktion im Vorgang beendet dessen offenen Zustand.', '#notifications-btn'),
-      s('obsolete', 'Obsolet oder abgelaufen', 'Erledigte Vorgänge machen ihre Mitteilungen obsolet. Zeitlich begrenzte Mitteilungen laufen ab. Aufräumen entfernt diese Mitteilungen; der zugrunde liegende Vorgang bleibt erhalten.', '#notifications-btn'),
+      s('obsolete', 'Obsolet oder abgelaufen', 'Erledigte Vorgänge machen ihre Mitteilungen obsolet. Zeitlich begrenzte Mitteilungen laufen ab. Aufräumen entfernt diese Mitteilungen und gelesene reine Infos wie Wettgewinne; der zugrunde liegende Vorgang bleibt erhalten.', '#notifications-btn'),
       s('push', 'Push erlauben', 'Push-Benachrichtigungen aktivierst du im Profil und erlaubst sie im Browser. Ob sie auf dem Gerät erscheinen, hängt außerdem von dessen Berechtigungen ab.', '#notifications-btn'),
     ]),
   ]),

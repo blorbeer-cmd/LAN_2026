@@ -14,6 +14,7 @@ import {
   feedLinkTarget,
   feedLinkView,
   FEED_LINK_LABELS,
+  isFeedEntryCleanable,
   isFeedEntryObsolete,
 } from './pushFeed.js';
 import { showToast } from './toast.js';
@@ -27,6 +28,20 @@ let entries = [];
 let highlightEntry = null;
 let loadedForId = null;
 let loading = false;
+// Read-state writes still on their way to the server. "Aufräumen" only removes
+// entries the server already knows as read, so it waits for these first;
+// otherwise a quick "Alle gelesen" → "Aufräumen" could reach the server in the
+// opposite order and the cleaned entry would come back on the next refresh.
+const pendingSeenWrites = new Set();
+
+function trackSeenWrite(request) {
+  pendingSeenWrites.add(request);
+  request.then(
+    () => pendingSeenWrites.delete(request),
+    () => pendingSeenWrites.delete(request),
+  );
+  return request;
+}
 let loadError = false;
 // Whether `entries` came from a successful load for `loadedForId`: a failed
 // load leaves an empty list that must not read as "no notifications".
@@ -147,7 +162,7 @@ async function markSeen(entryId, { navigate, eventId, target = null } = {}) {
   }
   renderBanner();
   try {
-    await api.push.seen(entryId, playerId);
+    await trackSeenWrite(api.push.seen(entryId, playerId));
     if (navigate) {
       setOpen(false);
       window.dispatchEvent(new CustomEvent('respawn:event-navigate', { detail: { view: navigate, eventId, target } }));
@@ -191,7 +206,7 @@ async function markAllSeen() {
   highlightEntry = null;
   renderBanner();
   try {
-    await api.push.seenAll(playerId);
+    await trackSeenWrite(api.push.seenAll(playerId));
   } catch (err) {
     entries = previousEntries;
     highlightEntry = previousHighlight;
@@ -223,26 +238,36 @@ async function hideAllEntries() {
 }
 
 // Unlike hideAllEntries, this never needs a confirmation dialog: it only
-// ever removes entries that are already obsolete, never one a player might
-// still act on.
+// ever removes entries that are already obsolete or read-only information,
+// never one a player might still act on.
 async function hideResolvedEntries() {
   const playerId = getMyId();
   if (!playerId) return;
-  const obsoleteIds = new Set(entries.filter((entry) => isFeedEntryObsolete(entry)).map((entry) => entry.id));
-  if (obsoleteIds.size === 0) return;
+  const cleanableIds = new Set(entries.filter((entry) => isFeedEntryCleanable(entry)).map((entry) => entry.id));
+  if (cleanableIds.size === 0) return;
   const previousEntries = entries;
   const previousHighlight = highlightEntry;
-  entries = entries.filter((entry) => !obsoleteIds.has(entry.id));
-  if (highlightEntry && obsoleteIds.has(highlightEntry.id)) {
+  entries = entries.filter((entry) => !cleanableIds.has(entry.id));
+  if (highlightEntry && cleanableIds.has(highlightEntry.id)) {
     highlightEntry = null;
   }
   renderBanner();
+  const seenWrites = await Promise.allSettled([...pendingSeenWrites]);
+  // A failed read write rolled its entries back and showed its own error.
+  // previousEntries was captured with the optimistic read state, so it no
+  // longer matches the server; only a reload shows what the server kept.
+  const readWriteFailed = seenWrites.some((result) => result.status === 'rejected');
   try {
     await api.push.hideResolved(playerId);
+    if (readWriteFailed) await refreshNotificationBanner();
   } catch (err) {
-    entries = previousEntries;
-    highlightEntry = previousHighlight;
-    renderBanner();
+    if (readWriteFailed) {
+      await refreshNotificationBanner();
+    } else {
+      entries = previousEntries;
+      highlightEntry = previousHighlight;
+      renderBanner();
+    }
     showToast(err.message, { error: true });
   }
 }
@@ -333,7 +358,7 @@ export function renderBanner() {
     </div>
     ${panelContentHtml(myId)}
     ${entries.length > 0 ? `<div class="notification-center-toolbar">
-      ${entries.some((entry) => isFeedEntryObsolete(entry)) ? '<button type="button" class="btn btn-sm" data-notifications-hide-resolved>Aufräumen</button>' : ''}
+      ${entries.some((entry) => isFeedEntryCleanable(entry)) ? '<button type="button" class="btn btn-sm" data-notifications-hide-resolved>Aufräumen</button>' : ''}
       <button type="button" class="btn btn-sm" data-notifications-seen-all ${entries.every((entry) => entry.seen || isFeedEntryObsolete(entry)) ? 'disabled' : ''}>Alle gelesen</button>
       <button type="button" class="btn btn-sm" data-notifications-hide-all>Alle löschen</button>
     </div>` : ''}
@@ -461,7 +486,7 @@ export async function settleNotificationTarget(targetId) {
   }
   renderBanner();
   try {
-    await Promise.all(matching.map((entry) => api.push.seen(entry.id, playerId)));
+    await Promise.all(matching.map((entry) => trackSeenWrite(api.push.seen(entry.id, playerId))));
   } catch (error) {
     await refreshNotificationBanner();
     showToast(error.message, { error: true });

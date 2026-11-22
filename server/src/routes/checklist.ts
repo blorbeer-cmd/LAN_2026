@@ -728,6 +728,7 @@ checklistRouter.post('/tasks/:id/claim', resolveChecklistTask, ...withBodyPlayer
           ? `${player.name} übernimmt: ${task.title}: ${trimmedComment}`
           : `${player.name} übernimmt: ${task.title}`,
         url: '/#checklist',
+        type: 'checklist-claimed',
         // The body names the claiming account and can quote its own comment, so
         // an erasure has to be able to find and remove this row.
         targetId: subjectScopedTargetId(playerId, `checklist-claim:${task.id}`),

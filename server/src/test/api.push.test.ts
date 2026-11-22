@@ -276,6 +276,48 @@ test('DELETE /api/push/resolved hides only resolved or expired entries, leaving 
   assert.ok(otherAfter.body.entries.some((entry: { body: string }) => /Wird aufgeraeumt/.test(entry.body)));
 });
 
+test('DELETE /api/push/resolved also hides informational entries, but only once they were read', async () => {
+  const delivered = notifyPlayers(
+    [playerId],
+    { title: 'Übernommen', body: 'Info nur zum Lesen', url: '/#checklist', type: 'checklist-claimed' },
+    'direct',
+  );
+  assert.ok(delivered);
+  // Stored before these pushes had their own type: a generic 'message' row.
+  const legacy = notifyPlayers(
+    [playerId],
+    { title: 'Eventtermin geändert', body: 'Altbestand ohne Typ', url: '/#events' },
+    'direct',
+  );
+  assert.equal(legacy?.entry.notificationType, 'message');
+  const lookalike = notifyPlayers([playerId], { title: 'Eventtermin geändert', body: 'Fremdes Ziel', url: '/#broadcast' }, 'direct');
+  assert.ok(lookalike);
+  const actionable = notifyPlayers([playerId], { title: 'Neue Aufgabe', body: 'Bleibt trotz Lesen', url: '/#checklist' }, 'direct', {
+    key: 'checklist-task:cleanup-test',
+  });
+  assert.ok(actionable);
+  const findBody = async (pattern: RegExp) =>
+    (await request(app).get(`/api/push/log?playerId=${playerId}`)).body.entries.find(
+      (entry: { body: string }) => pattern.test(entry.body),
+    );
+
+  const unread = await findBody(/Info nur zum Lesen/);
+  assert.equal(unread.informational, true);
+  assert.equal((await findBody(/Bleibt trotz Lesen/)).informational, false);
+  assert.equal((await findBody(/Altbestand ohne Typ/)).informational, true);
+  assert.equal((await findBody(/Fremdes Ziel/)).informational, false, 'only the exact legacy title and target count');
+
+  await request(app).delete('/api/push/resolved').send({ playerId });
+  assert.ok(await findBody(/Info nur zum Lesen/), 'an unread informational entry survives cleanup');
+
+  await request(app).post('/api/push/seen-all').send({ playerId });
+  await request(app).delete('/api/push/resolved').send({ playerId });
+  assert.equal(await findBody(/Info nur zum Lesen/), undefined, 'a read informational entry is cleaned up');
+  assert.equal(await findBody(/Altbestand ohne Typ/), undefined, 'a read legacy informational entry is cleaned up');
+  assert.ok(await findBody(/Bleibt trotz Lesen/), 'a read but still actionable entry stays');
+  assert.ok(await findBody(/Fremdes Ziel/), 'an unclassified message stays');
+});
+
 test('closed and expired food-order pushes are omitted from active banners', async () => {
   const order = await request(app)
     .post('/api/food-orders')

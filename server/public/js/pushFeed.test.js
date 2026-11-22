@@ -7,6 +7,7 @@ import {
   feedEntryIcon,
   feedLinkTarget,
   feedEntryTitle,
+  isFeedEntryCleanable,
   isFeedEntryObsolete,
 } from './pushFeed.js';
 
@@ -52,6 +53,15 @@ test('an entry is obsolete once its workflow resolved, or once it expired, but n
   assert.equal(isFeedEntryObsolete({ resolvedAt: null, expiresAt: now }, now), true, 'expiry passed');
   assert.equal(isFeedEntryObsolete({ resolvedAt: 999, expiresAt: null }, now), true, 'resolved outranks a missing expiry');
   assert.equal(isFeedEntryObsolete({ resolvedAt: 999, expiresAt: now + 1 }, now), true, 'resolved even before its own expiry');
+});
+
+test('cleanup takes obsolete entries and read informational ones, never unread or actionable ones', () => {
+  const now = 1_000_000;
+  const open = { resolvedAt: null, expiresAt: null };
+  assert.equal(isFeedEntryCleanable({ ...open, seen: true, informational: false }, now), false, 'read but still actionable');
+  assert.equal(isFeedEntryCleanable({ ...open, seen: false, informational: true }, now), false, 'informational but unread');
+  assert.equal(isFeedEntryCleanable({ ...open, seen: true, informational: true }, now), true, 'read information');
+  assert.equal(isFeedEntryCleanable({ resolvedAt: 999, expiresAt: null, seen: false }, now), true, 'obsolete regardless of read state');
 });
 
 test('an entry names its creator after the title, and only when it has one', () => {

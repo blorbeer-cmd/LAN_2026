@@ -1422,6 +1422,7 @@ eventsRouter.patch('/:id', resolveEvent, requireGroupRole('admin'), (req, res) =
         title: startChanged ? (periodRemoved ? 'Eventtermin entfernt' : 'Eventtermin geändert') : 'Eventplanung geändert',
         body: `${updated.name}: ${startChanged ? (periodRemoved ? 'Der Termin steht wieder offen' : 'Der Termin wurde geändert') : relevantChanges.join('; ')}${startChanged && relevantChanges.length ? `; ${relevantChanges.join('; ')}` : ''}. Deine Zusage bleibt bestehen.`,
         url: '/#events',
+        type: 'event-updated',
         actorId: req.player?.id,
       },
       'direct',
