@@ -133,6 +133,9 @@ let historyCursor = null;
 let openDrawsCache = [];
 let openDrawsSectionOpen = false;
 let historyFilter = 'all';
+// Game filter of Historie ('' = all games). Independent of the game picker
+// above, which only prepares the next draw.
+let historyGameFilter = '';
 let tipFilter = 'all';
 let mineOnly = false;
 let historySectionOpen = false;
@@ -1280,17 +1283,17 @@ function filteredOpenDraws() {
     : openDrawsCache.filter((draw) => (!mineOnly || drawIncludesMe(draw)) && competitionMatchesTipFilter('draw', draw.id, tipFilter));
 }
 
-function filteredTournaments(selectedGameId, completed) {
+function filteredTournaments(completed) {
   const myId = getMyId();
   return historyFilter === 'matches' ? [] : (tournamentCache ?? []).filter((tournament) =>
-    (!completed || selectedGameId === undefined || tournament.gameId === selectedGameId)
+    (!completed || !historyGameFilter || tournament.gameId === historyGameFilter)
     && (tournament.status === 'completed') === completed
     && (completed || competitionMatchesTipFilter('tournament', tournament.id, tipFilter))
     && (!mineOnly || Boolean(myId && tournament.participantIds?.includes(myId))));
 }
 
 function renderMatchFilters() {
-  const count = Number(historyFilter !== 'all') + Number(mineOnly) + Number(state.activeEvent?.pointsEnabled && tipFilter !== 'all');
+  const count = Number(historyFilter !== 'all') + Number(Boolean(historyGameFilter)) + Number(mineOnly) + Number(state.activeEvent?.pointsEnabled && tipFilter !== 'all');
   return `<div class="matchmaking-history-filters" role="group" aria-label="Spiele und Turniere filtern">
     <div><details class="action-menu game-catalog-filter-menu" data-floating-action-menu data-action-menu="match-filters">
       <summary class="btn btn-sm game-catalog-filter-trigger" aria-label="Match-Filter">Filter${count ? ` (${count})` : ''} ${icon('chevronDown')}</summary>
@@ -1299,6 +1302,14 @@ function renderMatchFilters() {
           <span class="game-catalog-filter-heading">Art</span><div class="chip-list">
             ${[['all', 'Alle'], ['matches', 'Matches'], ['tournaments', 'Turniere']].map(([key, label]) => `<button type="button" class="chip${historyFilter === key ? ' is-active' : ''}" data-history-filter="${key}" aria-pressed="${historyFilter === key}">${label}</button>`).join('')}
           </div>
+        </div>
+        <div class="stack game-catalog-filter-section" role="group" aria-label="Spiel">
+          <label class="game-catalog-filter-heading" for="match-history-game-filter">Spiel</label>
+          <select id="match-history-game-filter" data-history-game-filter>
+            <option value="">Alle Spiele</option>
+            ${[...gamesWithHistory()].sort((a, b) => a.name.localeCompare(b.name, 'de'))
+              .map((game) => `<option value="${escapeHtml(game.id)}"${historyGameFilter === game.id ? ' selected' : ''}>${escapeHtml(game.name)}</option>`).join('')}
+          </select>
         </div>
         <div class="stack game-catalog-filter-section" role="group" aria-label="Beteiligung">
           <span class="game-catalog-filter-heading">Beteiligung</span><div class="chip-list">
@@ -1316,9 +1327,9 @@ function renderMatchFilters() {
   </div>`;
 }
 
-function renderOpenDraws(selectedGameId) {
-  const draws = filteredOpenDraws(selectedGameId);
-  const tournaments = filteredTournaments(selectedGameId, false);
+function renderOpenDraws() {
+  const draws = filteredOpenDraws();
+  const tournaments = filteredTournaments(false);
   if (!draws.length && !tournaments.length && (tipFilter === 'all' || !state.activeEvent?.pointsEnabled)) return '';
   const summary = [
     draws.length ? `${draws.length} Auslosungen` : null,
@@ -1337,15 +1348,15 @@ function renderOpenDraws(selectedGameId) {
   </details>`;
 }
 
-function renderHistory(selectedGameId) {
-  const tournaments = filteredTournaments(selectedGameId, true);
-  const matches = (historyForGameId === selectedGameId ? historyCache ?? [] : [])
+function renderHistory() {
+  const tournaments = filteredTournaments(true);
+  const matches = (historyForGameId === historyGameFilter ? historyCache ?? [] : [])
     .filter((draw) => draw.matchId && (!mineOnly || drawIncludesMe(draw)));
   const items = [
     ...(historyFilter === 'tournaments' ? [] : matches.map((draw) => ({ time: draw.generatedAt, html: historyMatchHtml(draw) }))),
     ...(historyFilter === 'matches' ? [] : tournaments.map((tournament) => ({ time: tournament.createdAt, html: historyTournamentHtml(tournament) }))),
   ].sort((a, b) => b.time - a.time).map((entry) => entry.html);
-  const loading = (historyFilter !== 'tournaments' && historyForGameId !== selectedGameId) ||
+  const loading = (historyFilter !== 'tournaments' && historyForGameId !== historyGameFilter) ||
     (historyFilter === 'tournaments' && tournamentCache === null && !tournamentError);
   const emptyText = historyError || tournamentError ? 'Historie konnte nicht geladen werden.' : mineOnly ? 'Keine eigenen Ergebnisse.' : historyFilter === 'tournaments' ? 'Keine Turniere gefunden.' : 'Noch keine Matches.';
   const content = `${items.length ? items.join('') : emptyStateHtml(loading ? 'Lädt…' : emptyText, { className: 'empty-state-compact' })}
@@ -1354,7 +1365,7 @@ function renderHistory(selectedGameId) {
   return renderHistoryDetails('Historie', items.length, content);
 }
 
-function wireOpenDraws(container, selectedGameId, ctx) {
+function wireOpenDraws(container, ctx) {
   const section = container.querySelector('.matchmaking-open-draws');
   const openPanel = container.querySelector('#match-history-open');
   function releaseOpenDraws() {
@@ -1364,9 +1375,9 @@ function wireOpenDraws(container, selectedGameId, ctx) {
   }
   function populateOpenDraws() {
     if (!openPanel || !section?.open || openPanel.dataset.rendered) return;
-    const tournaments = filteredTournaments(selectedGameId, false);
+    const tournaments = filteredTournaments(false);
     openPanel.innerHTML = [
-      ...filteredOpenDraws(selectedGameId).map((draw) => renderDrawCard(draw, { editable: true, showGame: true, collapsible: true })),
+      ...filteredOpenDraws().map((draw) => renderDrawCard(draw, { editable: true, showGame: true, collapsible: true })),
       ...tournaments.map(historyTournamentHtml),
     ].join('') || emptyStateHtml('Keine offenen Spiele gefunden.');
     openPanel.dataset.rendered = 'true';
@@ -1390,7 +1401,7 @@ function wireOpenDraws(container, selectedGameId, ctx) {
   populateOpenDraws();
 }
 
-function wireHistory(container, selectedGameId, ctx) {
+function wireHistory(container, ctx) {
   const section = container.querySelector('.history-details');
   section?.addEventListener('toggle', () => {
     if (section.isConnected) historySectionOpen = section.open;
@@ -1406,6 +1417,9 @@ function wireHistory(container, selectedGameId, ctx) {
   container.querySelectorAll('[data-history-filter]').forEach((button) => button.addEventListener('click', () => {
     historyFilter = button.dataset.historyFilter; ctx.rerender();
   }));
+  container.querySelector('[data-history-game-filter]')?.addEventListener('change', (event) => {
+    historyGameFilter = event.target.value; ctx.rerender();
+  });
   container.querySelector('[data-match-mine]')?.addEventListener('click', () => {
     mineOnly = !mineOnly; invalidateMatchmakingHistory({ hard: true }); ctx.rerender();
   });
@@ -1413,11 +1427,11 @@ function wireHistory(container, selectedGameId, ctx) {
     tipFilter = tipFilter === button.dataset.matchTipFilter ? 'all' : button.dataset.matchTipFilter; ctx.rerender();
   }));
   container.querySelector('[data-match-filter-reset]')?.addEventListener('click', () => {
-    historyFilter = 'all'; mineOnly = false; tipFilter = 'all';
+    historyFilter = 'all'; historyGameFilter = ''; mineOnly = false; tipFilter = 'all';
     invalidateMatchmakingHistory({ hard: true }); ctx.rerender();
   });
   container.querySelector('[data-history-more]')?.addEventListener('click', () => {
-    if (!historyLoading && historyCursor) loadHistory(selectedGameId, ctx, { append: true });
+    if (!historyLoading && historyCursor) loadHistory(historyGameFilter, ctx, { append: true });
   });
 }
 
@@ -1535,8 +1549,7 @@ export function renderMatchmaking(container, ctx) {
   // Only accepted games can be drawn/drafted for — an open suggestion is not
   // something to build teams for yet (see catalogGames()). The picker still
   // lists a game that was moved back to the suggestions *after* it was drawn
-  // or played, because this one <select> also scopes the Historie below:
-  // without it, that draw's Ergebnis-/Rematch-Aktionen would be unreachable.
+  // or played, so its Ergebnis-/Rematch-Aktionen stay reachable.
   // Drawing and drafting stay blocked for such a game (see drawDisabledReason).
   const pickableGames = gamesWithHistory([state.lastMatchmaking?.gameId, state.selectedGameId]);
   if (catalogGames().length === 0 || eventPlayers().length === 0) {
@@ -1583,8 +1596,11 @@ export function renderMatchmaking(container, ctx) {
     avoidAdjacentOpponents = Boolean(gameById(selectedGameId)?.considerSeatNeighborsDefault);
   }
 
-  if ((historyForGameId !== selectedGameId || historyStale) && !historyLoading) {
-    loadHistory(selectedGameId, ctx);
+  // A deleted game vanishes from the filter's options; keep the effective
+  // filter in sync so Historie never filters by an id nobody can see or clear.
+  if (historyGameFilter && !gamesWithHistory().some((game) => game.id === historyGameFilter)) historyGameFilter = '';
+  if ((historyForGameId !== historyGameFilter || historyStale) && !historyLoading) {
+    loadHistory(historyGameFilter, ctx);
   }
 
   const gameSelectOptions = pickableGames.map((g) => ({ value: g.id, label: g.name }));
@@ -1731,15 +1747,15 @@ export function renderMatchmaking(container, ctx) {
     <div id="mm-result">${renderResult(state.lastMatchmaking)}</div>
 
     ${renderMatchFilters()}
-    ${renderOpenDraws(selectedGameId)}
-    ${renderHistory(selectedGameId)}
+    ${renderOpenDraws()}
+    ${renderHistory()}
   `;
 
   wireInfoTooltips(container);
   wireDrawCards(container, ctx);
   wireCompetitionBetting(container, ctx);
-  wireOpenDraws(container, selectedGameId, ctx);
-  wireHistory(container, selectedGameId, ctx);
+  wireOpenDraws(container, ctx);
+  wireHistory(container, ctx);
   wireRosterPicker(container, {
     id: 'mm-draw-roster',
     players: eventPlayers(),
