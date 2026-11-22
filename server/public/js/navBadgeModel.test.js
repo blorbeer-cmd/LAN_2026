@@ -12,6 +12,7 @@ import {
   navBadgeLabel,
   navBadgeText,
   rememberSeenTodoIds,
+  settleOpenedArea,
   unseenNavBadgeItems,
 } from './navBadgeModel.js';
 
@@ -58,11 +59,49 @@ test('To-Dos of another workspace stay off the navigation; missing ballots count
   ]);
 });
 
-test('an unread Vote announcement and the missing ballot of that round count once', () => {
-  const announced = navBadgeItems({ feedEntries: [feed('vote', '/#votes')], pendingVotes: [3], activeEventId: 'lan', now: NOW });
-  assert.deepEqual(announced.map((item) => item.id), ['feed:vote']);
-  const read = navBadgeItems({ feedEntries: [feed('vote', '/#votes', { seen: true })], pendingVotes: [3], activeEventId: 'lan', now: NOW });
-  assert.deepEqual(read.map((item) => item.id), ['todo:vote-ballot:lan:3']);
+test('an unread Vote announcement stands only for the missing ballot of its own round', () => {
+  const announced = navBadgeItems({
+    feedEntries: [feed('vote', '/#votes', { targetId: 'vote:1' })],
+    pendingVotes: [1, 2],
+    activeEventId: 'lan',
+    now: NOW,
+  });
+  assert.deepEqual(announced.map((item) => item.id), ['feed:vote', 'todo:vote-ballot:lan:2']);
+  const read = navBadgeItems({
+    feedEntries: [feed('vote', '/#votes', { targetId: 'vote:1', seen: true })],
+    pendingVotes: [1],
+    activeEventId: 'lan',
+    now: NOW,
+  });
+  assert.deepEqual(read.map((item) => item.id), ['todo:vote-ballot:lan:1']);
+});
+
+test('a betting round counts on Match and is settled by Match or by its own link', () => {
+  const items = navBadgeItems({ feedEntries: [feed('bet', '/?eventId=lan#points/round/r1')], activeEventId: 'lan', now: NOW });
+  assert.equal(countForBottomNav(items, 'matchmaking', LAN), 1);
+  assert.equal(countForBottomNav(items, 'more', LAN), 0);
+  assert.equal(countForDesktopNav(items, 'matchmaking'), 1);
+  assert.equal(countForDesktopNav(items, 'points'), 0);
+  assert.deepEqual(itemsSeenByOpening(items, 'matchmaking').map((item) => item.id), ['feed:bet']);
+  assert.deepEqual(itemsSeenByOpening(items, 'points').map((item) => item.id), ['feed:bet']);
+});
+
+test('opening an area waits for the feed and the workspace before reading notifications', () => {
+  const items = [{ id: 'feed:v', kind: 'feed', entryId: 'v', view: 'votes' }];
+  assert.deepEqual(
+    settleOpenedArea({ pendingView: 'votes', openView: 'votes', feedReady: false, items: [] }),
+    { feedEntryIds: [], pendingView: 'votes' },
+    'not ready yet: the visit stays pending instead of being used up',
+  );
+  assert.deepEqual(
+    settleOpenedArea({ pendingView: 'votes', openView: 'votes', feedReady: true, items }),
+    { feedEntryIds: ['v'], pendingView: null },
+  );
+  assert.deepEqual(
+    settleOpenedArea({ pendingView: 'votes', openView: 'home', feedReady: true, items }),
+    { feedEntryIds: [], pendingView: null },
+    'a visit the reader has already left settles nothing',
+  );
 });
 
 test('counters land on the entry that leads to their area', () => {

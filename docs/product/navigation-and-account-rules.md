@@ -74,10 +74,11 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Routen, Rolle
   invitations), excluding read and obsolete ones, assigned through their deep link. To-Dos count
   when they can be handled from the open workspace (`switchesEvent` false), plus pending
   invitations and every open Vote round without the own ballot („noch nicht abgestimmt“). A round
-  counts once: while its „Neue Abstimmung“ notification is unread, that notification stands for the
-  missing ballot. Live skill nudges stay on Home only.
-- **Where it shows** — On the entry that leads to the item's area: tournaments and betting count
-  on Match, Admin's tools on Admin, Orga's pages and other secondary destinations on „Mehr“ on
+  counts once: while its „Neue Abstimmung“ notification (target `vote:<round>`) is unread, it stands
+  for that round's missing ballot; other open rounds still count. Live skill nudges stay on Home only.
+- **Where it shows** — On the entry that leads to the item's area: tournaments and betting rounds
+  count on Match (a betting-round notification is also settled by opening its own link to the
+  points page), Admin's tools on Admin, Orga's pages and other secondary destinations on „Mehr“ on
   compact layouts and on their own rail entry on Desktop. A „Mehr“ card counts its whole area
   (Orga: To-Do, An & Abreise, Packliste, Umfragen). The entry that is open shows no number.
 - **Clearing** — Opening an area (also by tapping its entry again) marks its notifications read on
@@ -85,7 +86,8 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Routen, Rolle
   seen per account on this device (`respawn_nav_seen_todos:<account-id>`, the newest 200 ids) and
   keep their row on Home until done; a To-Do that newly appears counts again, and To-Dos that
   appear while their area is open count as seen. Opening the „Mehr“ hub alone clears nothing.
-  Reading a notification from the bell clears it here too.
+  Reading a notification from the bell clears it here too. After a reload straight into an area,
+  it is settled once both the notification feed and the open workspace have loaded.
 
 ## Benachrichtigungszentrum
 

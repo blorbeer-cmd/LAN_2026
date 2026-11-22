@@ -18,14 +18,15 @@ import {
   navBadgeText,
   navTargetForView,
   rememberSeenTodoIds,
+  settleOpenedArea,
   unseenNavBadgeItems,
 } from './navBadgeModel.js';
 
 const STORAGE_PREFIX = 'respawn_nav_seen_todos:';
 
 let openView = null;
-// The area opened before the feed had loaded: applied once it arrives, so a
-// reload straight into a view still counts that view as seen.
+// The area opened before the feed and the workspace had loaded: applied once
+// both are there, so a reload straight into a view still counts it as seen.
 let pendingFeedOpen = null;
 
 function readSeenTodoIds(playerId) {
@@ -51,8 +52,10 @@ function writeSeenTodoIds(playerId, ids) {
 function currentItems() {
   const feedEntries = notificationFeedEntries();
   const todoRows = myTodoRows({ skillNudges: [] }) ?? [];
+  // Notifications are matched against the open workspace, so an area can
+  // only be settled once both the feed and the workspace snapshot are here.
   return {
-    feedLoaded: feedEntries !== null,
+    feedReady: feedEntries !== null && Boolean(state.activeEvent?.id),
     items: navBadgeItems({
       feedEntries: feedEntries ?? [],
       todoRows,
@@ -97,12 +100,12 @@ function setButtonLabel(button, count) {
 export function renderNavBadges() {
   if (typeof document === 'undefined') return;
   const playerId = getMyId();
-  const { items, feedLoaded } = playerId ? currentItems() : { items: [], feedLoaded: false };
+  const { items, feedReady } = playerId ? currentItems() : { items: [], feedReady: false };
 
-  if (playerId && feedLoaded && pendingFeedOpen && pendingFeedOpen === openView) {
-    const ids = itemsSeenByOpening(items, pendingFeedOpen).filter((item) => item.kind === 'feed').map((item) => item.entryId);
-    pendingFeedOpen = null;
-    if (ids.length > 0) void markFeedEntriesSeen(ids);
+  if (playerId && pendingFeedOpen) {
+    const settled = settleOpenedArea({ pendingView: pendingFeedOpen, openView, feedReady, items });
+    pendingFeedOpen = settled.pendingView;
+    if (settled.feedEntryIds.length > 0) void markFeedEntriesSeen(settled.feedEntryIds);
   }
 
   // To-Dos that turn up while their area is open are seen right there; they
@@ -138,16 +141,11 @@ export function noteNavViewOpened(view) {
   const playerId = getMyId();
   if (!playerId) return;
   ensureMyTodosLoaded();
-  const { items, feedLoaded } = currentItems();
-  if (!feedLoaded) {
-    pendingFeedOpen = view;
-    return;
-  }
-  pendingFeedOpen = null;
-  const seen = itemsSeenByOpening(items, view);
-  const feedIds = seen.filter((item) => item.kind === 'feed').map((item) => item.entryId);
-  markTodosSeen(playerId, seen, readSeenTodoIds(playerId));
-  if (feedIds.length > 0) void markFeedEntriesSeen(feedIds);
+  const { items, feedReady } = currentItems();
+  markTodosSeen(playerId, itemsSeenByOpening(items, view), readSeenTodoIds(playerId));
+  const settled = settleOpenedArea({ pendingView: view, openView: view, feedReady, items });
+  pendingFeedOpen = settled.pendingView;
+  if (settled.feedEntryIds.length > 0) void markFeedEntriesSeen(settled.feedEntryIds);
 }
 
 export function initNavBadges() {
