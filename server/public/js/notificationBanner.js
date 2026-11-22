@@ -14,6 +14,7 @@ import {
   feedLinkTarget,
   feedLinkView,
   FEED_LINK_LABELS,
+  isFeedEntryCleanable,
   isFeedEntryObsolete,
 } from './pushFeed.js';
 import { showToast } from './toast.js';
@@ -220,17 +221,17 @@ async function hideAllEntries() {
 }
 
 // Unlike hideAllEntries, this never needs a confirmation dialog: it only
-// ever removes entries that are already obsolete, never one a player might
-// still act on.
+// ever removes entries that are already obsolete or read-only information,
+// never one a player might still act on.
 async function hideResolvedEntries() {
   const playerId = getMyId();
   if (!playerId) return;
-  const obsoleteIds = new Set(entries.filter((entry) => isFeedEntryObsolete(entry)).map((entry) => entry.id));
-  if (obsoleteIds.size === 0) return;
+  const cleanableIds = new Set(entries.filter((entry) => isFeedEntryCleanable(entry)).map((entry) => entry.id));
+  if (cleanableIds.size === 0) return;
   const previousEntries = entries;
   const previousHighlight = highlightEntry;
-  entries = entries.filter((entry) => !obsoleteIds.has(entry.id));
-  if (highlightEntry && obsoleteIds.has(highlightEntry.id)) {
+  entries = entries.filter((entry) => !cleanableIds.has(entry.id));
+  if (highlightEntry && cleanableIds.has(highlightEntry.id)) {
     highlightEntry = null;
   }
   renderBanner();
@@ -320,7 +321,7 @@ export function renderBanner() {
     </div>
     ${panelContentHtml(myId)}
     ${entries.length > 0 ? `<div class="notification-center-toolbar">
-      ${entries.some((entry) => isFeedEntryObsolete(entry)) ? '<button type="button" class="btn btn-sm" data-notifications-hide-resolved>Aufräumen</button>' : ''}
+      ${entries.some((entry) => isFeedEntryCleanable(entry)) ? '<button type="button" class="btn btn-sm" data-notifications-hide-resolved>Aufräumen</button>' : ''}
       <button type="button" class="btn btn-sm" data-notifications-seen-all ${entries.every((entry) => entry.seen || isFeedEntryObsolete(entry)) ? 'disabled' : ''}>Alle gelesen</button>
       <button type="button" class="btn btn-sm" data-notifications-hide-all>Alle löschen</button>
     </div>` : ''}

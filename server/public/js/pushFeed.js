@@ -87,6 +87,13 @@ export function isFeedEntryObsolete(entry, now = Date.now()) {
   return Boolean(entry?.resolvedAt) || (entry?.expiresAt != null && entry.expiresAt <= now);
 }
 
+// What "Aufräumen" removes: obsolete entries, plus read entries that only
+// reported something (a won bet, a claimed task) and never asked for an
+// action. The server marks those as `informational` and applies the same rule.
+export function isFeedEntryCleanable(entry, now = Date.now()) {
+  return isFeedEntryObsolete(entry, now) || Boolean(entry?.seen && entry?.informational);
+}
+
 // Bell + title + body markup for the read-only Kiosk banner.
 export function bannerContentHtml(entry) {
   const title = entry?.eventName ? `${entry.eventName} · ${feedEntryHeading(entry)}` : feedEntryHeading(entry);

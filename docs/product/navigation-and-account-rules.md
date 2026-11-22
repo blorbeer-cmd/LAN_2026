@@ -79,7 +79,10 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Routen, Rolle
   „Abgelaufen“ pill, show „Für dich“ as a neutral instead of an accent pill and never count as
   unread. The sticky footer holds neutral bulk actions in equal
   columns across the full width: „Alle gelesen“ and „Alle löschen“ (whose confirmation stays red),
-  preceded by „Aufräumen“ only while at least one obsolete entry is present.
+  preceded by „Aufräumen“ only while at least one entry can be cleaned up. „Aufräumen“ removes
+  obsolete entries and read entries that only report something without asking for an action (won
+  bets, „Übernommen“, changed event plans, removed participation, withdrawn acceptances); unread
+  entries and anything still actionable stay.
 - **Creator** — An entry announcing something a person created (Durchsage, Abstimmung,
   Sammelbestellung, Captain-Draft, Turnier, Event-Einladung, Eventplanung, Event-Umfrage) names
   that account as „von <Name>“ right after its title: in the highlight below the topbar, in the

@@ -276,6 +276,35 @@ test('DELETE /api/push/resolved hides only resolved or expired entries, leaving 
   assert.ok(otherAfter.body.entries.some((entry: { body: string }) => /Wird aufgeraeumt/.test(entry.body)));
 });
 
+test('DELETE /api/push/resolved also hides informational entries, but only once they were read', async () => {
+  const delivered = notifyPlayers(
+    [playerId],
+    { title: 'Übernommen', body: 'Info nur zum Lesen', url: '/#checklist', type: 'checklist-claimed' },
+    'direct',
+  );
+  assert.ok(delivered);
+  const actionable = notifyPlayers([playerId], { title: 'Neue Aufgabe', body: 'Bleibt trotz Lesen', url: '/#checklist' }, 'direct', {
+    key: 'checklist-task:cleanup-test',
+  });
+  assert.ok(actionable);
+  const findBody = async (pattern: RegExp) =>
+    (await request(app).get(`/api/push/log?playerId=${playerId}`)).body.entries.find(
+      (entry: { body: string }) => pattern.test(entry.body),
+    );
+
+  const unread = await findBody(/Info nur zum Lesen/);
+  assert.equal(unread.informational, true);
+  assert.equal((await findBody(/Bleibt trotz Lesen/)).informational, false);
+
+  await request(app).delete('/api/push/resolved').send({ playerId });
+  assert.ok(await findBody(/Info nur zum Lesen/), 'an unread informational entry survives cleanup');
+
+  await request(app).post('/api/push/seen-all').send({ playerId });
+  await request(app).delete('/api/push/resolved').send({ playerId });
+  assert.equal(await findBody(/Info nur zum Lesen/), undefined, 'a read informational entry is cleaned up');
+  assert.ok(await findBody(/Bleibt trotz Lesen/), 'a read but still actionable entry stays');
+});
+
 test('closed and expired food-order pushes are omitted from active banners', async () => {
   const order = await request(app)
     .post('/api/food-orders')
