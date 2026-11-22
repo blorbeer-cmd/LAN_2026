@@ -399,6 +399,12 @@ flowTest('wide desktop adapts the shared shell and pilot views without changing 
   await page.goBack();
   await page.waitForSelector('#view-container h1:text-is("Home")');
   assert.equal(await page.evaluate(() => document.activeElement?.textContent?.trim()), 'Home');
+  // Home re-renders once its data arrives. The rebuilt heading keeps the
+  // focus instead of dropping it to <body>.
+  assert.equal(await page.evaluate(() => {
+    window.dispatchEvent(new CustomEvent('respawn:rerender'));
+    return document.activeElement?.textContent?.trim();
+  }), 'Home', 'a re-render keeps the focus on the view heading');
 
   await page.click('.desktop-nav-btn[data-view="admin"]');
   await page.waitForSelector('[aria-label="Werkzeuge"]');

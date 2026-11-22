@@ -290,6 +290,56 @@ test('local controller pairs without sending Spotify credentials to Respawn', as
   assert.deepEqual(await statusOf(), { [secondCopy.body.requestId]: 'playing' },
     'the song starting again plays the second copy and finishes the first');
 
+  // Commands a heartbeat issues are not awaited by its response: wait for the
+  // state "the controller received them", bounded so a missing command fails
+  // the assertion after it instead of hanging.
+  const commandsOf = (type: string) => controllerCommands.filter((command) => command.type === type);
+  const waitForCommands = async (type: string, count: number) => {
+    const deadline = Date.now() + 5_000;
+    while (commandsOf(type).length < count && Date.now() < deadline) await new Promise((resolve) => setImmediate(resolve));
+  };
+
+  // Spotify's repeat starts the last request again after its end. Without a
+  // waiting copy that replay is foreign: the request counts as played and the
+  // Jam pauses instead of looping it.
+  const pausesBeforeRepeat = commandsOf('pause').length;
+  await copyHeartbeat(205_000);
+  await copyHeartbeat(1_000);
+  assert.deepEqual(await statusOf(), {}, 'a repeated last request counts as played');
+  assert.equal((await request(app).get('/api/music/status')).body.session.currentTrack, null);
+  await waitForCommands('pause', pausesBeforeRepeat + 1);
+  assert.deepEqual(commandsOf('pause').at(-1)?.payload, { deviceId: 'speaker-1' }, 'a repeated last request is paused');
+
+  // A song change plans the switch at the end of the new request, not only a
+  // queue change: the last of several requests ends with the planned pause.
+  const runFirst = await request(app).post('/api/music/requests').send({ playerId: bob.id, trackId: tracks.AAAAAAAAAAAAAAAAAAAAAA.id });
+  const runLast = await request(app).post('/api/music/requests').send({ playerId: alice.id, trackId: tracks.BBBBBBBBBBBBBBBBBBBBBB.id });
+  assert.deepEqual([runFirst.status, runLast.status], [201, 201]);
+  const schedulesBeforeSongChange = commandsOf('scheduleQueue').length;
+  await request(app).post('/api/music/controller/heartbeat').set('x-music-controller-token', controllerToken).send({
+    playback: { track: tracks.BBBBBBBBBBBBBBBBBBBBBB, deviceId: 'speaker-1', context: null, isPlaying: true, progressMs: 2_000 },
+  });
+  assert.deepEqual(await statusOf(), { [runLast.body.requestId]: 'playing' });
+  await waitForCommands('scheduleQueue', schedulesBeforeSongChange + 1);
+  assert.deepEqual(commandsOf('scheduleQueue').at(-1)?.payload,
+    { deviceId: 'speaker-1', uris: [], delayMs: tracks.BBBBBBBBBBBBBBBBBBBBBB.durationMs - 2_000 - 250 },
+    'the song change plans the pause at the end of the last request');
+
+  // After the planned pause the Jam is idle: the next request starts at once
+  // instead of waiting behind the paused, finished song.
+  await request(app).post('/api/music/controller/heartbeat').set('x-music-controller-token', controllerToken).send({
+    playback: {
+      track: tracks.BBBBBBBBBBBBBBBBBBBBBB, deviceId: 'speaker-1', context: null, isPlaying: false,
+      progressMs: tracks.BBBBBBBBBBBBBBBBBBBBBB.durationMs - 250,
+    },
+  });
+  assert.deepEqual(await statusOf(), {}, 'the request paused at its end counts as played');
+  assert.equal((await request(app).get('/api/music/status')).body.session.currentTrack, null);
+  const afterEnd = await request(app).post('/api/music/requests').send({ playerId: bob.id, trackId: tracks.CCCCCCCCCCCCCCCCCCCCCC.id });
+  assert.equal(afterEnd.status, 201);
+  assert.deepEqual(commandsOf('playUris').at(-1)?.payload,
+    { deviceId: 'speaker-1', uris: [tracks.CCCCCCCCCCCCCCCCCCCCCC.uri] }, 'the next request starts at once');
+
   const playedPlaylist = await request(app)
     .post(`/api/music/playlists/${playlist.id}/play`)
     .send({ playerId: bob.id });

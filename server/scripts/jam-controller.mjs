@@ -753,6 +753,26 @@ function clearSchedule() {
 // and Spotify's own autoplay fills the silence with unrequested songs.
 const PLAYBACK_COMMANDS = new Set(['playUris', 'playContext', 'transfer', 'pause', 'resume', 'next']);
 
+// Requests play exactly once and in order. Shuffle (also Smart Shuffle) and
+// repeat left on in the Spotify app would mix them or play the last one again
+// and again, so the Jam switches both off when it starts requests. A playlist
+// started from Respawn may stay shuffled, but must not repeat either: after
+// its last song the Jam continues with requests or pauses. Set after the
+// start, when the device is surely active. Best effort: a device that refuses
+// still plays, and Respawn's heartbeat pauses a request that repeats anyway.
+async function disableRepeat(deviceId, { keepShuffle = false } = {}) {
+  const device = encodeURIComponent(deviceId);
+  const paths = [`/me/player/repeat?state=off&device_id=${device}`];
+  if (!keepShuffle) paths.unshift(`/me/player/shuffle?state=false&device_id=${device}`);
+  for (const pathname of paths) {
+    try {
+      await spotify(pathname, { method: 'PUT' });
+    } catch (error) {
+      console.error('[Jam] Shuffle/Wiederholen ausschalten fehlgeschlagen:', error.message);
+    }
+  }
+}
+
 async function executeCommand(type, payload = {}) {
   if (PLAYBACK_COMMANDS.has(type)) clearSchedule();
   if (type === 'devices') {
@@ -777,6 +797,7 @@ async function executeCommand(type, payload = {}) {
     await spotify(`/me/player/play?device_id=${encodeURIComponent(payload.deviceId)}`, {
       method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ uris: payload.uris, position_ms: 0 }),
     });
+    await disableRepeat(payload.deviceId);
     return { ok: true };
   }
   if (type === 'playContext') {
@@ -786,6 +807,7 @@ async function executeCommand(type, payload = {}) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ context_uri: payload.uri, position_ms: 0 }),
     });
+    await disableRepeat(payload.deviceId, { keepShuffle: true });
     return { ok: true };
   }
   if (type === 'transfer') {

@@ -14,6 +14,9 @@ const COMMAND_TIMEOUT_MS = 15_000;
 // A same-song restart must be clearly earlier than the expected position:
 // heartbeats arrive every few seconds and Spotify reports progress coarsely.
 const SAME_TRACK_RESTART_MS = 10_000;
+// A request paused or restarted this close to its end has ended: the planned
+// pause fires shortly before the end, and Respawn only estimates the position.
+const TRACK_END_MS = 10_000;
 // Spotify reports up to 20 queued songs; a few spare entries keep five
 // visible after hiding removed requests.
 const UPCOMING_TRACKS_REPORTED = 10;
@@ -280,12 +283,13 @@ function replaceForeignPlayback(groupId: string, type: 'pause' | 'next' | 'playU
 
 function syncSessionPlayback(groupId: string, playback: unknown, now: number): void {
   const session = db.prepare(
-    `SELECT id, device_id, current_track_uri, playback_context_json, playback_progress_ms, playback_updated_at,
-            playback_is_playing FROM music_sessions WHERE group_id = ? AND status = 'active'`,
+    `SELECT id, device_id, current_track_uri, current_track_json, playback_context_json, playback_progress_ms,
+            playback_updated_at, playback_is_playing FROM music_sessions WHERE group_id = ? AND status = 'active'`,
   ).get(groupId) as
     | {
-        id: string; device_id: string; current_track_uri: string | null; playback_context_json: string | null;
-        playback_progress_ms: number; playback_updated_at: number | null; playback_is_playing: number;
+        id: string; device_id: string; current_track_uri: string | null; current_track_json: string | null;
+        playback_context_json: string | null; playback_progress_ms: number; playback_updated_at: number | null;
+        playback_is_playing: number;
       }
     | undefined;
   if (!session) return;
@@ -305,6 +309,25 @@ function syncSessionPlayback(groupId: string, playback: unknown, now: number): v
     Boolean(db.prepare(
       "SELECT 1 FROM music_requests WHERE session_id = ? AND track_uri = ? AND status IN ('sending', 'queued') LIMIT 1",
     ).get(session.id, uri));
+  const waitingRequests = (db.prepare(
+    "SELECT COUNT(*) AS count FROM music_requests WHERE session_id = ? AND status IN ('sending', 'queued')",
+  ).get(session.id) as { count: number }).count;
+  let currentDurationMs = 0;
+  try { currentDurationMs = Number(JSON.parse(session.current_track_json || '{}').durationMs) || 0; } catch { /* stale data */ }
+  const sameRequestNearEnd = Boolean(uri) && uri === session.current_track_uri && !restartedSameTrack &&
+    context?.type !== 'playlist' && currentDurationMs > 0 &&
+    Boolean(db.prepare("SELECT 1 FROM music_requests WHERE session_id = ? AND track_uri = ? AND status = 'playing' LIMIT 1")
+      .get(session.id, uri));
+  // Spotify's repeat starts a request again once it has ended. Without a
+  // waiting copy that replay is foreign: the request counts as played and the
+  // Jam moves on to the waiting requests or pauses.
+  const repeatedRequest = sameRequestNearEnd && expectedProgress + TRACK_END_MS >= currentDurationMs &&
+    reportedProgress + SAME_TRACK_RESTART_MS < expectedProgress;
+  // The planned pause stops the last request just before its end. The Jam is
+  // then idle, so the next request starts at once instead of waiting behind a
+  // paused, finished song.
+  const finishedRequest = sameRequestNearEnd && !value?.isPlaying && waitingRequests === 0 &&
+    reportedProgress + TRACK_END_MS >= currentDurationMs;
   // The copy already playing keeps matching; after a restart the oldest
   // waiting copy takes over.
   const matchingRequest = uri
@@ -312,9 +335,12 @@ function syncSessionPlayback(groupId: string, playback: unknown, now: number): v
         `SELECT id FROM music_requests WHERE session_id = ? AND track_uri = ?
            AND status IN ('sending', 'queued', 'playing') AND (? = 0 OR status != 'playing')
          ORDER BY CASE status WHEN 'playing' THEN 0 ELSE 1 END, created_at LIMIT 1`,
-      ).get(session.id, uri, restartedSameTrack ? 1 : 0) as { id: string } | undefined
+      ).get(session.id, uri, restartedSameTrack || repeatedRequest || finishedRequest ? 1 : 0) as { id: string } | undefined
     : undefined;
   let playbackContextJson = session.playback_context_json;
+  // A playlist started from Respawn plans its own end; requests inside it
+  // follow Spotify's queue.
+  let playlistActive = false;
   // A playlist removed from the queue keeps a marker until Spotify has left
   // it: only the song that was playing at the removal may still finish.
   let removedPlaylistTrack = false;
@@ -335,7 +361,9 @@ function syncSessionPlayback(groupId: string, playback: unknown, now: number): v
         skipRemovedRequest = true;
         stored.skipUris = stored.skipUris.filter((entry) => entry !== uri);
         playbackContextJson = JSON.stringify(stored);
+        playlistActive = true;
       } else {
+        playlistActive = true;
         const trackCount = Number.isSafeInteger(stored.trackCount) && Number(stored.trackCount) >= 0
           ? Number(stored.trackCount)
           : 0;
@@ -377,15 +405,12 @@ function syncSessionPlayback(groupId: string, playback: unknown, now: number): v
   // else on the Jam device while nothing is waiting (typically Spotify's own
   // autoplay after the last request, or after a controller restart lost the
   // planned pause) is stopped and not shown as the Jam's current song.
-  const waitingRequests = (db.prepare(
-    "SELECT COUNT(*) AS count FROM music_requests WHERE session_id = ? AND status IN ('sending', 'queued')",
-  ).get(session.id) as { count: number }).count;
-  const foreignTrack = removedPlaylistTrack || skipRemovedRequest || (Boolean(uri) && !matchingRequest &&
+  const foreignTrack = removedPlaylistTrack || skipRemovedRequest || repeatedRequest || (Boolean(uri) && !matchingRequest &&
     !playbackContextJson && context?.type !== 'playlist' && waitingRequests === 0);
   if (foreignTrack && value?.isPlaying) {
     if (skipRemovedRequest) {
       replaceForeignPlayback(groupId, 'next', { deviceId: session.device_id });
-    } else if (removedPlaylistTrack && waitingRequests > 0) {
+    } else if ((removedPlaylistTrack || repeatedRequest) && waitingRequests > 0) {
       const uris = (db.prepare(
         "SELECT track_uri FROM music_requests WHERE session_id = ? AND status IN ('sending', 'queued') ORDER BY created_at",
       ).all(session.id) as Array<{ track_uri: string }>).map((row) => row.track_uri);
@@ -394,8 +419,10 @@ function syncSessionPlayback(groupId: string, playback: unknown, now: number): v
       replaceForeignPlayback(groupId, 'pause', { deviceId: session.device_id });
     }
   }
+  const trackEnded = foreignTrack || finishedRequest;
+  const requestStarted = Boolean(matchingRequest) && (session.current_track_uri !== uri || restartedSameTrack);
   db.transaction(() => {
-    if (session.current_track_uri && (session.current_track_uri !== uri || restartedSameTrack)) {
+    if (session.current_track_uri && (session.current_track_uri !== uri || restartedSameTrack || trackEnded)) {
       db.prepare("UPDATE music_requests SET status = 'played', played_at = ? WHERE session_id = ? AND status = 'playing'")
         .run(now, session.id);
     }
@@ -406,14 +433,30 @@ function syncSessionPlayback(groupId: string, playback: unknown, now: number): v
       `UPDATE music_sessions SET current_track_uri = ?, current_track_json = ?, playback_is_playing = ?,
        playback_progress_ms = ?, playback_updated_at = ?, playback_context_json = ? WHERE id = ?`,
     ).run(
-      foreignTrack ? null : uri,
-      track && !foreignTrack ? JSON.stringify(track) : null,
-      value?.isPlaying && !foreignTrack ? 1 : 0,
+      trackEnded ? null : uri,
+      track && !trackEnded ? JSON.stringify(track) : null,
+      value?.isPlaying && !trackEnded ? 1 : 0,
       Number.isSafeInteger(value?.progressMs) ? value?.progressMs : 0,
       now,
       playbackContextJson,
       session.id,
     );
   })();
+  // The switch at the end of a request is planned again at every song change,
+  // not only when the queue changes: otherwise the last of several requests
+  // ends without the planned pause, and Spotify's autoplay or repeat take over.
+  if (requestStarted && value?.isPlaying && !playlistActive) {
+    const durationMs = Number(track?.durationMs) || 0;
+    const uris = (db.prepare(
+      "SELECT track_uri FROM music_requests WHERE session_id = ? AND status = 'queued' ORDER BY created_at",
+    ).all(session.id) as Array<{ track_uri: string }>).map((row) => row.track_uri);
+    if (durationMs > 0) {
+      issueMusicControllerCommand(groupId, 'scheduleQueue', {
+        deviceId: session.device_id,
+        uris,
+        delayMs: Math.max(0, durationMs - reportedProgress - 250),
+      }).catch(() => { /* best effort: the heartbeat pauses foreign playback */ });
+    }
+  }
   broadcast(Events.musicChanged, { groupId }, { groupId });
 }
