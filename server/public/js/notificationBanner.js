@@ -250,14 +250,12 @@ async function hideResolvedEntries() {
   }
   renderBanner();
   const seenWrites = await Promise.allSettled([...pendingSeenWrites]);
-  if (seenWrites.some((result) => result.status === 'rejected')) {
-    // The failed read write already rolled its entries back and showed its
-    // own error; reload so the center matches what the server kept.
-    await refreshNotificationBanner();
-    return;
-  }
   try {
     await api.push.hideResolved(playerId);
+    // A failed read write rolled its entries back and showed its own error,
+    // but the server still cleaned up everything it already knew as finished
+    // (obsolete entries above all). Reload so the center shows exactly that.
+    if (seenWrites.some((result) => result.status === 'rejected')) await refreshNotificationBanner();
   } catch (err) {
     entries = previousEntries;
     highlightEntry = previousHighlight;
