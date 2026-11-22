@@ -22,7 +22,7 @@ export const MY_TODOS_MAX_AGE_MS = 60 * 1000;
 export const MY_TODOS_RETRY_AFTER_FAILURE_MS = 30 * 1000;
 export const MY_TODOS_VISIBLE_LIMIT = 5;
 
-let cache = null; // { todos, pendingVoteRounds }
+let cache = null; // { todos, pendingVoteRounds, eventId }
 let loadedAt = 0;
 let failedAt = null;
 let stale = false;
@@ -41,12 +41,15 @@ function notifyChanged() {
 function load() {
   if (request) return request;
   const requestGeneration = generation;
+  // pendingVoteRounds belong to the workspace this request was made in; the
+  // navigation counters must not read them as another workspace's.
+  const requestEventId = state.activeEvent?.id ?? null;
   const run = (async () => {
     let loaded = false;
     try {
       const result = await api.myTodos.get();
       if (requestGeneration !== generation) return;
-      cache = { todos: result.todos ?? [], pendingVoteRounds: result.pendingVoteRounds ?? [] };
+      cache = { todos: result.todos ?? [], pendingVoteRounds: result.pendingVoteRounds ?? [], eventId: requestEventId };
       loadedAt = Date.now();
       failedAt = null;
       stale = false;
@@ -93,6 +96,13 @@ export function keepMyTodosFresh() {
 // Open Vote rounds of the active workspace without this account's ballot.
 export function pendingVoteRounds() {
   return cache?.pendingVoteRounds ?? [];
+}
+
+// Open Vote rounds without this account's ballot, but only when the list was
+// loaded for `eventId`; null while the loaded list belongs to another
+// workspace (a switch whose reload has not answered yet) or none is loaded.
+export function pendingVoteRoundsFor(eventId) {
+  return cache && cache.eventId === eventId ? cache.pendingVoteRounds : null;
 }
 
 // `null` while nothing is loaded yet, so Home can stay quiet instead of

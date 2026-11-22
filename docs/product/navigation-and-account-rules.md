@@ -78,7 +78,9 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Routen, Rolle
   abgestimmt“). A notification and the To-Do it stands for count once: an unread „Neue Abstimmung“
   (target `vote:<round>`) covers that round's missing ballot, an unread invitation
   (`event-invitation:<event>:<account>`) covers its pending answer; opening the area settles both.
-  Live skill nudges stay on Home only.
+  Missing ballots count only from a Vote list loaded for the open workspace; right after a
+  switch, until that reload answers, they neither count nor touch the seen marks. Live skill
+  nudges stay on Home only.
 - **Where it shows** — On the entry that leads to the item's area: tournaments and betting rounds
   count on Match (a betting-round notification is also settled by opening its own link to that
   round on the points page, but not by another round), Admin's tools on Admin, Orga's pages and other secondary destinations on „Mehr“ on

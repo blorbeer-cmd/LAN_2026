@@ -61,6 +61,7 @@ accessibility issues, responsive regressions, shadows and breakpoint decisions.
 | `--accent-2` | `#9163f5` | Brand gradient midpoint (violet) |
 | `--accent-3` | `#ef5da8` | Brand gradient end (pink) |
 | `--accent-gradient` | gradient of the three above | Primary buttons, wordmark, progress bars, brand touches |
+| `--accent-gradient-strong` | gradient of `--accent-strong` `#3d6fe0`, `--accent-2-strong` `#6a3fd8`, `--accent-3-strong` `#c2357f` | Same brand hues, deep enough for small white text (≥ 4.6:1 along the whole gradient): navigation and bell counters |
 | `--accent-text` | `#ffffff` | Text/icon color on top of `--accent-gradient` |
 | `--accent-bg` | `rgba(91, 140, 255, 0.16)` | Tinted accent fill for selected/active chip-style controls |
 | `--accent-bg-subtle` | `rgba(91, 140, 255, 0.07)` | Faint tint marking the signed-in player's own rows among equal siblings (tournament boards) |

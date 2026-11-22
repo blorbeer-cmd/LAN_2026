@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { api } from './api.js';
+import { state } from './state.js';
 import {
   ensureMyTodosLoaded,
   invalidateMyTodos,
@@ -10,6 +11,7 @@ import {
   myTodoRow,
   myTodoRows,
   myTodos,
+  pendingVoteRoundsFor,
 } from './myTodos.js';
 
 const NOW = Date.UTC(2026, 9, 2, 12);
@@ -137,5 +139,27 @@ test('once the navigation counters read the list, a change signal reloads it off
     api.myTodos.get = previous.get;
     globalThis.window = previous.window;
     globalThis.document = previous.document;
+  }
+});
+
+test('missing ballots are only handed out for the workspace they were loaded in', async () => {
+  const previous = { get: api.myTodos.get, window: globalThis.window, document: globalThis.document, activeEvent: state.activeEvent };
+  api.myTodos.get = async () => ({ todos: [], pendingVoteRounds: [1] });
+  globalThis.document = { getElementById: () => ({ dataset: { view: 'votes' } }) };
+  globalThis.window = new EventTarget();
+  try {
+    state.activeEvent = { id: 'a' };
+    const changed = new Promise((resolve) => window.addEventListener('respawn:my-todos-changed', resolve, { once: true }));
+    invalidateMyTodos();
+    await changed;
+    assert.deepEqual(pendingVoteRoundsFor('a'), [1]);
+    // Switched to B before B's list answered: A's rounds are not B's.
+    state.activeEvent = { id: 'b' };
+    assert.equal(pendingVoteRoundsFor('b'), null);
+  } finally {
+    api.myTodos.get = previous.get;
+    globalThis.window = previous.window;
+    globalThis.document = previous.document;
+    state.activeEvent = previous.activeEvent;
   }
 });

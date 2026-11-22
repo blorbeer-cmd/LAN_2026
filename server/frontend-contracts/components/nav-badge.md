@@ -37,8 +37,10 @@ Keine. Die Platzierung (Icon-Ecke beziehungsweise Zeilenende in der Rail) ist ko
 
 ## 6. Komponenteneigene Invarianten
 
-- MUSS den Marken-Verlauf `--accent-gradient` mit `--accent-text` verwenden, nicht `--danger`:
-  Die Zahl weist auf Neues hin und ist keine Warnung. Dazu `--space-4` Höhe/Mindestbreite,
+- MUSS den dunkleren Marken-Verlauf `--accent-gradient-strong` mit `--accent-text` verwenden,
+  nicht `--danger`: Die Zahl weist auf Neues hin und ist keine Warnung. Der normale
+  `--accent-gradient` erreicht mit Weiß nur 3,1–4,0:1; `--accent-gradient-strong` hält entlang des
+  ganzen Verlaufs mindestens 4,6:1 (WCAG 2.2, 1.4.3). Dazu `--space-4` Höhe/Mindestbreite,
   `--radius-full`, `--font-size-2xs` und `--font-weight-bold`.
 - MUSS die Ziffer optisch mittig zeigen: `.nav-count-value` schneidet den Textkasten auf
   Versalhöhe und Grundlinie zu (`text-box: trim-both cap alphabetic`). Abnahme bei 390 px: Die
@@ -76,7 +78,7 @@ verdeckt kein Label und verschiebt keine Nachbarn.
 ## 11. Permanente Varianten und befristete Ausnahmen
 
 Die Glockenzahl `.notification-count` (Kopfzeile, `notificationBanner.js`) übernimmt Farbe
-(`--accent-gradient`), Ring und die zentrierte Ziffer in `.nav-count-value`. Sie bleibt mit
+(`--accent-gradient-strong`), Ring und die zentrierte Ziffer in `.nav-count-value`. Sie bleibt mit
 `--space-5` bewusst größer, weil die Glocke als Kopfzeilen-Control größer ist als ein Nav-Icon.
 
 

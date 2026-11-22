@@ -7,7 +7,7 @@
 import { state } from './state.js';
 import { getMyId } from './whoami.js';
 import { markFeedEntriesSeen, notificationFeedEntries } from './notificationBanner.js';
-import { ensureMyTodosLoaded, invalidateMyTodos, keepMyTodosFresh, myTodoRows, pendingVoteRounds } from './myTodos.js';
+import { ensureMyTodosLoaded, invalidateMyTodos, keepMyTodosFresh, myTodoRows, pendingVoteRoundsFor } from './myTodos.js';
 import {
   countForBottomNav,
   countForDesktopNav,
@@ -66,7 +66,7 @@ function currentItems() {
     items: navBadgeItems({
       feedEntries: feedEntries ?? [],
       todoRows,
-      pendingVotes: pendingVoteRounds(),
+      pendingVotes: pendingVoteRoundsFor(state.activeEvent?.id ?? null) ?? [],
       activeEventId: state.activeEvent?.id ?? null,
     }),
   };
@@ -76,11 +76,14 @@ function currentItems() {
 // is loaded, so a reopened task counts again (see pruneSeenTodoIds).
 function pruneSeenTodos(playerId, seenIds) {
   const rows = myTodoRows({ skillNudges: [] });
-  if (!playerId || rows === null) return seenIds;
   const activeEventId = state.activeEvent?.id ?? null;
+  const votes = pendingVoteRoundsFor(activeEventId);
+  // Without the open workspace's own Vote list (right after a switch) a
+  // seen ballot would look closed and be forgotten; wait for the reload.
+  if (!playerId || rows === null || votes === null) return seenIds;
   const openIds = [
     ...rows.map((row) => `todo:${row.id}`),
-    ...pendingVoteRounds().map((round) => `todo:vote-ballot:${activeEventId}:${round}`),
+    ...votes.map((round) => `todo:vote-ballot:${activeEventId}:${round}`),
   ];
   const next = pruneSeenTodoIds(seenIds, openIds, activeEventId);
   if (next.length !== seenIds.length) writeSeenTodoIds(playerId, next);
