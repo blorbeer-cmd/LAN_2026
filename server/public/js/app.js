@@ -16,6 +16,7 @@ import { isAdmin } from './admin.js';
 import { currentPlayerHasAdminRole } from './adminAccess.js';
 import { filterTestUsers } from './testFilter.js';
 import { initNotificationBanner, refreshNotificationBanner } from './notificationBanner.js';
+import { initNavBadges, noteNavViewOpened, renderNavBadges } from './navBadges.js';
 import { setDraftState } from './views/matchmaking.js';
 import { openInfoBoard } from './views/infoBoard.js';
 import { openPlayerDetail } from './views/playerDetail.js';
@@ -47,7 +48,7 @@ import {
 import { invalidateEventScopedViews, invalidateViewCaches, invalidateViewsAfterReconnect } from './viewLifecycle.js';
 import { viewDefinition } from './viewManifest.js';
 import { appHash, localRouteKey, parseAppHash } from './appRoute.js';
-import { applyLayoutModeForPlayer, layoutModeForPlayer, LAYOUT_MODES } from './layoutMode.js';
+import { applyLayoutModeForPlayer, forgetAutomaticRailFit } from './layoutMode.js';
 import { createStartupDataGate } from './startupDataGate.js';
 
 installIconReplacement();
@@ -189,6 +190,7 @@ function syncFeatureNavigation() {
     button.dataset.view = item.view;
     button.id = item.id ?? '';
     button.setAttribute('aria-label', item.ariaLabel);
+    button.dataset.baseLabel = item.ariaLabel;
     const labelElement = button.querySelector('.nav-label');
     labelElement.textContent = item.label;
     if (item.labelBreakAfter) {
@@ -220,6 +222,7 @@ function syncBottomNavigationActiveState() {
     if (active) button.setAttribute('aria-current', 'page');
     else button.removeAttribute('aria-current');
   });
+  renderNavBadges();
 }
 
 function syncDesktopNavigationActiveState() {
@@ -360,8 +363,47 @@ function renderDesktopNavigation() {
     main.append(...groups);
     reconcileDesktopNavEntries(utilities, desktopNav.utilities, pool, null);
     root.dataset.signature = signature;
+    // Different entries need a different height, so Automatic decides afresh
+    // whether the rail fits without scrolling.
+    forgetAutomaticRailFit();
+    syncLayoutMode();
   }
   syncDesktopNavigationActiveState();
+}
+
+// Re-resolves the account's shell after the window or the rail's entries
+// change: Automatic follows --bp-xl and also falls back to the laptop shell
+// when the desktop rail would have to scroll (see layoutMode.js).
+function syncLayoutMode() {
+  const previous = document.documentElement.dataset.layoutMode;
+  const focused = document.activeElement;
+  applyLayoutModeForPlayer(getMyId());
+  if (document.documentElement.dataset.layoutMode !== previous) {
+    carryNavigationFocus(focused);
+    window.dispatchEvent(new Event('respawn:layout-mode-changed'));
+  }
+}
+
+// Switching shells hides whichever navigation held keyboard focus, which
+// would drop focus to <body>. Hand it to the visible navigation's matching
+// entry instead (or its „Mehr“/current entry), so the next key press
+// continues where the person was. Focus outside the navigation stays put.
+function carryNavigationFocus(focused) {
+  if (!(focused instanceof HTMLElement) || focused.getClientRects().length > 0) return;
+  const view = focused.dataset.view;
+  let target = null;
+  if (focused.closest('.desktop-nav')) {
+    const group = view ? navGroupForView(view, state.activeEvent) : null;
+    const buttons = [...document.querySelectorAll('.nav-btn')].filter((button) => !button.hidden && !button.disabled);
+    target = (group && buttons.find((button) => navGroupForView(button.dataset.view, state.activeEvent) === group))
+      ?? buttons.find((button) => button.dataset.view === 'more');
+  } else if (focused.closest('.bottom-nav')) {
+    const railView = view ? desktopNavTargetForView(view) : null;
+    target = (railView && document.querySelector(`.desktop-nav-btn[data-view="${railView}"]`))
+      ?? document.querySelector('.desktop-nav-btn[aria-current="page"]')
+      ?? document.querySelector('.desktop-nav-btn');
+  }
+  target?.focus({ preventScroll: true });
 }
 
 function queueSharedRefresh({ render = true } = {}) {
@@ -596,6 +638,8 @@ function renderCurrent({ preserveState = true } = {}) {
   if (renderer) {
     renderer(viewContainer, ctx);
     finishRenderedViewFocus(renderState);
+    // The "Mehr" hub rebuilds its cards, and with them their counters.
+    if (view === 'more') renderNavBadges();
     return;
   }
 
@@ -756,6 +800,7 @@ function switchView(
   if (view === 'events' && searchTarget?.type === 'event') prepareEventTarget(searchTarget.id);
   currentView = view;
   currentLocalRoute = nextLocalRoute;
+  noteNavViewOpened(view, nextLocalRoute);
   document.title = `${viewDefinition(view)?.label ?? 'Respawn'} · Respawn`;
   if (view !== 'more') lastSubstantiveView = view;
   // Realtime game modules use this marker to ignore updates while another
@@ -845,14 +890,22 @@ function wireNav() {
   // Feedback is reachable from every view via this topbar icon; the view it
   // was opened from is captured automatically (see lastSubstantiveView).
   document.getElementById('feedback-btn').addEventListener('click', () => openFeedbackModal(lastSubstantiveView));
-  const desktopLayoutQuery = window.matchMedia('(min-width: 1280px)');
-  desktopLayoutQuery.addEventListener('change', () => {
-    if (layoutModeForPlayer(getMyId()) !== LAYOUT_MODES.auto) return;
-    const previous = document.documentElement.dataset.layoutMode;
-    applyLayoutModeForPlayer(getMyId(), { wide: desktopLayoutQuery.matches });
-    if (document.documentElement.dataset.layoutMode !== previous) {
-      window.dispatchEvent(new Event('respawn:layout-mode-changed'));
-    }
+  window.matchMedia('(min-width: 1280px)').addEventListener('change', syncLayoutMode);
+  // Rail rows are 32px for a hovering fine pointer and 44px otherwise, so a
+  // change of input type changes the height the rail needs: measure afresh.
+  window.matchMedia('(hover: hover) and (pointer: fine)').addEventListener('change', () => {
+    forgetAutomaticRailFit();
+    syncLayoutMode();
+  });
+  // Height changes (window resize, browser zoom) can make the rail fit or
+  // overflow without crossing the width breakpoint. Once per frame is enough.
+  let layoutSyncFrame = 0;
+  window.addEventListener('resize', () => {
+    if (layoutSyncFrame) return;
+    layoutSyncFrame = requestAnimationFrame(() => {
+      layoutSyncFrame = 0;
+      syncLayoutMode();
+    });
   });
   // Info is reference material people look up mid-conversation, so it opens
   // over whatever they were doing instead of costing them their current view.
@@ -1079,6 +1132,9 @@ function wireSocket() {
     // not just the history entry.
     if ((payload?.matchId || payload?.deleted) && state.lastMatchmaking?.id === payload.id) {
       state.lastMatchmaking = null;
+    } else if (payload?.id && state.lastMatchmaking?.id === payload.id && !payload.tournamentId) {
+      // Still open (moved player, server details): keep the fresh draw in sync.
+      state.lastMatchmaking = { ...state.lastMatchmaking, ...payload };
     }
     if (currentView === 'matchmaking') renderCurrent();
   });
@@ -1269,6 +1325,7 @@ async function main() {
   wireAdminMode();
   initConnectionStatus();
   initNotificationBanner();
+  initNavBadges();
   wireEventContextSwitcher();
   // Socket connection and REST cache recovery are background concerns. The
   // app shell and onboarding must still become usable when a single refresh

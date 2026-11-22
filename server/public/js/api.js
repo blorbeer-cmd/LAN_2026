@@ -322,6 +322,20 @@ export const api = {
         method: 'PATCH',
         body: JSON.stringify({ playerId, toTeamIndex }),
       }),
+    updateDrawServer: (drawId, { serverAddress, serverPassword }) =>
+      apiFetch(`/api/matchmaking/draws/${drawId}/server`, {
+        method: 'PATCH',
+        body: JSON.stringify({ serverAddress, serverPassword }),
+      }),
+    addDrawPlayer: (drawId, { playerId, teamIndex, drawLineup }) =>
+      apiFetch(`/api/matchmaking/draws/${drawId}/players`, {
+        method: 'POST',
+        body: JSON.stringify({ playerId, teamIndex, drawLineup }),
+      }),
+    shuffleDraw: (drawId) => apiFetch(`/api/matchmaking/draws/${drawId}/shuffle`, { method: 'POST' }),
+    removeDrawPlayer: (drawId, playerId) =>
+      apiFetch(`/api/matchmaking/draws/${drawId}/players/${encodeURIComponent(playerId)}`, { method: 'DELETE' }),
+    getDraw: (drawId) => apiFetch(`/api/matchmaking/draws/${drawId}`),
     removeDraw: (drawId) => apiFetch(`/api/matchmaking/draws/${drawId}`, { method: 'DELETE' }),
   },
 
@@ -575,7 +589,7 @@ export const api = {
     start: (data) => apiFetch('/api/draft/start', { method: 'POST', body: JSON.stringify(data) }),
     pick: (playerId, pickPlayerId) =>
       apiFetch('/api/draft/pick', { method: 'POST', body: JSON.stringify({ playerId, pickPlayerId }) }),
-    cancel: () => apiFetch('/api/draft/cancel', { method: 'POST' }),
+    cancel: (draftId) => apiFetch('/api/draft/cancel', { method: 'POST', body: JSON.stringify({ draftId }) }),
   },
 
   broadcasts: {
@@ -744,6 +758,8 @@ export const api = {
       apiFetch('/api/music/requests', { method: 'POST', body: JSON.stringify({ playerId, trackId }) }),
     removeRequest: (playerId, requestId) =>
       apiFetch(`/api/music/requests/${requestId}`, { method: 'DELETE', body: JSON.stringify({ playerId }) }),
+    removePlaylist: (playerId) =>
+      apiFetch('/api/music/playlist', { method: 'DELETE', body: JSON.stringify({ playerId }) }),
     reorder: (playerId, requestIds) =>
       apiFetch('/api/music/requests/order', { method: 'PUT', body: JSON.stringify({ playerId, requestIds }) }),
     skip: (playerId) => apiFetch('/api/music/skip', { method: 'POST', body: JSON.stringify({ playerId }) }),

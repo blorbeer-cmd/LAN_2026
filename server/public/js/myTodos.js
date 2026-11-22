@@ -22,12 +22,15 @@ export const MY_TODOS_MAX_AGE_MS = 60 * 1000;
 export const MY_TODOS_RETRY_AFTER_FAILURE_MS = 30 * 1000;
 export const MY_TODOS_VISIBLE_LIMIT = 5;
 
-let cache = null; // { todos, pendingVoteRounds }
+let cache = null; // { todos, pendingVoteRounds, eventId }
 let loadedAt = 0;
 let failedAt = null;
 let stale = false;
 let request = null;
 let generation = 0;
+// Set once the navigation counters (navBadges.js) read this list; from then
+// on a change signal reloads it on every view, not only on an open Home.
+let keptFresh = false;
 
 const homeIsOpen = () => document.getElementById('view-container')?.dataset.view === 'home';
 
@@ -38,12 +41,21 @@ function notifyChanged() {
 function load() {
   if (request) return request;
   const requestGeneration = generation;
+  // Fallback owner of pendingVoteRounds for a server without
+  // pendingVoteEventId; the server's own answer is authoritative, because it
+  // may already have switched workspaces while this client still shows the
+  // previous one.
+  const requestEventId = state.activeEvent?.id ?? null;
   const run = (async () => {
     let loaded = false;
     try {
       const result = await api.myTodos.get();
       if (requestGeneration !== generation) return;
-      cache = { todos: result.todos ?? [], pendingVoteRounds: result.pendingVoteRounds ?? [] };
+      cache = {
+        todos: result.todos ?? [],
+        pendingVoteRounds: result.pendingVoteRounds ?? [],
+        eventId: result.pendingVoteEventId === undefined ? requestEventId : result.pendingVoteEventId,
+      };
       loadedAt = Date.now();
       failedAt = null;
       stale = false;
@@ -56,7 +68,7 @@ function load() {
     } finally {
       if (request === run) request = null;
       if (loaded) notifyChanged();
-      else if (requestGeneration !== generation && homeIsOpen()) void load();
+      else if (requestGeneration !== generation && (keptFresh || homeIsOpen())) void load();
     }
   })();
   request = run;
@@ -80,12 +92,34 @@ export function invalidateMyTodos({ hard = false } = {}) {
   request = null;
   stale = true;
   if (hard) cache = null;
-  if (homeIsOpen()) void load();
+  if (keptFresh || homeIsOpen()) void load();
+}
+
+export function keepMyTodosFresh() {
+  keptFresh = true;
 }
 
 // Open Vote rounds of the active workspace without this account's ballot.
 export function pendingVoteRounds() {
   return cache?.pendingVoteRounds ?? [];
+}
+
+// Open Vote rounds without this account's ballot, but only when the list was
+// loaded for `eventId`; null while the loaded list belongs to another
+// workspace or none is loaded. A list that belongs to another workspace than
+// the open one is reloaded once per workspace, so the counters do not stay
+// empty until the next unrelated change signal.
+let refetchedForEventId = null;
+export function pendingVoteRoundsFor(eventId) {
+  if (cache && cache.eventId === eventId) {
+    refetchedForEventId = null;
+    return cache.pendingVoteRounds;
+  }
+  if (cache && keptFresh && !request && refetchedForEventId !== eventId) {
+    refetchedForEventId = eventId;
+    void load();
+  }
+  return null;
 }
 
 // `null` while nothing is loaded yet, so Home can stay quiet instead of

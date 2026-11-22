@@ -7,11 +7,14 @@ import { getMyId } from './whoami.js';
 import { icon } from './icons.js';
 import { escapeHtml, formatDateTime } from './format.js';
 import {
+  feedEntryActor,
+  feedEntryHeading,
   feedEntryIcon,
   feedEntryTitle,
   feedLinkTarget,
   feedLinkView,
   FEED_LINK_LABELS,
+  isFeedEntryCleanable,
   isFeedEntryObsolete,
 } from './pushFeed.js';
 import { showToast } from './toast.js';
@@ -25,7 +28,24 @@ let entries = [];
 let highlightEntry = null;
 let loadedForId = null;
 let loading = false;
+// Read-state writes still on their way to the server. "Aufräumen" only removes
+// entries the server already knows as read, so it waits for these first;
+// otherwise a quick "Alle gelesen" → "Aufräumen" could reach the server in the
+// opposite order and the cleaned entry would come back on the next refresh.
+const pendingSeenWrites = new Set();
+
+function trackSeenWrite(request) {
+  pendingSeenWrites.add(request);
+  request.then(
+    () => pendingSeenWrites.delete(request),
+    () => pendingSeenWrites.delete(request),
+  );
+  return request;
+}
 let loadError = false;
+// Whether `entries` came from a successful load for `loadedForId`: a failed
+// load leaves an empty list that must not read as "no notifications".
+let entriesLoaded = false;
 let isOpen = false;
 let expiryRefreshTimer = null;
 
@@ -100,13 +120,13 @@ export function entryHtml(entry) {
   // The whole entry is the link: opening it marks it read. Entries without a
   // target view are only marked read.
   const openAttrs = view
-    ? `data-notification-navigate="${view}" data-notification-target="${escapeHtml(target?.id ?? '')}" data-notification-target-type="${escapeHtml(target?.type ?? '')}" data-notification-event-id="${escapeHtml(entry.eventId ?? '')}" aria-label="${escapeHtml(`${feedEntryTitle(entry)}: ${FEED_LINK_LABELS[view]}`)}"`
+    ? `data-notification-navigate="${view}" data-notification-target="${escapeHtml(target?.id ?? '')}" data-notification-target-type="${escapeHtml(target?.type ?? '')}" data-notification-event-id="${escapeHtml(entry.eventId ?? '')}" aria-label="${escapeHtml(`${feedEntryHeading(entry)}: ${FEED_LINK_LABELS[view]}`)}"`
     : 'data-notification-mark-seen';
   return `<article class="notification-center-entry${unread ? ' is-unread' : ''}${obsolete ? ' is-obsolete' : ''}" data-notification-entry="${entry.id}">
     <button type="button" class="notification-center-open" ${openAttrs} data-notification-id="${entry.id}">
       <span class="notification-center-entry-title">
         <span class="notification-center-entry-icon">${icon(feedEntryIcon(entry))}</span>
-        <span class="notification-center-entry-name">${escapeHtml(feedEntryTitle(entry))}</span>${unread ? '<span class="visually-hidden">, ungelesen</span>' : ''}
+        <span class="notification-center-entry-name">${escapeHtml(feedEntryHeading(entry))}</span>${unread ? '<span class="visually-hidden">, ungelesen</span>' : ''}
       </span>
       <span class="notification-center-body">${escapeHtml(entry.body)}</span>
       <span class="notification-center-meta">${meta}</span>
@@ -142,7 +162,7 @@ async function markSeen(entryId, { navigate, eventId, target = null } = {}) {
   }
   renderBanner();
   try {
-    await api.push.seen(entryId, playerId);
+    await trackSeenWrite(api.push.seen(entryId, playerId));
     if (navigate) {
       setOpen(false);
       window.dispatchEvent(new CustomEvent('respawn:event-navigate', { detail: { view: navigate, eventId, target } }));
@@ -186,7 +206,7 @@ async function markAllSeen() {
   highlightEntry = null;
   renderBanner();
   try {
-    await api.push.seenAll(playerId);
+    await trackSeenWrite(api.push.seenAll(playerId));
   } catch (err) {
     entries = previousEntries;
     highlightEntry = previousHighlight;
@@ -218,26 +238,36 @@ async function hideAllEntries() {
 }
 
 // Unlike hideAllEntries, this never needs a confirmation dialog: it only
-// ever removes entries that are already obsolete, never one a player might
-// still act on.
+// ever removes entries that are already obsolete or read-only information,
+// never one a player might still act on.
 async function hideResolvedEntries() {
   const playerId = getMyId();
   if (!playerId) return;
-  const obsoleteIds = new Set(entries.filter((entry) => isFeedEntryObsolete(entry)).map((entry) => entry.id));
-  if (obsoleteIds.size === 0) return;
+  const cleanableIds = new Set(entries.filter((entry) => isFeedEntryCleanable(entry)).map((entry) => entry.id));
+  if (cleanableIds.size === 0) return;
   const previousEntries = entries;
   const previousHighlight = highlightEntry;
-  entries = entries.filter((entry) => !obsoleteIds.has(entry.id));
-  if (highlightEntry && obsoleteIds.has(highlightEntry.id)) {
+  entries = entries.filter((entry) => !cleanableIds.has(entry.id));
+  if (highlightEntry && cleanableIds.has(highlightEntry.id)) {
     highlightEntry = null;
   }
   renderBanner();
+  const seenWrites = await Promise.allSettled([...pendingSeenWrites]);
+  // A failed read write rolled its entries back and showed its own error.
+  // previousEntries was captured with the optimistic read state, so it no
+  // longer matches the server; only a reload shows what the server kept.
+  const readWriteFailed = seenWrites.some((result) => result.status === 'rejected');
   try {
     await api.push.hideResolved(playerId);
+    if (readWriteFailed) await refreshNotificationBanner();
   } catch (err) {
-    entries = previousEntries;
-    highlightEntry = previousHighlight;
-    renderBanner();
+    if (readWriteFailed) {
+      await refreshNotificationBanner();
+    } else {
+      entries = previousEntries;
+      highlightEntry = previousHighlight;
+      renderBanner();
+    }
     showToast(err.message, { error: true });
   }
 }
@@ -252,10 +282,19 @@ function renderHighlight() {
     return;
   }
   container.hidden = false;
+  const title = highlightEntry.eventName
+    ? `${highlightEntry.eventName} · ${feedEntryTitle(highlightEntry)}`
+    : feedEntryTitle(highlightEntry);
+  // The creator sits in its own non-shrinking slot: a long event or poll
+  // title is truncated, the name of whoever sent it never is.
+  const actor = feedEntryActor(highlightEntry);
   container.innerHTML = `
     <button type="button" class="notification-highlight-link" ${view ? `data-notification-highlight-navigate="${view}"` : 'data-notification-highlight-open'} data-notification-id="${highlightEntry.id}">
       ${icon(feedEntryIcon(highlightEntry))}
-      <span class="notification-highlight-text"><strong>${escapeHtml(highlightEntry.eventName ? `${highlightEntry.eventName} · ${feedEntryTitle(highlightEntry)}` : feedEntryTitle(highlightEntry))}</strong><span>${escapeHtml(highlightEntry.body)}</span></span>
+      <span class="notification-highlight-text">
+        <span class="notification-highlight-heading"><strong>${escapeHtml(title)}</strong>${actor ? `<span class="notification-highlight-actor">${escapeHtml(actor)}</span>` : ''}</span>
+        <span class="notification-highlight-body">${escapeHtml(highlightEntry.body)}</span>
+      </span>
       ${view ? icon('chevronRight') : ''}
     </button>
     <button type="button" class="icon-btn notification-highlight-dismiss" data-notification-highlight-dismiss="${highlightEntry.id}" aria-label="Aktuelle Mitteilung schließen" title="Schließen">${icon('x')}</button>`;
@@ -289,7 +328,15 @@ export function renderBanner() {
   const myId = getMyId();
   const unreadCount =
     myId === loadedForId ? entries.filter((entry) => !entry.seen && !isFeedEntryObsolete(entry)).length : 0;
-  count.textContent = unreadCount > 9 ? '9+' : String(unreadCount);
+  // The digit sits in its own box so CSS can trim it to cap height and
+  // centre it in the circle, like the navigation counter (.nav-count-value).
+  const countText = unreadCount > 9 ? '9+' : String(unreadCount);
+  if (count.textContent !== countText) {
+    const value = document.createElement('span');
+    value.className = 'nav-count-value';
+    value.textContent = countText;
+    count.replaceChildren(value);
+  }
   count.hidden = unreadCount === 0;
   button.classList.toggle('has-unread', unreadCount > 0);
   button.setAttribute('aria-expanded', String(isOpen));
@@ -297,6 +344,8 @@ export function renderBanner() {
     'aria-label',
     unreadCount > 0 ? `Mitteilungen, ${unreadCount} ungelesen` : 'Mitteilungen'
   );
+
+  window.dispatchEvent(new CustomEvent('respawn:notifications-changed'));
 
   panel.hidden = !isOpen;
   if (!isOpen) return;
@@ -309,7 +358,7 @@ export function renderBanner() {
     </div>
     ${panelContentHtml(myId)}
     ${entries.length > 0 ? `<div class="notification-center-toolbar">
-      ${entries.some((entry) => isFeedEntryObsolete(entry)) ? '<button type="button" class="btn btn-sm" data-notifications-hide-resolved>Aufräumen</button>' : ''}
+      ${entries.some((entry) => isFeedEntryCleanable(entry)) ? '<button type="button" class="btn btn-sm" data-notifications-hide-resolved>Aufräumen</button>' : ''}
       <button type="button" class="btn btn-sm" data-notifications-seen-all ${entries.every((entry) => entry.seen || isFeedEntryObsolete(entry)) ? 'disabled' : ''}>Alle gelesen</button>
       <button type="button" class="btn btn-sm" data-notifications-hide-all>Alle löschen</button>
     </div>` : ''}
@@ -339,6 +388,38 @@ export function renderBanner() {
   });
 }
 
+// The loaded personal feed for the navigation counters (navBadges.js), or
+// null while nothing is loaded for the current identity yet. A failed load
+// leaves an empty list behind, which is not a loaded feed: an area opened in
+// the meantime must wait for the retry instead of being settled against it.
+export function notificationFeedEntries() {
+  const myId = getMyId();
+  return myId && myId === loadedForId && entriesLoaded ? entries : null;
+}
+
+// Opening a navigation area reads its notifications: one batch, applied
+// locally first like markSeen, and reconciled from the server on failure.
+// Resolves false when the write failed, so the caller can retry the visit.
+export async function markFeedEntriesSeen(entryIds) {
+  const playerId = getMyId();
+  const matching = entries.filter((entry) => entryIds.includes(entry.id) && !entry.seen);
+  if (!playerId || matching.length === 0) return true;
+  matching.forEach((entry) => {
+    entry.seen = true;
+  });
+  if (matching.some((entry) => entry.id === highlightEntry?.id)) highlightEntry = null;
+  renderBanner();
+  try {
+    await Promise.all(matching.map((entry) => api.push.seen(entry.id, playerId)));
+    return true;
+  } catch {
+    // Quietly restore the server's view: the reader did nothing that failed,
+    // they only opened a page.
+    await refreshNotificationBanner();
+    return false;
+  }
+}
+
 export async function refreshNotificationBanner({ throwOnError = false } = {}) {
   const myId = getMyId();
   const thisEpoch = ++epoch;
@@ -361,8 +442,10 @@ export async function refreshNotificationBanner({ throwOnError = false } = {}) {
     entries = res.entries;
     highlightEntry = current.entry;
     loadedForId = myId;
+    entriesLoaded = true;
   } catch (error) {
     if (thisEpoch !== epoch) return;
+    entriesLoaded = false;
     entries = [];
     highlightEntry = null;
     loadedForId = myId;
@@ -403,7 +486,7 @@ export async function settleNotificationTarget(targetId) {
   }
   renderBanner();
   try {
-    await Promise.all(matching.map((entry) => api.push.seen(entry.id, playerId)));
+    await Promise.all(matching.map((entry) => trackSeenWrite(api.push.seen(entry.id, playerId))));
   } catch (error) {
     await refreshNotificationBanner();
     showToast(error.message, { error: true });

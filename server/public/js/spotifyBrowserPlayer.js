@@ -2,12 +2,16 @@ const LOCAL_CONTROLLER_URL = 'http://127.0.0.1:43821';
 const SPOTIFY_SDK_URL = 'https://sdk.scdn.co/spotify-player.js';
 const LOCAL_PROBE_TIMEOUT_MS = 1_000;
 const PLAYER_READY_TIMEOUT_MS = 15_000;
+// The SDK often fires several state events for one change. Only the last one
+// within this window is reported to the local controller.
+const STATE_REPORT_DELAY_MS = 300;
 
 let sdkPromise = null;
 let playerPromise = null;
 let player = null;
 let playerInfo = null;
 let latestTokenError = null;
+let pendingStateReport = null;
 
 async function responseJson(response) {
   return response.json().catch(() => ({}));
@@ -117,6 +121,49 @@ export function preloadSpotifyPlaybackSdk() {
   return sdkPromise;
 }
 
+// Keeps only what Respawn shows. The local controller reports it to Respawn
+// instead of asking Spotify, which saves requests against Spotify's quota.
+export function browserPlaybackReport(deviceId, state, now = Date.now(), receivedAt = now) {
+  if (!state) return { deviceId, state: null };
+  const track = state.track_window?.current_track;
+  if (!track?.uri) return { deviceId, state: null };
+  const isPlaying = !state.paused;
+  const progressMs = Number(state.position || 0) + (isPlaying ? Math.max(0, now - receivedAt) : 0);
+  return {
+    deviceId,
+    state: {
+      track: {
+        uri: track.uri,
+        name: track.name || '',
+        artists: (track.artists || []).map((artist) => artist?.name).filter(Boolean),
+        album: track.album?.name || '',
+        imageUrl: track.album?.images?.[0]?.url || null,
+        durationMs: Number(track.duration_ms || state.duration || 0),
+      },
+      contextUri: state.context?.uri || null,
+      isPlaying,
+      progressMs,
+    },
+  };
+}
+
+function reportPlayerState(state) {
+  const deviceId = playerInfo?.deviceId;
+  if (!deviceId) return;
+  if (pendingStateReport) clearTimeout(pendingStateReport);
+  const receivedAt = Date.now();
+  pendingStateReport = setTimeout(() => {
+    pendingStateReport = null;
+    // Best effort: without the report the controller still asks Spotify.
+    globalThis.fetch(`${LOCAL_CONTROLLER_URL}/web-player/state`, {
+      method: 'POST',
+      cache: 'no-store',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(browserPlaybackReport(deviceId, state, Date.now(), receivedAt)),
+    }).catch(() => {});
+  }, STATE_REPORT_DELAY_MS);
+}
+
 function resetPlayer() {
   const disconnectedPlayer = player;
   player = null;
@@ -194,6 +241,7 @@ export async function connectLocalSpotifyPlayer({ name = 'Respawn · Browser' } 
         playerInfo = { deviceId, name };
         resolve(playerInfo);
       });
+      player.addListener('player_state_changed', (state) => reportPlayerState(state));
       player.addListener('not_ready', () => {
         if (!settled) finishError('Spotify-Browser-Wiedergabe ist nicht erreichbar.');
         else resetPlayer();

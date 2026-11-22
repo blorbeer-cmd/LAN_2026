@@ -18,15 +18,16 @@ import Database from 'better-sqlite3';
 import { EVENT_FEATURE_KEYS } from '../eventFeatureCatalog';
 
 const DB_JS_PATH = path.join(__dirname, '..', 'db.js');
+const EXPECTED_MIGRATION_VERSIONS = Array.from({ length: 141 }, (_, index) => index + 1);
 const BOOTSTRAP_ADMINS_JS_PATH = path.join(__dirname, '..', 'bootstrapAdmins.js');
 
-test('migration 138 upgrades legacy data atomically and preserves MCP grants and cleanup plans across replay', (t) => {
+test('migration 141 upgrades legacy data atomically and preserves MCP grants and cleanup plans across replay', (t) => {
   const dbFile = makeTempDbPath('mcp-connections');
   t.after(() => fs.rmSync(path.dirname(dbFile), { recursive: true, force: true }));
   runMigrations(dbFile);
   const legacy = new Database(dbFile);
   legacy.exec(`DROP TABLE draw_cleanup_plans; DROP TABLE mcp_connections; DROP TABLE mcp_clients;
-    DELETE FROM schema_migrations WHERE version=138;
+    DELETE FROM schema_migrations WHERE version=141;
     INSERT INTO players(id,name,api_key,created_at) VALUES('mcp-legacy-user','MCP Legacy','mcp-legacy-key',1);
     INSERT INTO events(id,name,starts_at,group_id,status) VALUES('mcp-legacy-event','Legacy',1,'default-group','published');
     CREATE VIEW draw_cleanup_plans AS SELECT id FROM players;`);
@@ -34,7 +35,7 @@ test('migration 138 upgrades legacy data atomically and preserves MCP grants and
   legacy.close();
   assert.throws(() => runMigrations(dbFile), /views may not be indexed/);
   const failed = new Database(dbFile);
-  assert.equal(failed.prepare('SELECT 1 FROM schema_migrations WHERE version=138').get(), undefined);
+  assert.equal(failed.prepare('SELECT 1 FROM schema_migrations WHERE version=141').get(), undefined);
   assert.equal(failed.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='mcp_clients'").get(), undefined);
   assert.deepEqual(failed.prepare("SELECT id,name FROM players WHERE id='mcp-legacy-user'").get(), before);
   failed.exec('DROP VIEW draw_cleanup_plans'); failed.close();
@@ -47,7 +48,7 @@ test('migration 138 upgrades legacy data atomically and preserves MCP grants and
       VALUES('legacy-plan','mcp-legacy-user','default-group','mcp-legacy-event','legacy-grant','{}',1,2);`);
   const grants = upgraded.prepare('SELECT * FROM mcp_connections').all();
   const plans = upgraded.prepare('SELECT * FROM draw_cleanup_plans').all();
-  upgraded.exec('DELETE FROM schema_migrations WHERE version=138'); upgraded.close();
+  upgraded.exec('DELETE FROM schema_migrations WHERE version=141'); upgraded.close();
   runMigrations(dbFile); runMigrations(dbFile);
   const restarted = new Database(dbFile);
   assert.deepEqual(restarted.prepare('SELECT * FROM mcp_connections').all(), grants);
@@ -303,6 +304,93 @@ test('migration 137 keeps rounds and tips, rolls back on failure and limits uniq
   const replayed = new Database(dbFile);
   assert.deepEqual(replayed.prepare('SELECT * FROM betting_rounds ORDER BY id').all(), replacedRounds);
   assert.deepEqual(replayed.prepare('SELECT * FROM betting_tips ORDER BY id').all(), tips);
+  replayed.close();
+  fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
+});
+
+test('migration 139 lets a Jam track wait twice, keeps requests, rolls back on failure and replays safely', () => {
+  const dbFile = makeTempDbPath('duplicate-jam-requests');
+  runMigrations(dbFile);
+  const fixture = new Database(dbFile);
+  // Pre-139 shape: one active request per track and session.
+  fixture.exec(`DROP INDEX IF EXISTS idx_music_requests_session_track;
+    CREATE UNIQUE INDEX idx_music_requests_active_track ON music_requests(session_id, track_uri)
+      WHERE status IN ('sending', 'queued', 'playing');
+    DELETE FROM schema_migrations WHERE version=139;
+    INSERT INTO events(id,name,starts_at,group_id,status,event_type_key) VALUES('dup-event','Jam LAN',1,'default-group','published','lan');
+    INSERT INTO players(id,name,api_key,created_at) VALUES('dup-player','Ann','dup-key',1);
+    INSERT INTO music_sessions(id,group_id,host_player_id,device_id,device_name,status,started_at,event_id)
+      VALUES('dup-session','default-group',NULL,'speaker','Boxen','active',1,'dup-event');
+    INSERT INTO music_requests(id,session_id,track_uri,track_id,track_name,artist_name,duration_ms,requested_by,requested_by_name_snapshot,status,created_at)
+      VALUES('dup-a','dup-session','spotify:track:AAAAAAAAAAAAAAAAAAAAAA','AAAAAAAAAAAAAAAAAAAAAA','Song','Band',1000,'dup-player','Ann','queued',1);
+    CREATE TABLE idx_music_requests_session_track (blocker INTEGER);`);
+  const requests = fixture.prepare('SELECT * FROM music_requests ORDER BY id').all();
+  fixture.close();
+  assert.throws(() => runMigrations(dbFile), /already a table named/);
+  const failed = new Database(dbFile);
+  assert.ok(failed.prepare("SELECT 1 FROM sqlite_master WHERE name='idx_music_requests_active_track'").get(),
+    'a failed migration keeps the old unique index');
+  assert.equal(failed.prepare('SELECT 1 FROM schema_migrations WHERE version=139').get(), undefined);
+  failed.exec('DROP TABLE idx_music_requests_session_track');
+  failed.close();
+  runMigrations(dbFile);
+  runMigrations(dbFile);
+  const migrated = new Database(dbFile);
+  assert.deepEqual(migrated.prepare('SELECT * FROM music_requests ORDER BY id').all(), requests);
+  migrated.exec(`INSERT INTO music_requests(id,session_id,track_uri,track_id,track_name,artist_name,duration_ms,requested_by,requested_by_name_snapshot,status,created_at)
+    VALUES('dup-b','dup-session','spotify:track:AAAAAAAAAAAAAAAAAAAAAA','AAAAAAAAAAAAAAAAAAAAAA','Song','Band',1000,'dup-player','Ann','queued',2)`);
+  assert.equal(migrated.prepare("SELECT COUNT(*) FROM music_requests WHERE session_id='dup-session'").pluck().get(), 2);
+  migrated.close();
+  fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
+});
+
+test('migration 138 names the creator of running Durchsagen, rolls back on failure and replays without changes', () => {
+  const dbFile = makeTempDbPath('push-actor');
+  runMigrations(dbFile);
+  const fixture = new Database(dbFile);
+  // Pre-138 shape: no creator column; a Durchsage used its creator's name as
+  // its title. Unrelated notifications keep their own title.
+  fixture.exec(`ALTER TABLE push_log DROP COLUMN actor_player_id;
+    DELETE FROM schema_migrations WHERE version=138;
+    INSERT INTO players(id,name,api_key,created_at) VALUES ('actor-anna','Anna','actor-anna-key',1);
+    INSERT INTO group_memberships(group_id,player_id,role,status) VALUES ('default-group','actor-anna','member','active');
+    INSERT INTO broadcasts(id,group_id,event_id,player_id,player_name_snapshot,message,ends_at,recipient_ids,created_at)
+      VALUES ('actor-broadcast','default-group','instance-base-event','actor-anna','Anna','Pizza ist da',10,'[]',1);
+    INSERT INTO push_log(id,group_id,event_id,title,body,audience,player_ids,topic_key,created_at) VALUES
+      ('actor-push','default-group','instance-base-event','Anna','Pizza ist da','all','[]','broadcast:actor-broadcast',1),
+      ('actor-other','default-group','instance-base-event','Neue Abstimmung','Jetzt abstimmen','all','[]','vote:1',2),
+      ('actor-orphan','default-group','instance-base-event','Bob','Ohne Ursprung','all','[]','broadcast:gone',3);
+    CREATE TRIGGER fail_push_actor BEFORE UPDATE ON push_log
+      BEGIN SELECT RAISE(ABORT,'push actor migration failed'); END;`);
+  const legacyRows = fixture.prepare('SELECT * FROM push_log ORDER BY id').all();
+  fixture.close();
+
+  assert.throws(() => runMigrations(dbFile), /push actor migration failed/);
+  const failed = new Database(dbFile);
+  assert.ok(!(failed.pragma('table_info(push_log)') as Array<{ name: string }>).some((column) => column.name === 'actor_player_id'),
+    'the new column rolls back with the failed backfill');
+  assert.equal(failed.prepare('SELECT 1 FROM schema_migrations WHERE version=138').get(), undefined);
+  assert.deepEqual(failed.prepare('SELECT * FROM push_log ORDER BY id').all(), legacyRows);
+  failed.exec('DROP TRIGGER fail_push_actor');
+  failed.close();
+
+  runMigrations(dbFile);
+  const migrated = new Database(dbFile);
+  assert.deepEqual(
+    migrated.prepare('SELECT id, title, body, actor_player_id AS actorId FROM push_log ORDER BY id').all(),
+    [
+      { id: 'actor-orphan', title: 'Bob', body: 'Ohne Ursprung', actorId: null },
+      { id: 'actor-other', title: 'Neue Abstimmung', body: 'Jetzt abstimmen', actorId: null },
+      { id: 'actor-push', title: 'Durchsage', body: 'Pizza ist da', actorId: 'actor-anna' },
+    ],
+  );
+  migrated.exec('DELETE FROM schema_migrations WHERE version=138');
+  const migratedRows = migrated.prepare('SELECT * FROM push_log ORDER BY id').all();
+  migrated.close();
+  runMigrations(dbFile);
+  runMigrations(dbFile);
+  const replayed = new Database(dbFile);
+  assert.deepEqual(replayed.prepare('SELECT * FROM push_log ORDER BY id').all(), migratedRows);
   replayed.close();
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
 });
@@ -1881,10 +1969,10 @@ test('records the complete migration history and does not duplicate it on restar
     name: string;
   }>;
 
-  assert.equal(migrations.length, 138);
+  assert.equal(migrations.length, EXPECTED_MIGRATION_VERSIONS.length);
   assert.deepEqual(
     migrations.map((migration) => migration.version),
-    Array.from({ length: 138 }, (_, index) => index + 1),
+    EXPECTED_MIGRATION_VERSIONS,
   );
   assert.ok(migrations.every((migration) => migration.name.length > 0));
   for (const table of ['scribble_drawings', 'scribble_drawing_reactions', 'scribble_drawing_favorites']) {
@@ -2486,8 +2574,8 @@ test('runs migrations in ascending version order regardless of declaration order
   );
   assert.deepEqual(
     order,
-    Array.from({ length: 138 }, (_, index) => index + 1),
-    'every version 1..138 runs exactly once',
+    EXPECTED_MIGRATION_VERSIONS,
+    'every registered version runs exactly once',
   );
 });
 
@@ -5368,6 +5456,42 @@ test('migration 110 repairs the main migrations a draft installation skipped', (
     ),
     'the draw-to-tournament link stays repaired',
   );
+  migrated.close();
+  fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
+});
+
+test('migration 140 adds empty server details to existing draws, rolls back a partial failure and replays', () => {
+  const dbFile = makeTempDbPath('draw-server-details');
+  runMigrations(dbFile);
+  const fixture = new Database(dbFile);
+  fixture.exec(`INSERT INTO events(id,name,starts_at,group_id,status,event_type_key)
+      VALUES('server-event','Existing LAN',1,'default-group','published','lan');
+    INSERT INTO games(id,name,created_at,group_id,status) VALUES('server-game','Server game',1,'default-group','catalog');
+    INSERT INTO matchmaking_draws(id,game_id,event_id,group_id,teams,generated_at) VALUES
+      ('server-draw','server-game','server-event','default-group','[{"players":[]}]',1);
+    ALTER TABLE matchmaking_draws DROP COLUMN server_address;
+    ALTER TABLE matchmaking_draws DROP COLUMN server_password;
+    DELETE FROM schema_migrations WHERE version=140;
+    -- Blocks only the second column: the first one must not survive the failure.
+    ALTER TABLE matchmaking_draws ADD COLUMN SERVER_PASSWORD_BLOCKER TEXT;
+    ALTER TABLE matchmaking_draws RENAME COLUMN SERVER_PASSWORD_BLOCKER TO "SERVER_PASSWORD";`);
+  const before = fixture.prepare('SELECT id, teams FROM matchmaking_draws ORDER BY id').all();
+  fixture.close();
+  assert.throws(() => runMigrations(dbFile), /duplicate column name/);
+  const failed = new Database(dbFile);
+  const failedColumns = (failed.pragma('table_info(matchmaking_draws)') as Array<{ name: string }>).map((column) => column.name);
+  assert.ok(!failedColumns.includes('server_address'));
+  assert.equal(failed.prepare('SELECT 1 FROM schema_migrations WHERE version=140').get(), undefined);
+  failed.exec('ALTER TABLE matchmaking_draws DROP COLUMN "SERVER_PASSWORD"');
+  failed.close();
+  runMigrations(dbFile);
+  runMigrations(dbFile);
+  const migrated = new Database(dbFile, { readonly: true });
+  assert.ok(migrated.prepare('SELECT 1 FROM schema_migrations WHERE version=140').get());
+  assert.deepEqual(migrated.prepare('SELECT id, teams FROM matchmaking_draws ORDER BY id').all(), before);
+  assert.deepEqual(migrated.prepare('SELECT server_address, server_password FROM matchmaking_draws').all(),
+    [{ server_address: null, server_password: null }]);
+  assert.deepEqual(migrated.pragma('foreign_key_check'), []);
   migrated.close();
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
 });

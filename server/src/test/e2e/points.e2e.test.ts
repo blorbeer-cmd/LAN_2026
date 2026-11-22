@@ -18,6 +18,7 @@ import { mkdtempSync, rmSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { once } from 'node:events';
+import { clickActionMenuEntry } from './actionMenuHelpers';
 
 let server: E2EServer;
 let browser: Browser;
@@ -201,9 +202,13 @@ test('real LAN account, automatic orga credits, own-game betting notification, h
   await setPointsVisibility(true);
   await admin.setViewportSize({ width: 1366, height: 720 });
   const compactRail = await admin.locator('.desktop-nav-main').evaluate((element) => ({
+    // Automatic would swap a scrolling rail for the laptop shell, which hides
+    // the rail and would make the overflow below trivially zero.
+    layoutMode: document.documentElement.dataset.layoutMode,
     overflow: element.scrollHeight - element.clientHeight,
     rowHeights: Array.from(document.querySelectorAll('.desktop-nav-btn'), (button) => button.getBoundingClientRect().height),
   }));
+  assert.equal(compactRail.layoutMode, 'desktop', `the full LAN rail stays on a small desktop: ${JSON.stringify(compactRail)}`);
   assert.ok(compactRail.overflow <= 1, `the full LAN rail fits a small desktop: ${JSON.stringify(compactRail)}`);
   assert.ok(compactRail.rowHeights.every((height) => height >= 31 && height <= 33));
   await admin.setViewportSize({ width: 1440, height: 900 });
@@ -304,8 +309,9 @@ test('real LAN account, automatic orga credits, own-game betting notification, h
   const freshBetting = member.locator(`[data-draw-card="${draw.id}"] [data-betting-controls]`);
   await freshBetting.getByRole('button', { name: 'Jetzt tippen', exact: true }).waitFor();
   assert.equal(await freshBetting.locator('[data-action-menu]').count(), 0, 'a single tip action is a direct button with its state label');
-  assert.equal(await freshBetting.locator(`[data-lock-round="${round.id}"]`).innerText(), 'Spiel starten',
-    'players start the match with a separate action instead of a menu entry next to the tip');
+  assert.equal(await freshBetting.locator('[data-lock-round]').count(), 0, 'starting the match is no betting entry next to the tip');
+  assert.equal(await member.locator(`[data-action-menu="match-fresh-open-${draw.id}"] [data-lock-round="${round.id}"]`).textContent(), 'Spiel starten',
+    'players start the match from the general match actions');
   await member.locator(`[data-draw-card="${draw.id}"] [data-betting-summary="${round.id}"]`).getByText('Tipps offen', { exact: true }).waitFor();
   assert.equal(await member.locator('.history-details').evaluate((element) => (element as HTMLDetailsElement).open), true);
   assert.equal(await freshBetting.evaluate((controls) => Boolean(controls.closest('.matchmaking-draw-head'))), true, 'fresh matches keep betting in the header');
@@ -440,7 +446,13 @@ test('real LAN account, automatic orga credits, own-game betting notification, h
   await member.getByRole('tooltip').getByText(/Gewinn höchstens in Höhe deines Einsatzes/).waitFor();
   await member.keyboard.press('Escape');
   await member.locator('[data-tip-form] [name="stake"]').fill('1');
-  await member.getByRole('button', { name: 'Tipp speichern', exact: true }).click();
+  // The held amount is read through a separate request: it must wait for the
+  // saved tip, or it can still see the previous stake of 11.
+  await Promise.all([
+    member.waitForResponse((response) => response.request().method() === 'PUT'
+      && new URL(response.url()).pathname === `/api/points/rounds/${round.id}/tip` && response.ok()),
+    member.getByRole('button', { name: 'Tipp speichern', exact: true }).click(),
+  ]);
   assert.equal((await api(`/api/points?eventId=${eventId}`, 'GET', undefined, alice.cookie)).wallet.held, 1);
   assert.equal(await cardToggle.getAttribute('aria-expanded'), 'true', 'tip changes also retain an opened match');
   await api(
@@ -451,15 +463,13 @@ test('real LAN account, automatic orga credits, own-game betting notification, h
   );
   assert.equal((await api(`/api/points?eventId=${eventId}`, 'GET', undefined, alice.cookie)).rounds.find((row: any) => row.id === round.id).pot, 16);
   assert.doesNotMatch(await member.locator('#view-container').innerText(), /Quoten?/i, 'LAN markets show no odds');
-  await openRoundActions(member, round.id);
-  await selectedCard.locator(`[data-lock-round="${round.id}"]`).click();
+  await clickActionMenuEntry(selectedCard.locator(`[data-lock-round="${round.id}"]`));
   await member.getByRole('alertdialog').getByRole('button', { name: 'Spiel starten', exact: true }).click();
   await member.locator(`#match-history-open [data-reopen-round="${round.id}"]`).waitFor({ state: 'attached' });
   await openRoundActions(member, round.id);
   await selectedCard.locator(`[data-reopen-round="${round.id}"]`).click();
   await member.locator(`#match-history-open [data-lock-round="${round.id}"]`).waitFor({ state: 'attached' });
-  await openRoundActions(member, round.id);
-  await selectedCard.locator(`[data-lock-round="${round.id}"]`).click();
+  await clickActionMenuEntry(selectedCard.locator(`[data-lock-round="${round.id}"]`));
   await member.getByRole('alertdialog').getByRole('button', { name: 'Spiel starten', exact: true }).click();
   await member.locator(`#match-history-open [data-reopen-round="${round.id}"]`).waitFor({ state: 'attached' });
   await api('/api/matches', 'POST', {
@@ -470,7 +480,7 @@ test('real LAN account, automatic orga credits, own-game betting notification, h
   });
   const recordedCard = member.locator(`[data-history-item="${draw.id}"]`);
   await recordedCard.waitFor();
-  assert.equal(await recordedCard.locator('.action-menu').count(), 0, 'hidden report actions do not create a one-option menu');
+  assert.equal(await recordedCard.locator('[data-betting-controls] .action-menu').count(), 0, 'hidden report actions do not create a one-option menu');
   await recordedCard.locator('[data-tip-round]').click();
   const tipDetails = member.getByRole('dialog', { name: 'Dein Tipp', exact: true });
   await tipDetails.getByText(/Einsatz 1 P. · Auszahlung 2 P. · Netto \+1 P./).waitFor();
@@ -503,7 +513,7 @@ test('real LAN account, automatic orga credits, own-game betting notification, h
   const recordedMatch = member.locator(`[data-history-toggle="${draw.id}"]`);
   if (await recordedMatch.getAttribute('aria-expanded') !== 'true') await recordedMatch.click();
   assert.equal(await recordedCard.locator('.matchmaking-history-head [data-tip-round]').count(), 1, 'recorded matches keep betting in the header');
-  await recordedCard.locator('[data-edit-draw-result]').click();
+  await clickActionMenuEntry(recordedCard.locator('[data-edit-draw-result]'));
   await member.getByRole('dialog').getByText('Diese Korrektur kann nur ein Admin durchführen.', { exact: true }).waitFor();
   assert.equal(await member.locator('[data-result-save]').isDisabled(), true);
   assert.equal(await member.locator('[data-result-entry] input:enabled').count(), 0);
@@ -538,13 +548,17 @@ test('real LAN account, automatic orga credits, own-game betting notification, h
   for (const [account, label] of Object.entries({ orga: 'Orga', playing: 'Spielen', betting: 'Wetten' })) {
     await openSection(member, `ranking-${account}`);
     const section = member.locator(`[data-points-section="ranking-${account}"]`);
-    const expected = categoryData.standings.filter((row: any) => row.categories[account].rank !== null)
-      .sort((a: any, b: any) => a.categories[account].rank - b.categories[account].rank || a.name.localeCompare(b.name, 'de'));
+    // Betting lists every participant, placed ones first; the other categories only placed ones.
+    const place = (row: any) => row.categories[account].rank ?? Infinity;
+    const expected = categoryData.standings.filter((row: any) => account === 'betting' || row.categories[account].rank !== null)
+      .sort((a: any, b: any) => place(a) - place(b) || b.categories[account].raw - a.categories[account].raw || a.name.localeCompare(b.name, 'de'));
+    const shown = (row: any) => (account === 'betting' ? categoryData.settings.initial_points : 0) + row.categories[account].raw;
     if (expected.length) {
       const ranking = section.getByRole('list', { name: `${label}-Rangliste`, exact: true });
       await ranking.waitFor();
       assert.deepEqual(await ranking.locator('.ranked-list-title').allTextContents(), expected.map((row: any) => row.name));
-      assert.deepEqual(await ranking.locator('.ranked-list-value').allTextContents(), expected.map((row: any) => `${row.categories[account].placePoints} P.`));
+      assert.deepEqual(await ranking.locator('.ranked-list-value').allTextContents(), expected.map((row: any) => `${shown(row)} P.`));
+      assert.deepEqual(await ranking.locator('.ranked-list-meta').allTextContents(), expected.map((row: any) => `Wertung für Gesamtranking: ${row.categories[account].placePoints} P.`));
     } else await section.getByText('Noch keine Platzierung.', { exact: true }).waitFor();
   }
   for (const width of [320, 390, 1440]) {
@@ -847,8 +861,8 @@ test('token-only kiosk pages every result participant and removes point columns 
           const area = element.getBoundingClientRect();
           return {
             fits: document.documentElement.scrollWidth <= document.documentElement.clientWidth,
-            captionHeight: element.querySelector('.kiosk-result-caption')!.getBoundingClientRect().height,
-            caption: element.querySelector('.kiosk-result-caption')!.textContent,
+            captionHeight: document.querySelector('#kiosk-tournament-title .kiosk-result-caption')!.getBoundingClientRect().height,
+            caption: document.querySelector('#kiosk-tournament-title .kiosk-result-caption')!.textContent,
             rows: Array.from(element.querySelectorAll('tbody tr')).filter((row) => !(row as HTMLElement).hidden).map((row) => ({
               name: row.querySelector('.kiosk-result-name')!.textContent!, bottom: row.getBoundingClientRect().bottom,
             })), bottom: area.bottom,
@@ -908,7 +922,7 @@ test('token-only kiosk pages every result participant and removes point columns 
       sawChampion = false;
       for (let turn = 0; turn < 90 && (seenRankings.size < 4 || !sawTip || !sawChampion); turn++) {
         if (await results.isVisible()) {
-          const caption = await results.locator('.kiosk-result-caption').textContent() ?? '';
+          const caption = await kiosk.locator('#kiosk-tournament-title .kiosk-result-caption').textContent() ?? '';
           if (await results.locator('.kiosk-result-table--ranking').count()) seenRankings.add(caption);
           if (caption.includes('Turniersieger')) sawChampion = true;
           if (caption.includes('Finale') && (await results.textContent())?.includes('Points Bob')) {
@@ -958,7 +972,7 @@ test('token-only kiosk pages every result participant and removes point columns 
       const shown = await probe.evaluate(() => {
         const panel = document.querySelector('#rows') as HTMLElement;
         return panel.hidden || !panel.querySelector('.kiosk-result-table--ranking') ? null : {
-          title: panel.querySelector('.kiosk-result-caption')!.textContent!,
+          title: document.querySelector('#heading .kiosk-result-caption')!.textContent!,
           names: Array.from(panel.querySelectorAll('tbody tr:not([hidden]) .kiosk-result-name'), (el) => el.textContent!),
         };
       });
@@ -966,7 +980,7 @@ test('token-only kiosk pages every result participant and removes point columns 
       await probe.clock.runFor(9_000);
       const stable = await probe.evaluate(() => {
         const w = window as any, panel = document.querySelector('#rows')!;
-        const cursor = () => [panel.querySelector('.kiosk-result-caption')?.textContent, panel.querySelector('.kiosk-result-pages')?.textContent, (panel as HTMLElement).hidden];
+        const cursor = () => [document.querySelector('#heading .kiosk-result-caption')?.textContent, panel.querySelector('.kiosk-result-pages')?.textContent, (panel as HTMLElement).hidden];
         const before = cursor();
         w.rotationFeed.items[0].activityAt++;
         w.rotationPoints.rounds[0].pot++;

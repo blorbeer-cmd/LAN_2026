@@ -321,18 +321,20 @@ function nowPlayingHtml(session, canManageController = false) {
     </section>`;
 }
 
-function queueRowHtml({ position, imageUrl, name, artist, who, durationMs, requestId = null, draggable = false }) {
-  return `<div class="music-queue-row" role="row"${requestId ? ` data-music-request="${escapeHtml(requestId)}"` : ''}${draggable ? ' draggable="true"' : ''}>
+function queueRowHtml({ position, imageUrl, name, artist, who, durationMs, requestId = null, draggable = false, reorderable = false }) {
+  const keyboardHint = draggable
+    ? `${name}. ${reorderable ? 'Mit den Pfeiltasten verschieben, ' : ''}mit Entfernen löschen.`
+    : '';
+  return `<div class="music-queue-row${requestId ? ' music-queue-request' : ''}" role="row"${requestId ? ` data-music-request="${escapeHtml(requestId)}"` : ''}${draggable ? ` draggable="true" tabindex="0" aria-label="${escapeHtml(keyboardHint)}"` : ''}>
     <span class="music-queue-position" role="cell">${position}</span>
     <span role="cell">${coverHtml(imageUrl, 'music-queue-cover')}</span>
     <span class="music-track-main" role="cell">
-      ${requestId
-        ? `<button type="button" class="music-queue-open" data-music-detail="${escapeHtml(requestId)}" title="${escapeHtml(name)}">${escapeHtml(shortText(name))}</button>`
-        : `<span class="music-queue-title" title="${escapeHtml(name)}">${escapeHtml(shortText(name))}</span>`}
+      <span class="music-queue-title" title="${escapeHtml(name)}">${escapeHtml(shortText(name))}</span>
       <span class="music-meta music-queue-artist">${escapeHtml(artist)}<span class="music-queue-who-inline"> · ${who}</span></span>
     </span>
     <span class="music-meta music-queue-who" role="cell">${who}</span>
     <span class="music-meta music-queue-duration" role="cell">${durationMs ? durationLabel(durationMs) : ''}</span>
+    ${draggable ? `<button type="button" class="icon-btn" data-music-detail="${escapeHtml(requestId)}" aria-label="${escapeHtml(`${name} verwalten`)}" title="Songwunsch verwalten">${icon('moreHorizontal')}</button>` : ''}
   </div>`;
 }
 
@@ -344,49 +346,54 @@ function requestQueueHtml(session) {
   const queued = queuedRequests(session);
   const playlist = session.playbackContext;
   const playlistMode = Boolean(playlist);
-  const nextTrack = playlist?.nextTrack || null;
-  const nextRequest = nextTrack
-    ? queued.find((entry) => entry.trackUri === nextTrack.uri) || null
-    : null;
-  const remainingRequests = nextRequest ? queued.filter((entry) => entry.id !== nextRequest.id) : queued;
+  // During a playlist the list follows Spotify's own queue: up to five next
+  // songs (older controllers report only the next one). Each one is matched
+  // to a waiting request at most once, so a song wished twice shows twice.
+  const upcoming = Array.isArray(playlist?.upcomingTracks)
+    ? playlist.upcomingTracks
+    : playlist?.nextTrack ? [playlist.nextTrack] : [];
+  const unmatched = [...queued];
+  let playlistTracksShown = 0;
+  const entries = upcoming.map((track) => {
+    const index = unmatched.findIndex((entry) => entry.trackUri === track.uri);
+    const request = index === -1 ? null : unmatched.splice(index, 1)[0];
+    if (!request) playlistTracksShown += 1;
+    return { track, request };
+  });
+  unmatched.forEach((request) => entries.push({ track: request, request }));
   const remainingPlaylistTracks = Number.isSafeInteger(playlist?.remainingTrackCount)
     ? Math.max(0, playlist.remainingTrackCount)
     : null;
-  const playlistTracksAfterNext = remainingPlaylistTracks !== null && nextTrack && !nextRequest
-    ? Math.max(0, remainingPlaylistTracks - 1)
-    : remainingPlaylistTracks;
-  const sortable = Boolean(getMyId()) && !playlistMode && queued.length > 1;
-  const rows = [];
-  if (nextTrack) {
-    rows.push(queueRowHtml({
-      position: 1,
-      imageUrl: nextTrack.imageUrl,
-      name: nextTrack.name,
-      artist: nextTrack.artist,
-      who: nextRequest ? personHtml(nextRequest.requestedByName, nextRequest.requestedBy) : 'Playlist',
-      durationMs: nextTrack.durationMs,
-      requestId: nextRequest?.id ?? null,
-    }));
+  const playlistTracksAfterShown = remainingPlaylistTracks !== null
+    ? Math.max(0, remainingPlaylistTracks - playlistTracksShown)
+    : null;
+  const manageable = Boolean(getMyId());
+  const sortable = manageable && !playlistMode && queued.length > 1;
+  const rows = entries.map(({ track, request }, index) => queueRowHtml({
+    position: index + 1,
+    imageUrl: track.imageUrl,
+    name: track.name,
+    artist: track.artist,
+    who: request ? personHtml(request.requestedByName, request.requestedBy) : 'Playlist',
+    durationMs: track.durationMs,
+    requestId: request?.id ?? null,
+    draggable: manageable && Boolean(request),
+    reorderable: sortable && Boolean(request),
+  }));
+  if (playlistTracksAfterShown) {
+    rows.push(`<div class="music-queue-row music-queue-more" role="row"><span role="cell"></span><span class="music-meta" role="cell">Noch ${playlistTracksAfterShown} Playlist-Titel</span></div>`);
   }
-  remainingRequests.forEach((entry, index) => rows.push(queueRowHtml({
-    position: index + (nextTrack ? 2 : 1),
-    imageUrl: entry.imageUrl,
-    name: entry.name,
-    artist: entry.artist,
-    who: personHtml(entry.requestedByName, entry.requestedBy),
-    durationMs: entry.durationMs,
-    requestId: entry.id,
-    draggable: sortable,
-  })));
-  if (playlistTracksAfterNext) {
-    rows.push(`<div class="music-queue-row music-queue-more" role="row"><span role="cell"></span><span class="music-meta" role="cell">${playlistTracksAfterNext} ${playlistTracksAfterNext === 1 ? 'weiterer Titel' : 'weitere Titel'} aus der Playlist</span></div>`);
-  }
+  const draggable = manageable && entries.some(({ request }) => Boolean(request));
   return `
     <section class="card stack grouped-page-section" aria-labelledby="music-queue-title">
-      <div class="grouped-page-section-title"><h2 id="music-queue-title">Als Nächstes</h2></div>
+      <div class="grouped-page-section-title">
+        <h2 id="music-queue-title">Als Nächstes</h2>
+        ${playlistMode && manageable ? '<button type="button" class="btn btn-sm" id="music-end-playlist">Playlist beenden</button>' : ''}
+      </div>
       ${rows.length
-        ? `<div class="music-queue-list${sortable ? ' is-sortable' : ''}" role="table" aria-label="Als Nächstes">${rows.join('')}</div>`
+        ? `<div class="music-queue-list${draggable ? ' is-draggable' : ''}${sortable ? ' is-sortable' : ''}" role="table" aria-label="Als Nächstes">${rows.join('')}</div>`
         : emptyStateHtml('Noch keine Wünsche.')}
+      ${draggable ? `<div class="drag-remove-zone" data-music-queue-trash hidden role="status" aria-live="polite">${icon('trash')}<strong>Hier ablegen zum Entfernen</strong></div>` : ''}
     </section>`;
 }
 
@@ -411,7 +418,7 @@ export function musicActiveSessionHtml(status, browserPlayback = localPlayback) 
     <section class="card stack grouped-page-section" aria-labelledby="music-search-title">
       <div class="grouped-page-section-title"><h2 id="music-search-title">Musik hinzufügen</h2></div>
       <form id="music-search-form" class="music-search-form">
-        <input type="search" id="music-search-input" minlength="2" maxlength="80" required aria-label="Spotify durchsuchen" placeholder="Titel oder Playlist suchen" autocomplete="off" value="${escapeHtml(searchQuery)}" />
+        <input type="search" id="music-search-input" minlength="2" maxlength="300" required aria-label="Spotify durchsuchen" placeholder="Titel, Playlist oder Spotify-Link" autocomplete="off" value="${escapeHtml(searchQuery)}" />
         <button type="submit" class="btn">Suchen</button>
       </form>
       <div id="music-search-results">${searchResultsHtml()}</div>
@@ -523,7 +530,10 @@ function openRequestDetail(requestId, ctx) {
   if (!session || !entry) return;
   const queuedIds = queuedRequests(session).map((request) => request.id);
   const index = queuedIds.indexOf(requestId);
-  const editable = Boolean(getMyId()) && !session.playbackContext && entry.status === 'queued';
+  // A request can always be removed; during a playlist Spotify keeps its own
+  // order, so moving stays off there.
+  const removable = Boolean(getMyId()) && entry.status === 'queued';
+  const editable = removable && !session.playbackContext;
   const facts = [
     ['Interpret', escapeHtml(entry.artist)],
     entry.album ? ['Album', escapeHtml(entry.album)] : null,
@@ -539,9 +549,9 @@ function openRequestDetail(requestId, ctx) {
          <strong class="music-detail-title">${escapeHtml(entry.name)}</strong>
        </div>
        <dl class="music-detail-facts">${facts.map(([label, value]) => `<dt>${label}</dt><dd>${value}</dd>`).join('')}</dl>
-       ${editable ? `<div class="music-detail-footer">
-         <button type="button" class="btn btn-sm" data-detail-move="up" ${index <= 0 ? 'disabled' : ''}>Nach oben</button>
-         <button type="button" class="btn btn-sm" data-detail-move="down" ${index < 0 || index >= queuedIds.length - 1 ? 'disabled' : ''}>Nach unten</button>
+       ${removable ? `<div class="music-detail-footer">
+         ${editable ? `<button type="button" class="btn btn-sm" data-detail-move="up" ${index <= 0 ? 'disabled' : ''}>Nach oben</button>
+         <button type="button" class="btn btn-sm" data-detail-move="down" ${index < 0 || index >= queuedIds.length - 1 ? 'disabled' : ''}>Nach unten</button>` : ''}
          <button type="button" class="btn btn-sm" data-detail-remove>Entfernen</button>
        </div>` : ''}
      </div>`,
@@ -560,15 +570,8 @@ function openRequestDetail(requestId, ctx) {
         el.querySelector('[data-detail-remove]')?.addEventListener('click', async (event) => {
           const button = event.currentTarget;
           button.disabled = true;
-          try {
-            await api.music.removeRequest(getMyId(), requestId);
-            close();
-            invalidateMusic();
-            ctx.rerender();
-          } catch (error) {
-            showToast(error.message, { error: true });
-            button.disabled = false;
-          }
+          close();
+          await removeQueueRequest(requestId, ctx);
         });
       },
     },
@@ -585,26 +588,62 @@ async function saveQueueOrder(requestIds, ctx) {
   ctx.rerender();
 }
 
+async function removeQueueRequest(requestId, ctx) {
+  try {
+    await api.music.removeRequest(getMyId(), requestId);
+    showToast('Songwunsch entfernt.');
+  } catch (error) {
+    showToast(error.message, { error: true });
+  }
+  invalidateMusic();
+  ctx.rerender();
+}
+
 function wireQueue(container, ctx) {
   const list = container.querySelector('.music-queue-list[aria-label="Als Nächstes"]');
   if (!list) return;
   list.querySelectorAll('[data-music-detail]').forEach((button) => {
     button.addEventListener('click', () => openRequestDetail(button.dataset.musicDetail, ctx));
   });
-  if (!list.classList.contains('is-sortable')) return;
+  if (!list.classList.contains('is-draggable')) return;
   let draggedId = null;
+  const trash = container.querySelector('[data-music-queue-trash]');
   const currentIds = () => [...list.querySelectorAll('[data-music-request][draggable]')].map((row) => row.dataset.musicRequest);
+  const clearDragState = () => {
+    draggedId = null;
+    list.classList.remove('is-drag-active');
+    list.querySelectorAll('[data-music-request]').forEach((entry) => entry.classList.remove('is-dragging', 'is-drag-target'));
+    if (trash) {
+      trash.hidden = true;
+      trash.classList.remove('is-over');
+    }
+  };
   list.querySelectorAll('[data-music-request][draggable]').forEach((row) => {
     row.addEventListener('dragstart', (event) => {
       draggedId = row.dataset.musicRequest;
       row.classList.add('is-dragging');
+      list.classList.add('is-drag-active');
+      if (trash) trash.hidden = false;
       event.dataTransfer.effectAllowed = 'move';
       event.dataTransfer.setData('text/plain', draggedId);
     });
-    row.addEventListener('dragend', () => {
-      draggedId = null;
-      list.querySelectorAll('[data-music-request]').forEach((entry) => entry.classList.remove('is-dragging', 'is-drag-target'));
+    row.addEventListener('dragend', clearDragState);
+    row.addEventListener('keydown', (event) => {
+      if (event.key === 'Delete' || event.key === 'Backspace') {
+        event.preventDefault();
+        void removeQueueRequest(row.dataset.musicRequest, ctx);
+        return;
+      }
+      if (!list.classList.contains('is-sortable') || !['ArrowUp', 'ArrowDown'].includes(event.key)) return;
+      const ids = currentIds();
+      const index = ids.indexOf(row.dataset.musicRequest);
+      const target = event.key === 'ArrowUp' ? index - 1 : index + 1;
+      if (target < 0 || target >= ids.length) return;
+      event.preventDefault();
+      [ids[index], ids[target]] = [ids[target], ids[index]];
+      void saveQueueOrder(ids, ctx);
     });
+    if (!list.classList.contains('is-sortable')) return;
     row.addEventListener('dragover', (event) => {
       if (!draggedId || draggedId === row.dataset.musicRequest) return;
       event.preventDefault();
@@ -624,6 +663,19 @@ function wireQueue(container, ctx) {
       ids.splice(targetIndex + (after ? 1 : 0), 0, sourceId);
       void saveQueueOrder(ids, ctx);
     });
+  });
+  trash?.addEventListener('dragover', (event) => {
+    if (!draggedId) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'move';
+    trash.classList.add('is-over');
+  });
+  trash?.addEventListener('dragleave', () => trash.classList.remove('is-over'));
+  trash?.addEventListener('drop', (event) => {
+    event.preventDefault();
+    const requestId = draggedId || event.dataTransfer.getData('text/plain');
+    clearDragState();
+    if (requestId) void removeQueueRequest(requestId, ctx);
   });
 }
 
@@ -817,6 +869,26 @@ function wireSession(container, ctx) {
     } catch (error) {
       showToast(error.message, { error: true });
     }
+  });
+  container.querySelector('#music-end-playlist')?.addEventListener('click', async () => {
+    const playlist = cache?.session?.playbackContext;
+    if (!playlist) return;
+    const after = queuedRequests(cache.session).length
+      ? 'Danach folgen die Wünsche.'
+      : 'Ohne Wünsche pausiert der Jam danach.';
+    const confirmed = await confirmDialog(
+      cache.session.currentTrack ? `Der laufende Titel spielt zu Ende. ${after}` : after,
+      { title: `Playlist „${playlist.name}“ beenden?`, confirmText: 'Playlist beenden', danger: true },
+    );
+    if (!confirmed) return;
+    try {
+      await api.music.removePlaylist(getMyId());
+      showToast('Playlist beendet.');
+    } catch (error) {
+      showToast(error.message, { error: true });
+    }
+    invalidateMusic();
+    ctx.rerender();
   });
   container.querySelector('#music-end')?.addEventListener('click', async () => {
     const confirmed = await confirmDialog(

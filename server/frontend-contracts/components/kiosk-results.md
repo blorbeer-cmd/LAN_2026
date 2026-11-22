@@ -13,7 +13,9 @@ Aufrufer: `public/js/kiosk.js`, Markup: `public/kiosk.html`.
 ## 3. CSS-Eigentümerschaft
 
 `public/css/kiosk.css` besitzt `.kiosk-results` und `.kiosk-result-*`.
-Aufrufer besitzen ausschließlich die äußere Rasterkachel und deren Überschrift.
+Aufrufer besitzen ausschließlich die äußere Rasterkachel und deren Überschrift. Die Komponente
+setzt den Seitentitel (Spielname, Markt oder Ranglistenkategorie) als rechtsbündige
+`.kiosk-result-caption` in diese Überschriftzeile, damit die Tabelle die volle Kachelhöhe erhält.
 
 ## 4. Varianten
 
@@ -22,8 +24,10 @@ Die bestehende Turnieransicht wechselt bei vorhandenem Turnier alle zehn Sekunde
 Ergebnissen, Wettmärkten und Punkteranglisten. Ohne Daten bleibt das Turnier sichtbar.
 Wettmarkt (`.kiosk-result-table--market`) und Rangliste: `umgesetzt`. Wettmärkte zeigen eine
 Zeile je Tippendem mit Team, Tippzahl/Einsatzsumme des Teams und persönlichem Einsatz. Die
-Rangliste (`.kiosk-result-table--ranking`) zeigt Platz, Name und Punkte (Gesamt: Summe der
-Kategorie-Platzpunkte; Kategorien: jeweiliger Rohwert). Sämtliche Zeilen werden
+Rangliste (`.kiosk-result-table--ranking`) zeigt Platz („#“, zugänglich als „Rang“), Name und
+Punkte (Gesamt: Summe der Kategorie-Platzpunkte; Kategorien: jeweiliger Rohwert). Sie füllt zwei
+nebeneinanderstehende Tabellen (`.kiosk-result-columns`), links zuerst; die Zeilenzahl je Spalte
+sinkt, bis beide Spalten in die Kachel passen, der Rest folgt auf der nächsten Seite. Sämtliche Zeilen werden
 paginiert; die bestehende Tabellengeometrie gehört weiterhin dieser Komponente. Die erste
 Spalte einer Wettmarkt-Tabelle nutzt 42 Prozent für lange Teamnamen. Alle vier LAN-Ranglisten
 rotieren auch ohne Match-Ergebnis oder Turnier. `hidePoints` und Fehler entfernen die
@@ -35,8 +39,9 @@ Der Aufrufer liefert Ergebnisdaten und vorhandene DOM-Container. Er verändert k
 
 ## 6. Komponenteneigene Invarianten
 
-Texte und Attribute werden escaped. Abstände verwenden `--space-1` und `--space-2`, Schriftgrößen
-`--font-size-xs`, `--font-size-sm`, `--font-size-lg`, Farben vorhandene semantische Tokens.
+Texte und Attribute werden escaped. Abstände verwenden `--space-1`, `--space-2` und `--space-5`,
+Schriftgrößen die beiden Broadcast-Stufen `--kiosk-font` und `--kiosk-font-meta` (in `kiosk.css`
+aus `--font-size-xl`/`--font-size-lg` abgeleitet), Farben vorhandene semantische Tokens.
 Tabellenzeilen werden an die verfügbare Höhe angepasst und automatisch weitergeblättert; jede
 Person erscheint. Die Kachel erhält weder eigene Scrollbars noch zusätzliche Controls.
 Punkte werden beim Ausblenden auch aus dem unsichtbaren DOM entfernt. Fehler verbergen Punkte.

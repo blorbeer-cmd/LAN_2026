@@ -141,11 +141,6 @@ export const components = [
         "reason": "Concrete button-small caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
       },
       {
-        "file": "public/js/views/matchmaking.js",
-        "source": "class=\"btn btn-sm${primaryTournament ? ' btn-primary' : ''}\"",
-        "reason": "Concrete button-small caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
-      },
-      {
         "file": "public/js/feedback.js",
         "source": "class=\"btn btn-sm${selectedSentiment === s.value ? ' is-selected' : ''}\"",
         "reason": "Concrete button-small caller composes selection/state classes; the static inventory does not infer the runtime branch. Component geometry remains owned by this entry."
@@ -1063,19 +1058,6 @@ export const components = [
         "source": "class=\"btn btn-sm music-result-type-button${activeType === type ? ' is-selected' : ''}\"",
         "reason": "Titel and Playlists share one compact button helper; only the chosen type gets the is-selected outline. Component geometry remains owned by this entry."
       }
-    ]
-  },
-  {
-    "id": "music-queue-open",
-    "role": "composite-part",
-    "selector": ".music-queue-open",
-    "owner": "public/css/overlays.css",
-    "contract": "components/controls.md#tokens-und-einzeilige-controls",
-    "purpose": "Jam request title opens the detail dialog: plain one-line text whose hit area covers the whole row, blue on row hover.",
-    "properties": [
-      "max-width",
-      "padding",
-      "white-space"
     ]
   },
   {

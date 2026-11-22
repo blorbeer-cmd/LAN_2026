@@ -37,6 +37,10 @@ musicRouter.use((req, res, next) => {
 const PAIRING_TTL_MS = 10 * 60 * 1000;
 const PLAYLIST_SEARCH_TTL_MS = 10 * 60 * 1000;
 const MAX_CACHED_PLAYLISTS = 200;
+// Search results already carry every detail of a song wish. Remembering them
+// spares one Spotify lookup per wish against the shared Spotify quota.
+const TRACK_SEARCH_TTL_MS = 10 * 60 * 1000;
+const MAX_CACHED_TRACKS = 500;
 const CONTROLLER_SCRIPT_PATH = path.join(__dirname, '..', '..', 'scripts', 'jam-controller.mjs');
 
 interface MusicSessionRow {
@@ -79,6 +83,8 @@ interface PublicPlaylist {
 interface PublicPlaybackContext extends PublicPlaylist {
   remainingTrackCount: number;
   nextTrack: PublicTrack | null;
+  // Next songs of Spotify's queue; null when the controller only reports the next one.
+  upcomingTracks: PublicTrack[] | null;
   addedByName: string | null;
 }
 
@@ -107,6 +113,7 @@ interface MusicRequestPayload {
 type AsyncRoute = (req: Request, res: Response) => Promise<void | Response>;
 
 const playlistSearchCache = new Map<string, CachedPlaylist>();
+const trackSearchCache = new Map<string, { groupId: string; track: PublicTrack; expiresAt: number }>();
 const recoveringSessionIds = new Set<string>();
 
 function asyncRoute(handler: AsyncRoute): RequestHandler {
@@ -231,6 +238,44 @@ function cachedPlaylist(groupId: string, playlistId: string): PublicPlaylist | n
   return cached?.groupId === groupId ? cached.playlist : null;
 }
 
+function pruneTrackSearchCache(now = Date.now()): void {
+  for (const [key, entry] of trackSearchCache) {
+    if (entry.expiresAt <= now) trackSearchCache.delete(key);
+  }
+  while (trackSearchCache.size > MAX_CACHED_TRACKS) {
+    const oldestKey = trackSearchCache.keys().next().value as string | undefined;
+    if (!oldestKey) break;
+    trackSearchCache.delete(oldestKey);
+  }
+}
+
+function rememberTracks(groupId: string, tracks: PublicTrack[]): void {
+  const expiresAt = Date.now() + TRACK_SEARCH_TTL_MS;
+  pruneTrackSearchCache();
+  for (const track of tracks) {
+    const key = `${groupId}:${track.id}`;
+    // Re-inserting keeps the most recent results last for the size limit.
+    trackSearchCache.delete(key);
+    trackSearchCache.set(key, { groupId, track, expiresAt });
+  }
+  pruneTrackSearchCache();
+}
+
+function cachedTrack(groupId: string, trackId: string): PublicTrack | null {
+  pruneTrackSearchCache();
+  const cached = trackSearchCache.get(`${groupId}:${trackId}`);
+  return cached?.groupId === groupId ? cached.track : null;
+}
+
+function parseStoredContext(json: string | null): Record<string, unknown> | null {
+  try {
+    const value = json ? JSON.parse(json) as unknown : null;
+    return value && typeof value === 'object' ? value as Record<string, unknown> : null;
+  } catch {
+    return null;
+  }
+}
+
 function playbackContext(session: MusicSessionRow): PublicPlaybackContext | null {
   try {
     const stored = session.playback_context_json ? JSON.parse(session.playback_context_json) as Record<string, unknown> : null;
@@ -241,7 +286,10 @@ function playbackContext(session: MusicSessionRow): PublicPlaybackContext | null
       ? Math.max(0, Math.min(playlist.trackCount, Number(stored?.remainingTrackCount)))
       : fallback;
     const addedByName = typeof stored?.addedByName === 'string' ? stored.addedByName.slice(0, 300) : null;
-    return { ...playlist, remainingTrackCount, nextTrack: validTrack(stored?.nextTrack), addedByName };
+    const upcomingTracks = Array.isArray(stored?.upcomingTracks)
+      ? stored.upcomingTracks.map(validTrack).filter((track): track is PublicTrack => Boolean(track))
+      : null;
+    return { ...playlist, remainingTrackCount, nextTrack: validTrack(stored?.nextTrack), upcomingTracks, addedByName };
   } catch {
     return null;
   }
@@ -518,9 +566,62 @@ musicRouter.patch('/sessions/device', asyncRoute(async (req, res) => {
   }
 }));
 
+const SPOTIFY_LINK_MAX_LENGTH = 300;
+
+// Share links (`https://open.spotify.com/intl-de/track/<id>?si=…`) and
+// Spotify URIs (`spotify:track:<id>`) name one track or playlist directly.
+// Returns null for plain search text, 'invalid' for a Spotify link this Jam
+// cannot use (album, artist, malformed id, short link).
+export function parseSpotifyLink(query: string): { kind: 'track' | 'playlist'; id: string } | 'invalid' | null {
+  const uri = /^spotify:(track|playlist):([A-Za-z0-9]{22})$/.exec(query);
+  if (uri) return { kind: uri[1] as 'track' | 'playlist', id: uri[2] };
+  if (/^spotify:/i.test(query)) return 'invalid';
+  let url: URL;
+  try {
+    url = new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(query) ? query : `https://${query}`);
+  } catch {
+    return null;
+  }
+  const host = url.hostname.toLowerCase();
+  if (host === 'spotify.link' || host.endsWith('.spotify.link')) return 'invalid';
+  if (host !== 'open.spotify.com' && host !== 'play.spotify.com') return null;
+  const parts = url.pathname.split('/').filter(Boolean);
+  if (/^intl-[a-z]{2}(-[a-z]{2})?$/i.test(parts[0] ?? '')) parts.shift();
+  if ((parts[0] === 'track' || parts[0] === 'playlist') && /^[A-Za-z0-9]{22}$/.test(parts[1] ?? '') && parts.length === 2) {
+    return { kind: parts[0] as 'track' | 'playlist', id: parts[1] };
+  }
+  return 'invalid';
+}
+
+async function searchSpotifyLink(groupId: string, link: { kind: 'track' | 'playlist'; id: string }) {
+  if (link.kind === 'track') {
+    const track = validTrack(await issueMusicControllerCommand(groupId, 'track', { trackId: link.id }));
+    if (track) rememberTracks(groupId, [track]);
+    return { tracks: track ? [track] : [], playlists: [] as PublicPlaylist[] };
+  }
+  let data: unknown;
+  try {
+    data = await issueMusicControllerCommand(groupId, 'playlist', { playlistId: link.id });
+  } catch (error) {
+    // Controllers downloaded before playlist links existed reject the command.
+    if (error instanceof MusicControllerError && /Unbekannter Controller-Befehl/.test(error.message)) {
+      throw new MusicControllerError('Playlist-Links brauchen den aktuellen Jam-Controller. Bitte auf dem Musik-PC neu herunterladen.', 409);
+    }
+    throw error;
+  }
+  const playlist = validPlaylist(data);
+  if (playlist) rememberPlaylists(groupId, [playlist]);
+  return { tracks: [] as PublicTrack[], playlists: playlist ? [playlist] : [] };
+}
+
 musicRouter.get('/search', asyncRoute(async (req, res) => {
   if (!requestActiveSession(req, res)) return res.status(409).json({ error: 'Kein Jam aktiv.' });
   const query = typeof req.query.q === 'string' ? req.query.q.trim() : '';
+  const link = query.length <= SPOTIFY_LINK_MAX_LENGTH ? parseSpotifyLink(query) : null;
+  if (link === 'invalid') {
+    return res.status(400).json({ error: 'Nur Spotify-Links zu einem Titel oder einer Playlist werden unterstützt.' });
+  }
+  if (link) return res.json(await searchSpotifyLink(req.group!.id, link));
   if (query.length < 2 || query.length > 80) return res.status(400).json({ error: 'Suche muss zwischen 2 und 80 Zeichen lang sein.' });
   const data = await issueMusicControllerCommand<{ tracks?: unknown[]; playlists?: unknown[] }>(req.group!.id, 'search', { query });
   const tracks = (Array.isArray(data?.tracks) ? data.tracks : []).map(validTrack).filter((track): track is PublicTrack => Boolean(track));
@@ -528,6 +629,7 @@ musicRouter.get('/search', asyncRoute(async (req, res) => {
     .map(validPlaylist)
     .filter((playlist): playlist is PublicPlaylist => Boolean(playlist));
   rememberPlaylists(req.group!.id, playlists);
+  rememberTracks(req.group!.id, tracks);
   res.json({ tracks, playlists });
 }));
 
@@ -571,21 +673,18 @@ musicRouter.post('/requests', ...withBodyPlayerIdentity, asyncRoute(async (req, 
   if (!player || !session) return res.status(404).json({ error: 'Jam nicht gefunden.' });
   const trackId = req.body?.trackId;
   if (typeof trackId !== 'string' || !/^[A-Za-z0-9]{22}$/.test(trackId)) return res.status(400).json({ error: 'Ungültiger Spotify-Titel.' });
-  const track = validTrack(await issueMusicControllerCommand(req.group!.id, 'track', { trackId }));
+  const track = cachedTrack(req.group!.id, trackId)
+    ?? validTrack(await issueMusicControllerCommand(req.group!.id, 'track', { trackId }));
   if (!track) return res.status(404).json({ error: 'Spotify-Titel nicht gefunden.' });
   const requestId = nanoid();
-  try {
-    db.prepare(
-      `INSERT INTO music_requests
-       (id, session_id, track_uri, track_id, track_name, artist_name, album_name, image_url, duration_ms,
-        requested_by, requested_by_name_snapshot, status, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'sending', ?)`,
-    ).run(requestId, session.id, track.uri, track.id, track.name, track.artist, track.album || null, track.imageUrl,
-      track.durationMs, player.id, player.name, nextRequestCreatedAt(session.id));
-  } catch (error) {
-    if (error instanceof Error && error.message.includes('UNIQUE')) return res.status(409).json({ error: 'Dieser Titel steht bereits in der Warteschlange.' });
-    throw error;
-  }
+  // The same song may wait several times (migration 139).
+  db.prepare(
+    `INSERT INTO music_requests
+     (id, session_id, track_uri, track_id, track_name, artist_name, album_name, image_url, duration_ms,
+      requested_by, requested_by_name_snapshot, status, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'sending', ?)`,
+  ).run(requestId, session.id, track.uri, track.id, track.name, track.artist, track.album || null, track.imageUrl,
+    track.durationMs, player.id, player.name, nextRequestCreatedAt(session.id));
   try {
     if (!session.current_track_uri && !playbackContext(session)) {
       await issueMusicControllerCommand(req.group!.id, 'playUris', { deviceId: session.device_id, uris: [track.uri] });
@@ -613,14 +712,76 @@ musicRouter.delete('/requests/:requestId', ...withBodyPlayerIdentity, asyncRoute
   const player = activePlayer(req);
   const session = requestActiveSession(req, res);
   if (!player || !session) return res.status(404).json({ error: 'Jam nicht gefunden.' });
-  if (playbackContext(session)) {
-    return res.status(409).json({ error: 'Songwünsche können während einer Playlist nicht entfernt werden.' });
-  }
-  const row = db.prepare("SELECT id FROM music_requests WHERE id = ? AND session_id = ? AND status = 'queued'")
-    .get(req.params.requestId, session.id);
-  if (!row) return res.status(404).json({ error: 'Songwunsch nicht gefunden.' });
-  db.prepare('DELETE FROM music_requests WHERE id = ? AND session_id = ?').run(req.params.requestId, session.id);
+  // During a playlist every request was handed to Spotify's own queue, which
+  // Spotify does not let us edit. The removed song is remembered on the
+  // playlist context and skipped by the heartbeat as soon as it starts.
+  const removed = db.transaction(() => {
+    const row = db.prepare("SELECT track_uri FROM music_requests WHERE id = ? AND session_id = ? AND status = 'queued'")
+      .get(req.params.requestId, session.id) as { track_uri: string } | undefined;
+    if (!row) return false;
+    db.prepare('DELETE FROM music_requests WHERE id = ? AND session_id = ?').run(req.params.requestId, session.id);
+    const current = db.prepare('SELECT playback_context_json FROM music_sessions WHERE id = ?')
+      .get(session.id) as { playback_context_json: string | null };
+    const stored = parseStoredContext(current.playback_context_json);
+    if (stored && validPlaylist(stored)) {
+      const skipUris = Array.isArray(stored.skipUris) ? stored.skipUris.filter((uri) => typeof uri === 'string') : [];
+      stored.skipUris = [...new Set([...skipUris, row.track_uri])].slice(-50);
+      if (Array.isArray(stored.upcomingTracks)) {
+        const index = stored.upcomingTracks.findIndex((track) => (track as { uri?: unknown } | null)?.uri === row.track_uri);
+        if (index !== -1) stored.upcomingTracks.splice(index, 1);
+        stored.nextTrack = stored.upcomingTracks[0] ?? null;
+      } else if ((stored.nextTrack as { uri?: unknown } | null)?.uri === row.track_uri) stored.nextTrack = null;
+      db.prepare('UPDATE music_sessions SET playback_context_json = ? WHERE id = ?').run(JSON.stringify(stored), session.id);
+    }
+    return true;
+  }).immediate();
+  if (!removed) return res.status(404).json({ error: 'Songwunsch nicht gefunden.' });
   await rescheduleQueue(req.group!.id, requestActiveSession(req, res)!);
+  musicChanged(req.group!.id, requestEventId(res));
+  res.status(204).end();
+}));
+
+// DELETE /api/music/playlist - takes the running playlist out of the queue.
+// The song playing right now may finish; afterwards the requests play, or the
+// Jam pauses. The removal is remembered (`removedPlaylist`), so a playlist
+// Spotify keeps playing anyway — for example after the controller lost its
+// planned switch — counts as foreign playback in the heartbeat.
+musicRouter.delete('/playlist', ...withBodyPlayerIdentity, asyncRoute(async (req, res) => {
+  const player = activePlayer(req);
+  const session = requestActiveSession(req, res);
+  if (!player || !session) return res.status(404).json({ error: 'Jam nicht gefunden.' });
+  const context = playbackContext(session);
+  if (!context) return res.status(409).json({ error: 'Es läuft keine Playlist.' });
+  const marker = JSON.stringify({ removedPlaylist: { uri: context.uri, keepTrackUri: session.current_track_uri } });
+  // Compare-and-set on the stored context: of two parallel removals only one
+  // changes the session; a playlist started in between is not touched.
+  const claimed = db.prepare('UPDATE music_sessions SET playback_context_json = ? WHERE id = ? AND playback_context_json = ?')
+    .run(marker, session.id, session.playback_context_json).changes === 1;
+  if (!claimed) return res.status(409).json({ error: 'Die Playlist wurde bereits geändert. Bitte neu laden.' });
+
+  const fresh = requestActiveSession(req, res)!;
+  try {
+    if (fresh.current_track_uri) {
+      await rescheduleQueue(req.group!.id, fresh);
+    } else {
+      const queued = requestRows(fresh.id).filter((entry) => entry.status === 'queued');
+      if (queued.length) {
+        await issueMusicControllerCommand(req.group!.id, 'playUris', { deviceId: fresh.device_id, uris: queued.map((entry) => entry.trackUri) });
+        const next = queued[0];
+        db.prepare("UPDATE music_requests SET status = 'playing' WHERE id = ?").run(next.id);
+        db.prepare(
+          `UPDATE music_sessions SET current_track_uri = ?, current_track_json = ?, playback_is_playing = 1,
+           playback_progress_ms = 0, playback_updated_at = ? WHERE id = ?`,
+        ).run(next.trackUri, JSON.stringify(trackFromRequest(next)), Date.now(), fresh.id);
+      } else {
+        await issueMusicControllerCommand(req.group!.id, 'pause', { deviceId: fresh.device_id });
+      }
+    }
+  } catch (error) {
+    // The removal itself is stored; the heartbeat stops the playlist if the
+    // device did not take the command.
+    if (!(error instanceof MusicControllerError)) throw error;
+  }
   musicChanged(req.group!.id, requestEventId(res));
   res.status(204).end();
 }));

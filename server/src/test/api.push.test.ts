@@ -69,7 +69,7 @@ test('starting a new vote round pushes to subscribed players', async (t) => {
   assert.match(payload.title, /Abstimmung/);
 });
 
-test('GET /api/push/last reflects the most recently sent notification, regardless of feature', async () => {
+test('GET /api/push/last reflects the most recently sent notification, regardless of feature', async (t) => {
   await request(app).post('/api/votes/start');
 
   const afterVotes = await request(app).get('/api/push/last');
@@ -83,14 +83,27 @@ test('GET /api/push/last reflects the most recently sent notification, regardles
 
   // A different feature's notifyPlayers() call (Durchsage) becomes the new
   // "last" entry — the log isn't scoped to one feature.
+  const sendMock = t.mock.method(pushTransport, 'send', async () => {});
   const durchsage = await request(app).post('/api/broadcasts').send({ playerId, message: 'Pizza ist da!' });
   assert.equal(durchsage.status, 201);
 
+  // The creator is a field of its own, so every surface can name it next to
+  // the title; the device notification carries it in its title.
   const afterBroadcast = await request(app).get('/api/push/last');
   assert.equal(afterBroadcast.status, 200);
-  assert.equal(afterBroadcast.body.entry.title, 'Push Tester');
-  assert.match(afterBroadcast.body.entry.body, /Pizza ist da!/);
+  assert.equal(afterBroadcast.body.entry.title, 'Durchsage');
+  assert.equal(afterBroadcast.body.entry.actorName, 'Push Tester');
+  assert.equal(afterBroadcast.body.entry.body, 'Pizza ist da!');
   assert.ok(afterBroadcast.body.entry.createdAt > 0);
+  const devicePayload = JSON.parse(sendMock.mock.calls[0]!.arguments[1] as string);
+  assert.equal(devicePayload.title, 'Durchsage von Push Tester');
+  assert.equal(devicePayload.actorId, undefined, 'the creator id stays server-side');
+
+  // The name is read from the account, so a rename reaches the banner.
+  db.prepare('UPDATE players SET name = ? WHERE id = ?').run('Push Tester Neu', playerId);
+  const afterRename = await request(app).get(`/api/push/current?playerId=${playerId}`);
+  assert.equal(afterRename.body.entry.actorName, 'Push Tester Neu');
+  db.prepare('UPDATE players SET name = ? WHERE id = ?').run('Push Tester', playerId);
 });
 
 test('GET /api/push/current validates identity and skips resolved topics without deleting history', async () => {
@@ -261,6 +274,48 @@ test('DELETE /api/push/resolved hides only resolved or expired entries, leaving 
 
   const otherAfter = await request(app).get(`/api/push/log?playerId=${other.body.id}`);
   assert.ok(otherAfter.body.entries.some((entry: { body: string }) => /Wird aufgeraeumt/.test(entry.body)));
+});
+
+test('DELETE /api/push/resolved also hides informational entries, but only once they were read', async () => {
+  const delivered = notifyPlayers(
+    [playerId],
+    { title: 'Übernommen', body: 'Info nur zum Lesen', url: '/#checklist', type: 'checklist-claimed' },
+    'direct',
+  );
+  assert.ok(delivered);
+  // Stored before these pushes had their own type: a generic 'message' row.
+  const legacy = notifyPlayers(
+    [playerId],
+    { title: 'Eventtermin geändert', body: 'Altbestand ohne Typ', url: '/#events' },
+    'direct',
+  );
+  assert.equal(legacy?.entry.notificationType, 'message');
+  const lookalike = notifyPlayers([playerId], { title: 'Eventtermin geändert', body: 'Fremdes Ziel', url: '/#broadcast' }, 'direct');
+  assert.ok(lookalike);
+  const actionable = notifyPlayers([playerId], { title: 'Neue Aufgabe', body: 'Bleibt trotz Lesen', url: '/#checklist' }, 'direct', {
+    key: 'checklist-task:cleanup-test',
+  });
+  assert.ok(actionable);
+  const findBody = async (pattern: RegExp) =>
+    (await request(app).get(`/api/push/log?playerId=${playerId}`)).body.entries.find(
+      (entry: { body: string }) => pattern.test(entry.body),
+    );
+
+  const unread = await findBody(/Info nur zum Lesen/);
+  assert.equal(unread.informational, true);
+  assert.equal((await findBody(/Bleibt trotz Lesen/)).informational, false);
+  assert.equal((await findBody(/Altbestand ohne Typ/)).informational, true);
+  assert.equal((await findBody(/Fremdes Ziel/)).informational, false, 'only the exact legacy title and target count');
+
+  await request(app).delete('/api/push/resolved').send({ playerId });
+  assert.ok(await findBody(/Info nur zum Lesen/), 'an unread informational entry survives cleanup');
+
+  await request(app).post('/api/push/seen-all').send({ playerId });
+  await request(app).delete('/api/push/resolved').send({ playerId });
+  assert.equal(await findBody(/Info nur zum Lesen/), undefined, 'a read informational entry is cleaned up');
+  assert.equal(await findBody(/Altbestand ohne Typ/), undefined, 'a read legacy informational entry is cleaned up');
+  assert.ok(await findBody(/Bleibt trotz Lesen/), 'a read but still actionable entry stays');
+  assert.ok(await findBody(/Fremdes Ziel/), 'an unclassified message stays');
 });
 
 test('closed and expired food-order pushes are omitted from active banners', async () => {

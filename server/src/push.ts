@@ -85,6 +85,10 @@ export interface PushPayload {
   url?: string;
   type?: string;
   targetId?: string;
+  // The account that created what this notification announces (Durchsage,
+  // Abstimmung, Sammelbestellung, ...). Stored as an id, not a name, so the
+  // banner always shows the current name and an erased account drops out.
+  actorId?: string;
 }
 
 export interface PushTopic {
@@ -96,6 +100,40 @@ export const FOOD_ORDER_PAYMENT_REMINDER_TOPIC_PREFIX = 'food-order-payment-remi
 export const EVENT_POLL_REMINDER_TOPIC_PREFIX = 'event-poll-reminder:';
 export const EVENT_REMINDER_TOPIC_PREFIX = 'event-reminder:';
 export const EVENT_POLL_OPEN_TOPIC_PREFIX = 'event-poll-open:';
+
+// Notification types that only report something that already happened (a won
+// bet, a claimed task, a changed event plan). Unlike an invitation or a poll,
+// they never ask for an action, so once read they are as finished as a
+// resolved entry and "Aufräumen" may remove them. Deliberately an allow-list:
+// an unknown or new type stays in the history until it is explicitly
+// classified, so cleanup can never swallow something a player still has to do.
+const INFORMATIONAL_PUSH_TYPES = new Set([
+  'betting-win',
+  'checklist-claimed',
+  'event-participation-removed',
+  'event-updated',
+  'event-withdrawn-acceptance',
+]);
+
+// Before these pushes carried their own type they were stored as the generic
+// 'message'. Their fixed titles and target views identify them unambiguously,
+// so rows written before the update are cleaned up like new ones.
+const LEGACY_INFORMATIONAL_MESSAGES = new Set([
+  'Übernommen\u0000/#checklist',
+  'Eventplanung geändert\u0000/#events',
+  'Eventtermin geändert\u0000/#events',
+  'Eventtermin entfernt\u0000/#events',
+]);
+
+export function isInformationalPushEntry(entry: {
+  notificationType: string | null;
+  title: string;
+  url: string | null;
+}): boolean {
+  if (entry.notificationType == null) return false;
+  if (INFORMATIONAL_PUSH_TYPES.has(entry.notificationType)) return true;
+  return entry.notificationType === 'message' && LEGACY_INFORMATIONAL_MESSAGES.has(`${entry.title}\u0000${entry.url ?? ''}`);
+}
 
 export function isDeduplicatedPushTopic(topicKey: string): boolean {
   return (
@@ -129,6 +167,7 @@ export interface PushLogEntry {
   body: string;
   url: string | null;
   audience: PushAudience;
+  actorName: string | null;
   expiresAt: number | null;
   resolvedAt: number | null;
   createdAt: number;
@@ -171,6 +210,10 @@ export interface PushDeliveryResult {
   recipientPlayerIds: string[];
 }
 
+// Resolved per read so a renamed account shows its current name and an erased
+// one (row deleted) simply reads as no creator.
+const ACTOR_NAME_SQL = '(SELECT players.name FROM players WHERE players.id = push_log.actor_player_id) AS actorName';
+
 const ACTIVE_PUSH_SQL = 'resolved_at IS NULL AND (expires_at IS NULL OR expires_at > ?)';
 const VISIBLE_POINTS_PUSH_SQL = `(COALESCE(notification_type,'') NOT IN ('betting-open', 'betting-win') OR EXISTS (
   SELECT 1 FROM points_settings s JOIN events e ON e.id = s.event_id
@@ -183,7 +226,7 @@ export function getLastPushLogEntry(groupId: string, eventId: string): PushLogEn
   const row = db
     .prepare(
       `SELECT id, group_id AS groupId, event_id AS eventId, event_name_snapshot AS eventName,
-              notification_type AS notificationType, target_id AS targetId, title, body, url, audience,
+              notification_type AS notificationType, target_id AS targetId, title, body, url, audience, ${ACTOR_NAME_SQL},
               expires_at AS expiresAt, created_at AS createdAt
        FROM push_log
        WHERE group_id = ? AND event_id IS ? AND audience = 'all' AND ${ACTIVE_PUSH_SQL} AND ${VISIBLE_POINTS_PUSH_SQL}
@@ -204,7 +247,7 @@ export function getCurrentPushLogEntryFor(groupId: string, eventId: string, play
   const rows = db
     .prepare(
       `SELECT id, group_id AS groupId, event_id AS eventId, event_name_snapshot AS eventName,
-              notification_type AS notificationType, target_id AS targetId, title, body, url, audience,
+              notification_type AS notificationType, target_id AS targetId, title, body, url, audience, ${ACTOR_NAME_SQL},
               player_ids AS playerIds, expires_at AS expiresAt,
               created_at AS createdAt
        FROM push_log
@@ -351,11 +394,11 @@ export function getPushLogEntriesFor(
   eventId: string | null,
   playerId: string,
   limit = 20,
-): Array<PushLogEntry & { seen: boolean }> {
+): Array<PushLogEntry & { seen: boolean; informational: boolean }> {
   const rows = db
     .prepare(
       `SELECT id, group_id AS groupId, event_id AS eventId, event_name_snapshot AS eventName,
-              notification_type AS notificationType, target_id AS targetId, title, body, url, audience,
+              notification_type AS notificationType, target_id AS targetId, title, body, url, audience, ${ACTOR_NAME_SQL},
               player_ids AS playerIds, topic_key AS topicKey, expires_at AS expiresAt,
               resolved_at AS resolvedAt, created_at AS createdAt,
               EXISTS (
@@ -381,17 +424,18 @@ export function getPushLogEntriesFor(
     .map(({ playerIds: _playerIds, topicKey: _topicKey, hidden: _hidden, seen, ...entry }) => ({
       ...entry,
       seen: seen === 1,
+      informational: isInformationalPushEntry(entry),
     }));
 }
 
 export function getPushLogEntriesForPlayer(
   playerId: string,
   limit = 20,
-): Array<PushLogEntry & { seen: boolean }> {
+): Array<PushLogEntry & { seen: boolean; informational: boolean }> {
   const rows = db
     .prepare(
       `SELECT id, group_id AS groupId, event_id AS eventId, event_name_snapshot AS eventName,
-              notification_type AS notificationType, target_id AS targetId, title, body, url, audience,
+              notification_type AS notificationType, target_id AS targetId, title, body, url, audience, ${ACTOR_NAME_SQL},
               player_ids AS playerIds, topic_key AS topicKey, expires_at AS expiresAt,
               resolved_at AS resolvedAt, created_at AS createdAt,
               EXISTS (
@@ -417,6 +461,7 @@ export function getPushLogEntriesForPlayer(
     .map(({ playerIds: _playerIds, topicKey: _topicKey, hidden: _hidden, seen, ...entry }) => ({
       ...entry,
       seen: seen === 1,
+      informational: isInformationalPushEntry(entry),
     }));
 }
 
@@ -463,12 +508,21 @@ function isPushLogEntryObsolete(entry: { resolvedAt: number | null; expiresAt: n
   return entry.resolvedAt !== null || (entry.expiresAt !== null && entry.expiresAt <= now);
 }
 
+// Mirrors isFeedEntryCleanable in public/js/pushFeed.js: obsolete entries, plus
+// informational ones the player has already read.
+function isPushLogEntryCleanable(
+  entry: { resolvedAt: number | null; expiresAt: number | null; seen: boolean; informational: boolean },
+  now: number,
+): boolean {
+  return isPushLogEntryObsolete(entry, now) || (entry.seen && entry.informational);
+}
+
 // Same per-player scoping as the other bulk actions, but limited to entries
 // a returning player no longer needs to act on - the cleanup someone reaches
-// for after being away, without touching still-open ones.
+// for after being away, without touching still-open or still-unread ones.
 export function hideResolvedPushForPlayer(playerId: string): number {
   const now = Date.now();
-  const entries = getPushLogEntriesForPlayer(playerId, PUSH_LOG_LIMIT).filter((entry) => isPushLogEntryObsolete(entry, now));
+  const entries = getPushLogEntriesForPlayer(playerId, PUSH_LOG_LIMIT).filter((entry) => isPushLogEntryCleanable(entry, now));
   if (entries.length === 0) return 0;
   const insert = db.prepare('INSERT OR IGNORE INTO push_log_hidden (push_id, player_id, hidden_at) VALUES (?, ?, ?)');
   const hiddenAt = Date.now();
@@ -602,6 +656,8 @@ export function notifyPlayers(
     },
   );
 
+  const { actorId: _actorId, ...publicPayload } = payload;
+  const devicePayload = { ...publicPayload, title: pushTitleWithActor(payload.title, entry.actorName) };
   const recipientPlaceholders = playerIds.map(() => '?').join(',');
   const rows = db
     .prepare(`SELECT endpoint, p256dh, auth FROM push_subscriptions WHERE player_id IN (${recipientPlaceholders})`)
@@ -613,7 +669,7 @@ export function notifyPlayers(
       .send(
         subscription,
         JSON.stringify({
-          ...payload,
+          ...devicePayload,
           eventId: entry.eventId,
           eventName: entry.eventName,
           notificationType: entry.notificationType,
@@ -630,6 +686,18 @@ export function notifyPlayers(
   return { entry, recipientPlayerIds: playerIds };
 }
 
+function actorNameFor(actorId: string | undefined): string | null {
+  if (!actorId) return null;
+  const row = db.prepare('SELECT name FROM players WHERE id = ?').get(actorId) as { name: string } | undefined;
+  return row?.name ?? null;
+}
+
+// The device notification names its creator the same way as the in-app
+// banner: "<Titel> von <Name>".
+function pushTitleWithActor(title: string, actorName: string | null): string {
+  return actorName ? `${title} von ${actorName}` : title;
+}
+
 // Persists the recipient definition and history only. Organisation routes use
 // this in Phase 5c so later delivery work can consume the data without this
 // cluster introducing Socket.IO, Web Push or kiosk side effects.
@@ -641,6 +709,8 @@ export function recordPushLog(
   scope: PushScope = { groupId: DEFAULT_GROUP_ID, eventId: BASE_EVENT_ID },
 ): PushLogEntry {
   const normalizedScope = normalizedPushScope(scope);
+  const actorName = actorNameFor(payload.actorId);
+  const actorId = actorName === null ? null : payload.actorId!;
   // Logged regardless of how many subscriptions actually exist: this is a
   // record of "the app told these players something", for the Kiosk banner
   // and the Home feed, not a delivery receipt.
@@ -672,6 +742,7 @@ export function recordPushLog(
     body: payload.body,
     url: payload.url ?? null,
     audience,
+    actorName,
     expiresAt: topic?.expiresAt ?? null,
     resolvedAt: null,
     createdAt: Date.now(),
@@ -681,7 +752,8 @@ export function recordPushLog(
       db.prepare(
         `UPDATE push_log SET
            event_name_snapshot = ?, notification_type = ?, target_id = ?, title = ?, body = ?, url = ?,
-           audience = ?, player_ids = ?, topic_key = ?, expires_at = ?, resolved_at = NULL, created_at = ?
+           audience = ?, actor_player_id = ?, player_ids = ?, topic_key = ?, expires_at = ?, resolved_at = NULL,
+           created_at = ?
          WHERE id = ?`,
       ).run(
         entry.eventName,
@@ -691,6 +763,7 @@ export function recordPushLog(
         entry.body,
         entry.url,
         entry.audience,
+        actorId,
         JSON.stringify(storedPlayerIds),
         topic?.key ?? null,
         entry.expiresAt,
@@ -721,8 +794,8 @@ export function recordPushLog(
       db.prepare(
         `INSERT INTO push_log
            (id, group_id, event_id, event_name_snapshot, notification_type, target_id,
-            title, body, url, audience, player_ids, topic_key, expires_at, resolved_at, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)`,
+            title, body, url, audience, actor_player_id, player_ids, topic_key, expires_at, resolved_at, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)`,
       ).run(
         entry.id,
         entry.groupId,
@@ -734,6 +807,7 @@ export function recordPushLog(
         entry.body,
         entry.url,
         entry.audience,
+        actorId,
         JSON.stringify(playerIds),
         topic?.key ?? null,
         entry.expiresAt,

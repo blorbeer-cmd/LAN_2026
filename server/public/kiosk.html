@@ -12,7 +12,7 @@
   <link rel="stylesheet" href="/css/domains.css?v=8" />
   <link rel="stylesheet" href="/css/overlays.css?v=3" />
   <link rel="stylesheet" href="/css/arcade.css?v=7" />
-  <link rel="stylesheet" href="/css/kiosk.css?v=35" />
+  <link rel="stylesheet" href="/css/kiosk.css?v=42" />
 </head>
 <body class="kiosk-body">
   <div id="kiosk-root">
@@ -30,9 +30,14 @@
       <div id="kiosk-broadcast" class="kiosk-broadcast" hidden></div>
     </div>
 
+    <section id="kiosk-music" class="kiosk-music" aria-live="polite" hidden></section>
+
     <main id="kiosk-dashboard" class="kiosk-grid">
       <section class="kiosk-card">
-        <h2><span data-domain-icon="live"></span> Live-Status</h2>
+        <header class="kiosk-live-heading">
+          <h2><span data-domain-icon="live"></span> Live-Status</h2>
+          <div id="kiosk-live-games" hidden></div>
+        </header>
         <div id="kiosk-live"><div class="empty-state">Lädt…</div></div>
       </section>
 
@@ -52,7 +57,6 @@
         <div id="kiosk-results" class="kiosk-results" hidden></div>
       </section>
     </main>
-    <section id="kiosk-music" class="kiosk-music" aria-live="polite" hidden></section>
     <section id="kiosk-game" class="kiosk-game" hidden aria-live="polite">
       <div class="kiosk-game-header"><h1 id="kiosk-game-title">Arcade</h1><span id="kiosk-game-status"></span></div>
       <div id="kiosk-game-content" class="kiosk-game-content"></div>
@@ -60,6 +64,6 @@
   </div>
 
   <script src="/socket.io/socket.io.js"></script>
-  <script type="module" src="/js/kiosk.js?v=35"></script>
+  <script type="module" src="/js/kiosk.js?v=41"></script>
 </body>
 </html>

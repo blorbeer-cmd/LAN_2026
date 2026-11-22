@@ -288,10 +288,12 @@ test('"noch nicht abgestimmt" follows the visible workspace when a stored test e
   assert.equal(activated.status, 200, JSON.stringify(activated.body));
   const withTestData = await request(app).get('/api/me/todos').set('x-admin-mode', '1');
   assert.deepEqual(withTestData.body.pendingVoteRounds, [9101]);
+  assert.equal(withTestData.body.pendingVoteEventId, testEvent);
 
   // Without admin mode every API falls back to the base event, and so does this hint.
   const visible = await request(app).get('/api/votes');
   assert.ok(visible.body.openRounds.some((round: { round: number }) => round.round === 9102));
   const withoutTestData = await request(app).get('/api/me/todos');
   assert.deepEqual(withoutTestData.body.pendingVoteRounds, [9102]);
+  assert.equal(withoutTestData.body.pendingVoteEventId, 'instance-base-event');
 });

@@ -1286,29 +1286,15 @@ button.seating-seat {
   font-variant-numeric: tabular-nums;
   text-align: right;
 }
-.music-queue-title,
-.music-queue-open {
+.music-queue-title {
   max-width: 100%;
   overflow: hidden;
   font-weight: var(--font-weight-medium);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* The title opens the details; its hit area covers the whole row. */
-.music-queue-open {
-  padding: 0;
-  border: 0;
-  color: inherit;
-  font: inherit;
-  font-weight: var(--font-weight-medium);
-  text-align: left;
-  background: transparent;
-  cursor: pointer;
-}
-.music-queue-open::after {
-  content: '';
-  position: absolute;
-  inset: 0;
+.music-queue-row > [data-music-detail] {
+  display: none;
 }
 .music-queue-who-inline {
   display: none;
@@ -1326,12 +1312,44 @@ button.seating-seat {
 .music-queue-row.is-drag-target {
   border-top-color: var(--accent);
 }
-@media (hover: hover) {
-  .music-queue-row:hover .music-queue-open {
-    color: var(--accent);
-  }
-  .music-queue-list.is-sortable .music-queue-row[draggable] {
+@media (hover: hover) and (pointer: fine) {
+  .music-queue-list.is-draggable .music-queue-row[draggable] {
     cursor: grab;
+    user-select: none;
+  }
+}
+/* Shared drop target at the bottom edge while something removable is dragged:
+   Jam requests and players dragged out of a Match lineup. */
+.drag-remove-zone {
+  position: fixed;
+  z-index: 25;
+  left: 50%;
+  bottom: calc(var(--shell-bottom-inset) + var(--space-5));
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  max-width: calc(100vw - var(--space-8));
+  padding: var(--space-3) var(--space-4);
+  transform: translateX(-50%);
+  border: 1px solid var(--danger);
+  border-radius: var(--radius);
+  background: var(--bg-elevated-2);
+  box-shadow: var(--shadow);
+  color: var(--text);
+}
+.drag-remove-zone[hidden] {
+  display: none;
+}
+.drag-remove-zone.is-over {
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+@media (hover: none), (pointer: coarse) {
+  .music-queue-row.music-queue-request:has(> [data-music-detail]) {
+    grid-template-columns: var(--space-5) var(--avatar-size-md) minmax(0, 1fr) minmax(0, 11rem) 3.5rem var(--tap-target-size);
+  }
+  .music-queue-row > [data-music-detail] {
+    display: flex;
   }
 }
 .music-search-form {
@@ -1462,5 +1480,10 @@ button.seating-seat {
   }
   .music-management-row {
     align-items: flex-start;
+  }
+}
+@media (max-width: 639px) and (hover: none), (max-width: 639px) and (pointer: coarse) { /* --bp-md */
+  .music-queue-row.music-queue-request:has(> [data-music-detail]) {
+    grid-template-columns: var(--space-4) var(--avatar-size-md) minmax(0, 1fr) 2.75rem var(--tap-target-size);
   }
 }

@@ -23,7 +23,9 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Routen, Rolle
     choice is stored as
     `respawn_layout_mode:<verified-account-id>`, survives logout/reload and is restored before the
     authenticated app becomes visible. Automatic is the default and resolves against `--bp-xl` on
-    every breakpoint change. It changes neither routes nor permissions. The active event
+    every breakpoint change; it also keeps the compact shell while the window is too short for the
+    rail's main list to fit without scrolling. An explicit Desktop choice keeps the rail and scrolls
+    its main list instead. It changes neither routes nor permissions. The active event
     snapshot and the same role checks filter both navigation surfaces. Everything else lives under
     „Mehr“ on compact layouts, in the topbar, or (for the
     merged Rangliste/Statistiken/
@@ -51,8 +53,9 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Routen, Rolle
   hides the duplicate tabs and shows the opened page's title in the compact header. Every tab row
   remains outside any card, distinct from the in-card controls further down. Each tab is a real
   route, so the row is `<nav>` navigation rather than a toggle: the active tab carries
-  `aria-current="page"` plus `.btn-primary`, never `aria-pressed`. Tabs and rail entries carry
-  their plain label, never a count. Tabs share the full width on phones for a comfortable tap
+  `aria-current="page"` plus `.btn-primary`, never `aria-pressed`. Tabs carry their plain label,
+  never a count; rail and bottom-nav entries keep their plain label and may only add the
+  [Navigationszähler](#navigationszähler) on their icon. Tabs share the full width on phones for a comfortable tap
   target and size to their own label from `--bp-md`, because two tabs stretched across the wide
   content column would read as banners rather than navigation. A primary action belongs in the
   first relevant card header when that card exists (for example „Ergebnis eintragen“ in the
@@ -61,6 +64,40 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Routen, Rolle
   shell, so a sub-view that reads its own previous DOM before redrawing (the Packliste's add-item
   draft and focus, the same survives-its-own-rerender pattern the Checkliste's To-Do form uses)
   keeps working across a background refresh triggered from outside that tab.
+
+## Navigationszähler
+
+- **Purpose** — A small number on a bottom-nav entry, a desktop-rail entry or a „Mehr“ card says
+  how many new things wait in that area: unread, still-active notifications plus open „Meine
+  To-Dos“. It disappears once the area has been opened; it is a pointer, not the list itself.
+- **What counts** — Notifications of the open workspace, excluding read and obsolete ones,
+  assigned through their deep link. From the base workspace only those leading to pages that
+  belong to no workspace (Events & Gruppen, Mein Profil — e.g. invitations) count; its own Votes or
+  orders do not. To-Dos count when they can be handled from the open workspace (`switchesEvent`
+  false), plus pending invitations and every open Vote round without the own ballot („noch nicht
+  abgestimmt“). A notification and the To-Do it stands for count once: an unread „Neue Abstimmung“
+  (target `vote:<round>`) covers that round's missing ballot, an unread invitation
+  (`event-invitation:<event>:<account>`) covers its pending answer; opening the area settles both.
+  Missing ballots count only from a Vote list the server answered for the open workspace
+  (`pendingVoteEventId` of `GET /api/me/todos`); right after a switch, until such an answer
+  arrives (one reload is requested), they neither count nor touch the seen marks. Live skill
+  nudges stay on Home only.
+- **Where it shows** — On the entry that leads to the item's area: tournaments and betting rounds
+  count on Match (a betting-round notification is also settled by opening its own link to that
+  round on the points page, but not by another round), Admin's tools on Admin, Orga's pages and other secondary destinations on „Mehr“ on
+  compact layouts and on their own rail entry on Desktop. A „Mehr“ card counts its whole area
+  (Orga: To-Do, An & Abreise, Packliste, Umfragen). The entry that is open shows no number.
+- **Clearing** — Opening an area (also by tapping its entry again) marks its notifications read on
+  the server, so the bell's count and other devices follow at once. Its To-Dos are remembered as
+  seen per account on this device (`respawn_nav_seen_todos:<account-id>`, the newest 200 ids) and
+  keep their row on Home until done; a To-Do that newly appears counts again — including one
+  reopened with the same id, because the mark is dropped once the loaded list no longer has it
+  open — and To-Dos that
+  appear while their area is open count as seen. Opening the „Mehr“ hub alone clears nothing.
+  Reading a notification from the bell clears it here too. After a reload straight into an area,
+  it is settled once both the notification feed and the open workspace have loaded; a failed feed
+  load keeps the visit pending until a retry succeeds, and a failed „read“ write is retried up to
+  twice while the area stays open.
 
 ## Benachrichtigungszentrum
 
@@ -77,7 +114,20 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Routen, Rolle
   „Abgelaufen“ pill, show „Für dich“ as a neutral instead of an accent pill and never count as
   unread. The sticky footer holds neutral bulk actions in equal
   columns across the full width: „Alle gelesen“ and „Alle löschen“ (whose confirmation stays red),
-  preceded by „Aufräumen“ only while at least one obsolete entry is present.
+  preceded by „Aufräumen“ only while at least one entry can be cleaned up. „Aufräumen“ removes
+  obsolete entries and read entries that only report something without asking for an action (won
+  bets, „Übernommen“, changed event plans, removed participation, withdrawn acceptances); unread
+  entries and anything still actionable stay.
+- **Creator** — An entry announcing something a person created (Durchsage, Abstimmung,
+  Sammelbestellung, Captain-Draft, Turnier, Event-Einladung, Eventplanung, Event-Umfrage) names
+  that account as „von <Name>“ right after its title: in the highlight below the topbar, in the
+  notification center, on the Kiosk banner and in the device notification's title. In the
+  highlight the name has its own slot, so a long event or entry title is truncated before the
+  name; a name wider than the whole line wraps inside the text area and never covers the dismiss
+  button. The name is resolved from the account when read, so a rename shows up and an erased
+  account's entries keep their text without a creator. System notifications (reminders, bets,
+  match readiness) and entries whose text already names the person (Arcade-Lobby, Mitbring-
+  Anfrage, Aufgabe, Übernommen) carry no separate creator.
 
 ## Eventauswahl
 
@@ -276,10 +326,10 @@ trailing action. Orga uses the reserved second row for its tabs only on phone an
   readable without opening the entry, and one square copy icon (named „<Titel> kopieren“) in the
   fixed right column. From `--bp-lg` the dialog widens to `--info-board-panel-width` and lists the
   rows in two columns, left column first. A row opens the entry's detail dialog with the full text
-  and clickable links, its last change and „Kopieren“; group admins and owners additionally get
-  „Bearbeiten“ and a muted „Löschen“ text button whose confirmation stays red. Only group admins
-  and owners see the small primary „Eintrag anlegen“ at the right of the dialog header, matching
-  the server, which accepts writes from those roles only. As pure reference material the dialog
+  and clickable links, its last change, „Kopieren“, „Bearbeiten“ and a muted „Löschen“ text button
+  whose confirmation stays red. Every group member maintains the entries: all see the small primary
+  „Eintrag anlegen“ at the right of the dialog header, matching the server, which accepts writes
+  from every member (deleting after the usual password confirmation). As pure reference material the dialog
   has no close button; Escape and a tap outside close it. The entry form stacks „Titel“ and a
   one-line „Inhalt“ that grows with its text above equally wide „Abbrechen“ and „Anlegen“. An open
   dialog refreshes itself on `info:changed` instead of stacking a second copy. Its nested forms and

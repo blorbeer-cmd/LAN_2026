@@ -158,9 +158,6 @@ async function perform(button, action, done) {
 function numberField(name, label, value, min, max, disabled = false) {
   return `<label class="stack"><span class="field-label is-required">${label}</span><input name="${name}" type="number" value="${value}" min="${min}" max="${max}" step="1" required ${disabled ? 'disabled' : ''}></label>`;
 }
-function kpi(value, label) {
-  return `<div class="my-stats-kpi"><span class="my-stats-kpi-value">${e(value)}</span><span class="my-stats-kpi-label">${label}</span></div>`;
-}
 function overviewHtml(data) {
   return pointsSectionHtml('wallet', 'Wettguthaben', `
     ${data.settings.prize_info ? `<span>${e(data.settings.prize_info)}</span>` : ''}
@@ -169,21 +166,6 @@ function overviewHtml(data) {
     metaHtml: `${data.settings.closed_at ? '<span>Endstand</span> · ' : ''}<span data-wallet-total>${data.wallet.total}</span> P. gesamt · <span data-wallet-available>${data.wallet.available}</span> P. frei${data.wallet.held ? ` · <span data-wallet-held>${data.wallet.held}</span> P. reserviert` : ''}`,
   });
 }
-
-export function pointsHomeHtml(ctx) {
-  if (!state.activeEvent?.pointsEnabled) return '';
-  ensurePoints(ctx);
-  const data = currentData();
-  if (!data?.settings) return '';
-  const open = data.rounds.filter((r) => r.status === 'open' && !r.replaced);
-  // The open rounds lead straight to the tips list on the points page.
-  const tipsAction = open.length ? '<button type="button" class="btn btn-sm" data-navigate="points">Tipps ansehen</button>' : '';
-  return `<section class="card stack" aria-label="Meine LAN-Punkte"><div class="row-between"><h2>Meine LAN-Punkte</h2><button type="button" class="btn btn-sm" data-navigate="points">Punktekonto öffnen</button></div>
-    <div class="my-stats-kpis">${kpi(data.wallet.total, 'Wettguthaben')}${kpi(Math.max(0, data.wallet.available), 'Verfügbar')}${kpi(open.length, 'Offene Tipprunden')}</div>
-    ${tipsAction ? `<div class="row" style="justify-content:flex-end">${tipsAction}</div>` : ''}
-    <p class="muted">${data.settings.closed_at ? 'Die Endwertung steht fest.' : 'Orga- und Spielpunkte sammeln und mit separatem Wettguthaben tippen.'}</p></section>`;
-}
-
 function bettingRound(type, id) {
   if (!state.activeEvent?.pointsEnabled) return null;
   // A round replaced after a lineup change stays only in the points history.
@@ -206,13 +188,20 @@ function canManageRound(round) {
   return isGroupAdmin() || round.outcomes.some((outcome) => outcome.playerIds.includes(getMyId()));
 }
 
-// Card actions: the tip button keeps its state label ("Jetzt tippen", "Tipp
-// ändern", "Tippdetails"); starting a match is its own compact button so a
-// stray tap next to "Jetzt tippen" cannot close the tips for everyone.
-function bettingControlsHtml(round, { tournamentId = null, keyPrefix = 'betting' } = {}) {
+// "Spiel starten" closes the tips for everyone, so it never sits in the
+// betting menu next to "Jetzt tippen". Match cards list it among their general
+// actions; it only exists for an open single-match market.
+function startActionHtml(round, { tournamentId = null } = {}) {
   const closed = Boolean(currentData()?.settings.closed_at);
-  const start = !tournamentId && !closed && round.status === 'open' && round.sourceType !== 'tournament' && canManageRound(round)
+  return !tournamentId && !closed && round.status === 'open' && round.sourceType !== 'tournament' && canManageRound(round)
     ? `<button type="button" class="btn btn-sm" data-lock-round="${e(round.id)}">Spiel starten</button>` : '';
+}
+
+// Card actions: the tip button keeps its state label ("Jetzt tippen", "Tipp
+// ändern", "Tippdetails"); everything else about the market shares its menu.
+function bettingControlsHtml(round, { tournamentId = null, keyPrefix = 'betting', separateStart = false } = {}) {
+  const closed = Boolean(currentData()?.settings.closed_at);
+  const start = startActionHtml(round, { tournamentId });
   const actions = [
     `<button type="button" class="btn btn-sm" data-tip-round="${e(round.id)}"${tournamentId ? ` data-tip-tournament="${e(tournamentId)}"` : ''}>${tournamentId ? 'Tipps ansehen' : round.status === 'open' && !closed ? (round.mine ? 'Tipp ändern' : 'Jetzt tippen') : 'Tippdetails'}</button>`,
     // A fixture anchors a tournament without an outright market only for opening
@@ -223,7 +212,7 @@ function bettingControlsHtml(round, { tournamentId = null, keyPrefix = 'betting'
   // Permission-dependent reports live in tip details, so a hidden report never
   // creates a menu with just one visible action.
   const visibleActions = actions.filter(Boolean);
-  return `<div class="points-betting-controls" data-betting-controls="${e(round.id)}">${start}
+  return `<div class="points-betting-controls" data-betting-controls="${e(round.id)}">${separateStart ? '' : start}
     ${actionMenuHtml(visibleActions, `Wetten: ${tipContext(round, { includeTeams: true })}`, { key: `${keyPrefix}-${round.id}`, summary: 'Wetten', floating: true })}</div>`;
 }
 
@@ -267,6 +256,14 @@ export function competitionBettingHtml(type, id, ctx, options = {}) {
   ensurePoints(ctx);
   const round = bettingRound(type, id);
   return round ? bettingControlsHtml(round, { ...options, ...(type === 'tournament' ? { tournamentId: id } : {}) }) : '';
+}
+
+// The "Spiel starten" entry for a caller that renders the betting controls
+// with `separateStart` and lists the start among its own card actions.
+export function competitionStartActionHtml(type, id, ctx) {
+  ensurePoints(ctx);
+  const round = bettingRound(type, id);
+  return round ? startActionHtml(round, type === 'tournament' ? { tournamentId: id } : {}) : '';
 }
 
 // While LAN points are hidden no market opens. Admins and the event's creator,
@@ -573,7 +570,7 @@ export function competitionCorrection(type, sourceId, fixtureIds = []) {
     readOnly: rounds.length > 0 && !isGroupAdmin(),
     html: !rounds.length
       ? ''
-      : `<div class="stack">${isGroupAdmin() ? '<label class="stack"><span class="field-label">Begründung der Ergebniskorrektur</span><textarea data-betting-correction-reason maxlength="300" required></textarea></label>' : '<p>Diese Korrektur kann nur ein Admin durchführen.</p>'}</div>`,
+      : `<div class="stack result-correction">${isGroupAdmin() ? '<label class="stack"><span class="field-label">Begründung der Ergebniskorrektur</span><textarea data-betting-correction-reason maxlength="300" required></textarea></label>' : '<p>Diese Korrektur kann nur ein Admin durchführen.</p>'}</div>`,
     payload(el) {
       if (!rounds.length) return {};
       if (!isGroupAdmin()) throw new Error('Nur ein Admin kann bereits abgerechnete Ergebnisse korrigieren.');

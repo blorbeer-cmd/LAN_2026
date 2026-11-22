@@ -11,6 +11,7 @@ import { requireRecentReauthentication } from '../sessions';
 import { writeAdminAudit } from '../adminAudit';
 import { nanoid } from 'nanoid';
 import { db } from '../db';
+import { assertDrawLineup, DRAW_LINEUP_CHANGED, DRAW_LINEUP_CHANGED_CODE, DrawLineupChangedError, isDrawLineup } from '../drawLineup';
 import { isSuggestionGame, SUGGESTION_GAME_ERROR } from './gameSelection';
 import { broadcast, Events } from '../realtime';
 import { isNonEmptyString } from '../validation';
@@ -454,10 +455,11 @@ function notifyTournamentStart(
   tournamentName: string,
   teams: TeamInput[],
   scope: { groupId: string; eventId: string },
+  actorId: string | undefined,
 ): void {
   notifyPlayers(
     [],
-    { title: 'Neues Turnier', body: tournamentName, url: `/#tournaments/${tournamentId}` },
+    { title: 'Neues Turnier', body: tournamentName, url: `/#tournaments/${tournamentId}`, actorId },
     'all',
     { key: `tournament:${tournamentId}` },
     scope,
@@ -493,14 +495,17 @@ function notifyTournamentStart(
 // the one exception — it can't be generated until the group stage decides
 // who advances, see the result-recording handler below).
 // Body: { gameId, name?, format, twoLegged?, trackScore?, thirdPlaceMatch?, groupCount?,
-//         advancersPerGroup?, lobbyName?, lobbyPassword?, teams: [{ name?, playerIds }], drawId? }
+//         advancersPerGroup?, lobbyName?, lobbyPassword?, teams: [{ name?, playerIds }], drawId?, drawLineup? }
 // thirdPlaceMatch adds a match between the semifinal losers to the knockout
 // (bracket formats with at least four knockout teams; ignored otherwise).
 // drawId names the Match draw these teams came from; the draw is claimed in
 // the same transaction so it can no longer be recorded as a single result.
+// drawLineup is the draw's lineup the dialog was opened with: a draw changed
+// on another device since then answers 409 draw_lineup_changed (drawLineup.ts).
 tournamentsRouter.post('/', (req, res) => {
   const {
     gameId, name, format, twoLegged, trackScore, thirdPlaceMatch, groupCount, advancersPerGroup, lobbyName, lobbyPassword, teams, drawId,
+    drawLineup,
   } = req.body ?? {};
 
   if (typeof gameId !== 'string' || !gameId) {
@@ -538,6 +543,9 @@ tournamentsRouter.post('/', (req, res) => {
   if ('error' in teamsInput) return res.status(400).json({ error: teamsInput.error });
   if (drawId !== undefined && (typeof drawId !== 'string' || !drawId)) {
     return res.status(400).json({ error: 'drawId ist ungültig.' });
+  }
+  if (drawLineup !== undefined && (!drawId || !isDrawLineup(drawLineup))) {
+    return res.status(400).json({ error: 'drawLineup ist ungültig.' });
   }
 
   const resolvedFormat = format as TournamentFormat;
@@ -702,6 +710,7 @@ tournamentsRouter.post('/', (req, res) => {
     }
 
     if (drawId) {
+      if (drawLineup) assertDrawLineup(drawId, drawLineup as string[][]);
       // Claim and insert share one transaction: if a concurrent request
       // already recorded or converted the draw, the tournament rolls back.
       const claimed = db
@@ -715,6 +724,9 @@ tournamentsRouter.post('/', (req, res) => {
   } catch (error) {
     if (error instanceof DrawAlreadyUsedError) {
       return res.status(409).json({ error: 'Diese Auslosung wurde bereits verwendet.' });
+    }
+    if (error instanceof DrawLineupChangedError) {
+      return res.status(409).json({ error: DRAW_LINEUP_CHANGED, code: DRAW_LINEUP_CHANGED_CODE });
     }
     throw error;
   }
@@ -742,7 +754,7 @@ tournamentsRouter.post('/', (req, res) => {
   notifyTournamentStart(tournamentId, tournamentName, teamsInput, {
     groupId: req.group!.id,
     eventId: communicationEventId(eventId),
-  });
+  }, req.player?.id);
   res.status(201).json(buildDetail(tournamentId, req.group!.id));
 });
 

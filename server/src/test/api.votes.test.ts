@@ -618,6 +618,21 @@ test('each result row reports its all-time vote win count', async () => {
   const rlResult = res.body.results.find((r: { gameId: string }) => r.gameId === gameRl);
   assert.equal(rlResult.voteWinCount, 2);
   assert.equal(cs2Result.voteWinCount, 1);
+
+  // A closed round without any ballot is hidden from the history, so its
+  // winner must not count as a trophy either.
+  const junkRound = (db.prepare('SELECT MAX(round) + 1 AS n FROM vote_rounds').get() as { n: number }).n;
+  db.prepare(
+    `INSERT INTO vote_rounds (group_id, round, event_id, started_at, closed_at, winner_game_ids, mode)
+     VALUES (?, ?, ?, ?, ?, ?, 'single')`,
+  ).run(DEFAULT_GROUP_ID, junkRound, BASE_EVENT_ID, Date.now(), Date.now(), JSON.stringify([gameCs2]));
+  try {
+    const again = await request(app).get('/api/votes');
+    const cs2Again = again.body.results.find((r: { gameId: string }) => r.gameId === gameCs2);
+    assert.equal(cs2Again.voteWinCount, 1);
+  } finally {
+    db.prepare('DELETE FROM vote_rounds WHERE group_id = ? AND round = ?').run(DEFAULT_GROUP_ID, junkRound);
+  }
 });
 
 test('each result row reports total all-time playtime, growing as sessions are tracked', async () => {
@@ -849,4 +864,33 @@ test('a points ballot can adopt its points as the own Bock, atomically and only 
   const mine = await request(app).get(`/api/votes/mine?playerId=${voter}`);
   assert.deepEqual(await bock(), Object.fromEntries(mine.body.entries.map((e: { gameId: string; points: number }) => [e.gameId, e.points])));
   await request(app).post('/api/votes/cancel');
+});
+
+test('rounds name their starter from the session; legacy and deleted starters stay unnamed', async () => {
+  type Round = { round: number; createdByName: string | null };
+  const named = (rounds: Round[], round: number) => rounds.find((entry) => entry.round === round)?.createdByName;
+  // The starter comes from the session; a client-sent creator is ignored.
+  const started = await request(app).post('/api/votes/start').send({ mode: 'single', createdBy: playerB, createdByName: 'Fake' });
+  assert.equal(started.status, 201);
+  const round = started.body.round as number;
+  const starter = db.prepare('SELECT p.name FROM vote_rounds vr JOIN players p ON p.id = vr.created_by WHERE vr.group_id = ? AND vr.round = ?')
+    .get(DEFAULT_GROUP_ID, round) as { name: string };
+  assert.notEqual(starter.name, 'Voter B');
+  assert.equal(named((await request(app).get('/api/votes')).body.openRounds, round), starter.name);
+  assert.equal(named((await request(app).get('/api/votes/kiosk')).body.openRounds, round), starter.name);
+
+  assert.equal((await request(app).post('/api/votes').send({ round, playerId: playerB, gameId: gameCs2 })).status, 200);
+  assert.equal((await request(app).post('/api/votes/close').send({ round })).status, 200);
+  assert.equal((await request(app).get('/api/votes/kiosk')).body.recentResult.createdByName, starter.name);
+  assert.equal(named((await request(app).get('/api/votes/history')).body.history, round), starter.name);
+  assert.equal((await request(app).get(`/api/votes/history/${round}`)).body.createdByName, starter.name);
+
+  // vote_rounds.created_by has no foreign key: a deleted account leaves a
+  // stale id that matches nobody, a pre-migration round leaves NULL.
+  for (const createdBy of ['deleted-account-id', null]) {
+    db.prepare('UPDATE vote_rounds SET created_by = ? WHERE group_id = ? AND round = ?').run(createdBy, DEFAULT_GROUP_ID, round);
+    assert.equal(named((await request(app).get('/api/votes/history')).body.history, round), null);
+    assert.equal((await request(app).get(`/api/votes/history/${round}`)).body.createdByName, null);
+    assert.equal((await request(app).get('/api/votes/kiosk')).body.recentResult.createdByName, null);
+  }
 });

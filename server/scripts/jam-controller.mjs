@@ -25,6 +25,39 @@ const SCOPES = [
 const WEB_PLAYBACK_SCOPES = ['streaming', 'user-read-email', 'user-read-private'];
 const DEFAULT_RESPAWN_URL = 'https://lan.dbehnke.dev';
 const REQUEST_TIMEOUT_MS = Math.max(100, Number(process.env.JAM_CONTROLLER_REQUEST_TIMEOUT_MS || 10_000));
+const SPOTIFY_API_BASE_URL = String(
+  process.env.JAM_CONTROLLER_SPOTIFY_API_BASE_URL || 'https://api.spotify.com/v1',
+).replace(/\/+$/, '');
+const SPOTIFY_STATUS_GRACE_MS = Math.max(
+  0,
+  Number(process.env.JAM_CONTROLLER_SPOTIFY_STATUS_GRACE_MS || 30_000),
+);
+const HEARTBEAT_INTERVAL_MS = Math.max(
+  100,
+  Number(process.env.JAM_CONTROLLER_HEARTBEAT_INTERVAL_MS || 3_000),
+);
+// Spotify counts every request against one shared quota per developer app.
+// A controller that asked at the heartbeat rate around the clock got the app
+// blocked for hours. So the Respawn heartbeat keeps its pace, but Spotify is
+// asked right after every change, shortly after the expected end of the song
+// and otherwise only rarely. Respawn extrapolates the progress in between.
+const SPOTIFY_ACTIVE_STATUS_INTERVAL_MS = Math.max(
+  100,
+  Number(process.env.JAM_CONTROLLER_SPOTIFY_ACTIVE_STATUS_INTERVAL_MS || 20_000),
+);
+const SPOTIFY_IDLE_STATUS_INTERVAL_MS = Math.max(
+  100,
+  Number(process.env.JAM_CONTROLLER_SPOTIFY_IDLE_STATUS_INTERVAL_MS || 60_000),
+);
+// Gives Spotify time to switch to the next song before asking again.
+const SPOTIFY_TRACK_END_DELAY_MS = 1_500;
+// While the Respawn browser player on this computer plays, it reports every
+// song change and pause itself. Spotify is then asked only as a safety net.
+const SPOTIFY_BROWSER_STATUS_INTERVAL_MS = Math.max(
+  100,
+  Number(process.env.JAM_CONTROLLER_SPOTIFY_BROWSER_STATUS_INTERVAL_MS || 60_000),
+);
+const BROWSER_STATE_MAX_BYTES = 8_000;
 const LOCAL_FORM_TOKEN = crypto.randomBytes(24).toString('base64url');
 
 let state = { ...loadBootstrap(), ...loadState() };
@@ -32,8 +65,28 @@ let oauthPending = null;
 let scheduledPlayback = null;
 let polling = false;
 let heartbeating = false;
+let queueRefreshing = false;
 let localPageOpened = false;
 let serverReady = false;
+let lastSpotifyPlaybackAt = 0;
+let nextSpotifyStatusAt = 0;
+let spotifyStatusRequests = 0;
+// Older Respawn servers do not report the Jam state. Until a heartbeat says
+// otherwise, keep the Jam rate so a running Jam never goes stale.
+let jamSessionActive = true;
+let spotifyQueueRefreshRequested = false;
+// Latest playback reported by the local browser player, in the shape of
+// Spotify's GET /me/player answer, waiting for the next heartbeat.
+let browserPlayback = null;
+// Spotify device of the browser player while it reports its own state.
+let browserDeviceId = null;
+let lastSpotifyQueueContextUri = null;
+let lastSpotifyQueueTrackUri = null;
+let spotifyRetryAt = 0;
+// Times of the Spotify Web API requests in the last hour, shown on the local
+// page so the load can be checked against Spotify's quota before a LAN.
+let spotifyRequestTimes = [];
+let spotifyQueueCache = { contextUri: null, currentTrackUri: null, tracks: [] };
 let runtime = {
   needsPairing: false,
   respawn: state.controllerToken ? 'connecting' : 'setup',
@@ -80,7 +133,9 @@ function pageHeaders() {
   return {
     'Content-Type': 'text/html; charset=utf-8',
     'Cache-Control': 'no-store',
-    'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'",
+    // Browsers apply form-action to redirects as well: the Spotify login
+    // form posts here and is redirected to Spotify's authorization page.
+    'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; form-action 'self' https://accounts.spotify.com; base-uri 'none'; frame-ancestors 'none'",
     'X-Content-Type-Options': 'nosniff',
     'X-Frame-Options': 'DENY',
   };
@@ -113,7 +168,7 @@ function localApiHeaders(req) {
   if (!origin || origin !== respawnOrigin()) return null;
   return {
     'Access-Control-Allow-Origin': origin,
-    'Access-Control-Allow-Methods': 'GET, OPTIONS',
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type',
     'Access-Control-Allow-Private-Network': 'true',
     'Cache-Control': 'no-store',
@@ -260,7 +315,9 @@ function page(message = '', isError = false) {
       <div><span>Respawn</span><strong>${htmlEscape(statusLabel(runtime.respawn))}</strong></div>
       <div><span>Spotify</span><strong>${htmlEscape(statusLabel(runtime.spotify))}</strong></div>
       <div><span>Browser-/Kiosk-Ton</span><strong>${browserPlaybackReady ? 'Bereit' : 'Freigabe nötig'}</strong></div>
+      <div><span>Spotify-Anfragen in der letzten Stunde</span><strong>${spotifyRequestsLastHour()}</strong></div>
     </div>
+    ${spotifyRequestTimes.length ? `<p class="note" id="spotify-request-kinds">Davon: ${htmlEscape(spotifyRequestBreakdown())}</p>` : ''}
     ${runtime.respawnMessage ? `<p class="note">${htmlEscape(runtime.respawnMessage)}</p>` : ''}
     ${runtime.spotifyMessage ? `<p class="note">${htmlEscape(runtime.spotifyMessage)}</p>` : ''}
     <p class="note">Verbunden mit ${htmlEscape(state.respawnBaseUrl)}. Abbrüche werden automatisch erneut versucht; diese Seite muss nicht offen bleiben.</p>
@@ -296,6 +353,84 @@ function readBody(req) {
   });
 }
 
+function readJsonBody(req, maxBytes) {
+  return new Promise((resolve, reject) => {
+    let body = '';
+    let tooLarge = false;
+    req.on('data', (chunk) => {
+      if (tooLarge) return;
+      body += chunk;
+      if (Buffer.byteLength(body) > maxBytes) tooLarge = true;
+    });
+    req.on('end', () => {
+      if (tooLarge) { reject(new Error('Anfrage ist zu groß.')); return; }
+      try { resolve(JSON.parse(body || 'null')); } catch { reject(new Error('Anfrage ist kein gültiges JSON.')); }
+    });
+    req.on('error', reject);
+  });
+}
+
+function boundedText(value, maxLength) {
+  return typeof value === 'string' ? value.trim().slice(0, maxLength) : '';
+}
+
+function boundedInteger(value, max) {
+  const number = Number(value);
+  return Number.isFinite(number) ? Math.min(max, Math.max(0, Math.round(number))) : 0;
+}
+
+// Turns the compact report of the browser player into the shape of Spotify's
+// GET /me/player answer, so heartbeat and queue code need no second path.
+// Returns undefined for an invalid report and null when the player stopped.
+function browserPlaybackFromReport(report) {
+  const deviceId = typeof report?.deviceId === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(report.deviceId)
+    ? report.deviceId
+    : null;
+  if (!deviceId || !Object.hasOwn(report, 'state')) return undefined;
+  if (report.state === null) return null;
+  const reported = report.state;
+  const track = reported?.track;
+  if (!track || typeof track.uri !== 'string' || !/^spotify:track:[A-Za-z0-9]{22}$/.test(track.uri)) return undefined;
+  if (typeof reported.isPlaying !== 'boolean') return undefined;
+  const contextUri = typeof reported.contextUri === 'string'
+    && /^spotify:(playlist|album|artist):[A-Za-z0-9]{22}$/.test(reported.contextUri)
+    ? reported.contextUri
+    : null;
+  const durationMs = boundedInteger(track.durationMs, 24 * 60 * 60_000);
+  const imageUrl = typeof track.imageUrl === 'string' && /^https:\/\/[^\s"'<>]{1,500}$/.test(track.imageUrl)
+    ? track.imageUrl
+    : null;
+  return {
+    item: {
+      id: track.uri.slice('spotify:track:'.length),
+      uri: track.uri,
+      name: boundedText(track.name, 300),
+      duration_ms: durationMs,
+      artists: (Array.isArray(track.artists) ? track.artists : []).slice(0, 10)
+        .map((name) => ({ name: boundedText(name, 200) })).filter((artist) => artist.name),
+      album: { name: boundedText(track.album, 300), images: imageUrl ? [{ url: imageUrl }] : [] },
+    },
+    device: { id: deviceId },
+    context: contextUri ? { type: contextUri.split(':')[1], uri: contextUri } : null,
+    is_playing: reported.isPlaying,
+    progress_ms: Math.min(durationMs, boundedInteger(reported.progressMs, durationMs)),
+  };
+}
+
+function acceptBrowserPlayback(playback) {
+  if (playback === null) {
+    // The browser player stopped or Spotify moved on to another device: only
+    // Spotify itself knows what plays now.
+    browserPlayback = null;
+    browserDeviceId = null;
+    requestSpotifyStatus();
+  } else {
+    browserPlayback = playback;
+    browserDeviceId = playback.device.id;
+  }
+  void sendHeartbeat();
+}
+
 async function readLocalForm(req) {
   const form = await readBody(req);
   if (form.get('_csrf') !== LOCAL_FORM_TOKEN) throw new Error('Lokale Anfrage ist ungültig oder abgelaufen.');
@@ -306,13 +441,48 @@ function base64url(buffer) {
   return Buffer.from(buffer).toString('base64url');
 }
 
+const NETWORK_ERROR_REASONS = {
+  ETIMEDOUT: 'Zeitüberschreitung beim Verbindungsaufbau, das Netzwerk ist langsam oder überlastet',
+  UND_ERR_CONNECT_TIMEOUT: 'Zeitüberschreitung beim Verbindungsaufbau, das Netzwerk ist langsam oder überlastet',
+  UND_ERR_HEADERS_TIMEOUT: 'Der Server antwortet nicht rechtzeitig',
+  ENOTFOUND: 'Adresse nicht gefunden, DNS oder Internetverbindung prüfen',
+  EAI_AGAIN: 'Adresse gerade nicht auflösbar, DNS oder Internetverbindung prüfen',
+  ECONNREFUSED: 'Verbindung abgelehnt, der Dienst läuft dort nicht',
+  ECONNRESET: 'Verbindung unterbrochen',
+  UND_ERR_SOCKET: 'Verbindung unterbrochen',
+  EPIPE: 'Verbindung unterbrochen',
+  ENETUNREACH: 'Netzwerk nicht erreichbar, ist das Gerät online?',
+  EHOSTUNREACH: 'Gerät nicht erreichbar, ist das Gerät online?',
+  ENETDOWN: 'Netzwerk ist getrennt',
+};
+
+function hostOf(url) {
+  try { return new URL(url).host; } catch { return String(url); }
+}
+
+// Node's fetch only says "fetch failed"; the useful reason sits in error.cause,
+// for several addresses (IPv4/IPv6) inside an AggregateError.
+function describeNetworkError(url, error) {
+  const cause = error?.cause;
+  const code = cause?.code || cause?.errors?.find((entry) => entry?.code)?.code || null;
+  const host = hostOf(url);
+  const reason = (code && NETWORK_ERROR_REASONS[code])
+    || (code && /CERT|UNABLE_TO_VERIFY_LEAF_SIGNATURE/.test(code) ? 'Das TLS-Zertifikat ist ungültig' : null)
+    || (code && /SSL|TLS/.test(code) ? 'TLS-Verbindung fehlgeschlagen, stimmen http/https und Port in der Adresse?' : null)
+    || cause?.message
+    || error?.message
+    || 'Unbekannter Netzwerkfehler';
+  return `${host} nicht erreichbar: ${reason}${code ? ` (${code})` : ''}.`;
+}
+
 async function fetchWithTimeout(url, options = {}, timeoutMs = REQUEST_TIMEOUT_MS) {
   const abort = new AbortController();
   const timer = setTimeout(() => abort.abort(), timeoutMs);
   try {
     return await fetch(url, { ...options, signal: abort.signal });
   } catch (error) {
-    if (error?.name === 'AbortError') throw new Error(`Zeitüberschreitung nach ${Math.ceil(timeoutMs / 1_000)} Sekunden.`);
+    if (error?.name === 'AbortError') throw new Error(`${hostOf(url)} antwortet nicht: Zeitüberschreitung nach ${Math.ceil(timeoutMs / 1_000)} Sekunden.`);
+    if (error instanceof TypeError && error.cause) throw new Error(describeNetworkError(url, error), { cause: error });
     throw error;
   } finally {
     clearTimeout(timer);
@@ -391,6 +561,9 @@ async function finishOauth(url) {
   const registration = oauthPending.registerAfterOauth
     ? await registerController({ ...oauthPending, spotifyDisplayName: profile.display_name || profile.id })
     : { controllerId: state.controllerId, controllerToken: state.controllerToken, groupId: state.groupId };
+  // A new app gets one fresh attempt. In practice Spotify's long quota block
+  // applied to the account across apps; the attempt then restores the block.
+  if (oauthPending.clientId !== state.clientId) spotifyRetryAt = 0;
   state = {
     respawnBaseUrl: oauthPending.respawnBaseUrl,
     accessToken: oauthPending.accessToken,
@@ -417,7 +590,7 @@ async function finishOauth(url) {
   };
   localPageOpened = false;
   saveState();
-  void sendHeartbeat();
+  void refreshSpotifyStatusNow();
 }
 
 async function reconnectController(form) {
@@ -446,7 +619,7 @@ async function reconnectController(form) {
   runtime.respawnMessage = null;
   localPageOpened = false;
   saveState();
-  await sendHeartbeat();
+  await refreshSpotifyStatusNow();
 }
 
 async function respawnFetch(endpoint, options = {}, override = state) {
@@ -482,10 +655,39 @@ async function spotifyToken() {
   return state.accessTokenSpotify;
 }
 
+function spotifyRequestKind(pathname, method = 'GET') {
+  const path = pathname.split('?')[0];
+  if (method === 'GET' && path === '/me/player') return 'Status';
+  if (method === 'GET' && path === '/me/player/queue') return 'Warteschlange';
+  if (path === '/me/player/devices') return 'Geräte';
+  if (path === '/search') return 'Suche';
+  if (path.startsWith('/tracks/') || path.startsWith('/playlists/')) return 'Titel und Playlists';
+  return 'Befehle';
+}
+
+function spotifyRequestsLastHour() {
+  const since = Date.now() - 60 * 60_000;
+  spotifyRequestTimes = spotifyRequestTimes.filter((entry) => entry.time > since);
+  return spotifyRequestTimes.length;
+}
+
+// Shows where the quota goes, so the load can be checked before a LAN.
+function spotifyRequestBreakdown() {
+  const counts = new Map();
+  spotifyRequestsLastHour();
+  for (const { kind } of spotifyRequestTimes) counts.set(kind, (counts.get(kind) || 0) + 1);
+  return [...counts].sort((a, b) => b[1] - a[1]).map(([kind, count]) => `${kind} ${count}`).join(' · ');
+}
+
 async function spotify(pathname, options = {}) {
+  if (Date.now() < spotifyRetryAt) {
+    throw new Error('Spotify begrenzt Anfragen gerade. Der Controller wartet vor dem nächsten Versuch.');
+  }
   for (let attempt = 0; attempt < 2; attempt += 1) {
     const token = await spotifyToken();
-    const response = await fetchWithTimeout(`https://api.spotify.com/v1${pathname}`, {
+    spotifyRequestTimes.push({ time: Date.now(), kind: spotifyRequestKind(pathname, options.method) });
+    if (spotifyRequestTimes.length > 5_000) spotifyRequestsLastHour();
+    const response = await fetchWithTimeout(`${SPOTIFY_API_BASE_URL}${pathname}`, {
       ...options, headers: { Authorization: `Bearer ${token}`, ...(options.headers || {}) },
     });
     if (response.status === 204) return null;
@@ -497,7 +699,21 @@ async function spotify(pathname, options = {}) {
       continue;
     }
     if (response.status === 401) throw new SpotifyAuthorizationError('Spotify benötigt eine neue Anmeldung.');
+    if (response.status === 429) {
+      const retryAfter = response.headers.get('retry-after');
+      const seconds = Number(retryAfter);
+      const retryAfterMs = Number.isFinite(seconds)
+        ? seconds * 1000
+        : Math.max(0, Date.parse(retryAfter || '') - Date.now());
+      spotifyRetryAt = Date.now() + Math.max(1_000, retryAfterMs || 5_000);
+      throw new Error('Spotify begrenzt Anfragen gerade. Der Controller versucht es automatisch erneut.');
+    }
+    if (response.status >= 500 && attempt === 0) {
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      continue;
+    }
     if (!response.ok) throw new Error(data?.error?.message || `Spotify antwortet mit ${response.status}.`);
+    spotifyRetryAt = 0;
     return data;
   }
   throw new SpotifyAuthorizationError('Spotify benötigt eine neue Anmeldung.');
@@ -531,8 +747,34 @@ function clearSchedule() {
   scheduledPlayback = null;
 }
 
+// Only commands that change what plays replace the planned switch at the
+// end of the current song. Lookups (search, track, playlist, devices) must
+// keep it: otherwise a search during the last request cancels the pause
+// and Spotify's own autoplay fills the silence with unrequested songs.
+const PLAYBACK_COMMANDS = new Set(['playUris', 'playContext', 'transfer', 'pause', 'resume', 'next']);
+
+// Requests play exactly once and in order. Shuffle (also Smart Shuffle) and
+// repeat left on in the Spotify app would mix them or play the last one again
+// and again, so the Jam switches both off when it starts requests. A playlist
+// started from Respawn may stay shuffled, but must not repeat either: after
+// its last song the Jam continues with requests or pauses. Set after the
+// start, when the device is surely active. Best effort: a device that refuses
+// still plays, and Respawn's heartbeat pauses a request that repeats anyway.
+async function disableRepeat(deviceId, { keepShuffle = false } = {}) {
+  const device = encodeURIComponent(deviceId);
+  const paths = [`/me/player/repeat?state=off&device_id=${device}`];
+  if (!keepShuffle) paths.unshift(`/me/player/shuffle?state=false&device_id=${device}`);
+  for (const pathname of paths) {
+    try {
+      await spotify(pathname, { method: 'PUT' });
+    } catch (error) {
+      console.error('[Jam] Shuffle/Wiederholen ausschalten fehlgeschlagen:', error.message);
+    }
+  }
+}
+
 async function executeCommand(type, payload = {}) {
-  if (type !== 'scheduleQueue') clearSchedule();
+  if (PLAYBACK_COMMANDS.has(type)) clearSchedule();
   if (type === 'devices') {
     const data = await spotify('/me/player/devices');
     return { devices: (data.devices || []).filter((device) => device.id && !device.is_restricted).map((device) => ({
@@ -547,10 +789,15 @@ async function executeCommand(type, payload = {}) {
     };
   }
   if (type === 'track') return publicTrack(await spotify(`/tracks/${encodeURIComponent(payload.trackId)}`));
+  if (type === 'playlist') {
+    if (!/^[A-Za-z0-9]{22}$/.test(payload.playlistId || '')) throw new Error('Ungültige Spotify-Playlist.');
+    return publicPlaylist(await spotify(`/playlists/${encodeURIComponent(payload.playlistId)}?fields=id,uri,name,owner(display_name,id),images,tracks(total)`));
+  }
   if (type === 'playUris') {
     await spotify(`/me/player/play?device_id=${encodeURIComponent(payload.deviceId)}`, {
       method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ uris: payload.uris, position_ms: 0 }),
     });
+    await disableRepeat(payload.deviceId);
     return { ok: true };
   }
   if (type === 'playContext') {
@@ -560,6 +807,7 @@ async function executeCommand(type, payload = {}) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ context_uri: payload.uri, position_ms: 0 }),
     });
+    await disableRepeat(payload.deviceId, { keepShuffle: true });
     return { ok: true };
   }
   if (type === 'transfer') {
@@ -587,8 +835,9 @@ async function executeCommand(type, payload = {}) {
     scheduledPlayback = setTimeout(async () => {
       scheduledPlayback = null;
       try {
-        if (payload.uris?.length) await executeCommand('playUris', { deviceId: payload.deviceId, uris: payload.uris });
-        else await executeCommand('pause', { deviceId: payload.deviceId });
+        const type = payload.uris?.length ? 'playUris' : 'pause';
+        await executeCommand(type, { deviceId: payload.deviceId, uris: payload.uris });
+        followUpCommand(type, { deviceId: payload.deviceId });
         await sendHeartbeat();
       } catch (error) { console.error('[Jam] Geplanter Wechsel fehlgeschlagen:', error.message); }
     }, Math.max(0, Number(payload.delayMs || 0)));
@@ -606,6 +855,9 @@ async function pollCommands() {
     if (command) {
       try {
         const data = await executeCommand(command.type, command.payload);
+        // A started or changed Jam must show its new state at once, even
+        // before the next heartbeat reports the session as active.
+        followUpCommand(command.type, command.payload);
         await respawnFetch(`/api/music/controller/commands/${encodeURIComponent(command.id)}/result`, {
           method: 'POST', body: JSON.stringify({ ok: true, data }),
         });
@@ -629,48 +881,75 @@ async function pollCommands() {
   finally { polling = false; }
 }
 
-async function sendHeartbeat() {
-  if (heartbeating || !state.controllerToken || runtime.needsPairing) return;
-  heartbeating = true;
-  const controllerToken = state.controllerToken;
-  let playbackAvailable = false;
-  let publicPlayback = null;
-  try {
-    const playback = await spotify('/me/player');
-    playbackAvailable = true;
-    let nextTrack = null;
-    if (playback?.context?.type === 'playlist') {
-      try {
-        const queue = await spotify('/me/player/queue');
-        nextTrack = publicTrack(queue?.queue?.[0]);
-      } catch (error) {
-        console.error('[Jam] Spotify-Warteschlange:', error.message);
-      }
-    }
-    publicPlayback = playback ? {
-      track: publicTrack(playback.item), deviceId: playback.device?.id || null,
-      context: playback.context ? { type: playback.context.type || null, uri: playback.context.uri || null } : null,
-      nextTrack,
-      isPlaying: Boolean(playback.is_playing), progressMs: Number(playback.progress_ms || 0),
-    } : null;
-    runtime.spotify = 'connected';
-    runtime.spotifyMessage = null;
-  } catch (error) {
-    if (error instanceof SpotifyAuthorizationError) {
-      markSpotifyAuthorizationRequired(error.message);
-    } else {
-      runtime.spotify = 'unavailable';
-      runtime.spotifyMessage = 'Spotify ist vorübergehend nicht erreichbar. Es wird automatisch erneut versucht.';
-      console.error('[Jam] Spotify-Status:', error.message);
-    }
+function prepareSpotifyQueueCache(playback) {
+  const contextUri = playback?.context?.type === 'playlist' ? playback.context.uri || null : null;
+  const currentTrackUri = playback?.item?.uri || null;
+  if (!contextUri) {
+    spotifyQueueCache = { contextUri: null, currentTrackUri: null, tracks: [] };
+    return;
   }
+  if (spotifyQueueCache.contextUri !== contextUri || spotifyQueueCache.currentTrackUri !== currentTrackUri) {
+    spotifyQueueCache = { contextUri, currentTrackUri, tracks: [] };
+  }
+}
+
+function publicSpotifyPlayback(playback) {
+  const playlistContext = playback?.context?.type === 'playlist';
+  const contextUri = playlistContext ? playback.context.uri || null : null;
+  const upcomingTracks = contextUri && spotifyQueueCache.contextUri === contextUri
+    ? spotifyQueueCache.tracks
+    : [];
+  return playback ? {
+    track: publicTrack(playback.item), deviceId: playback.device?.id || null,
+    context: playback.context ? { type: playback.context.type || null, uri: playback.context.uri || null } : null,
+    nextTrack: upcomingTracks[0] || null,
+    ...(playlistContext ? { upcomingTracks } : {}),
+    isPlaying: Boolean(playback.is_playing), progressMs: Number(playback.progress_ms || 0),
+  } : null;
+}
+
+async function refreshSpotifyQueue(playback) {
+  const contextUri = playback?.context?.type === 'playlist' ? playback.context.uri || null : null;
+  if (!contextUri || queueRefreshing) return;
+  const currentTrackUri = playback?.item?.uri || null;
+  const playbackChanged = lastSpotifyQueueContextUri !== contextUri
+    || lastSpotifyQueueTrackUri !== currentTrackUri;
+  // The upcoming songs only change with the song, the playlist or a request.
+  if (!playbackChanged && !spotifyQueueRefreshRequested) return;
+
+  queueRefreshing = true;
+  spotifyQueueRefreshRequested = false;
+  lastSpotifyQueueContextUri = contextUri;
+  lastSpotifyQueueTrackUri = currentTrackUri;
+  try {
+    const queue = await spotify('/me/player/queue');
+    if (spotifyQueueCache.contextUri === contextUri
+      && spotifyQueueCache.currentTrackUri === currentTrackUri) {
+      spotifyQueueCache = {
+        contextUri,
+        currentTrackUri,
+        tracks: (queue?.queue || []).slice(0, 10).map(publicTrack).filter(Boolean),
+      };
+    }
+  } catch (error) {
+    spotifyQueueRefreshRequested = true;
+    console.error('[Jam] Spotify-Warteschlange:', error.message);
+  } finally {
+    queueRefreshing = false;
+  }
+}
+
+async function postControllerHeartbeat(controllerToken, playbackAvailable, playback) {
   try {
     const heartbeat = {
       spotifyDisplayName: state.spotifyDisplayName,
       connectionStatus: { spotify: runtime.spotify, message: runtime.spotifyMessage },
     };
-    if (playbackAvailable) heartbeat.playback = publicPlayback;
-    await respawnFetch('/api/music/controller/heartbeat', { method: 'POST', body: JSON.stringify(heartbeat) });
+    if (playbackAvailable) heartbeat.playback = publicSpotifyPlayback(playback);
+    const response = await respawnFetch('/api/music/controller/heartbeat', { method: 'POST', body: JSON.stringify(heartbeat) });
+    const wasActive = jamSessionActive;
+    jamSessionActive = response?.sessionActive !== false;
+    if (jamSessionActive && !wasActive) requestSpotifyStatus();
     runtime.needsPairing = false;
     runtime.respawn = 'connected';
     runtime.respawnMessage = null;
@@ -686,12 +965,151 @@ async function sendHeartbeat() {
     }
     console.error('[Jam] Heartbeat:', error.message);
   }
-  finally { heartbeating = false; }
+}
+
+function requestSpotifyStatus({ queue = true } = {}) {
+  spotifyStatusRequests += 1;
+  nextSpotifyStatusAt = 0;
+  if (queue) spotifyQueueRefreshRequested = true;
+}
+
+// Decides what Spotify must be asked after a successful command. Every check
+// costs quota, so only what the command can have changed is read again.
+function followUpCommand(type, payload = {}) {
+  if (type === 'queueTrack') {
+    // Only Spotify's live queue changes, and Respawn shows it for playlists only.
+    if (spotifyQueueCache.contextUri) requestSpotifyStatus();
+    return;
+  }
+  if (!PLAYBACK_COMMANDS.has(type)) return;
+  const queueMayChange = type !== 'pause' && type !== 'resume';
+  if (browserDeviceId && payload.deviceId === browserDeviceId) {
+    // The browser player reports the new state itself.
+    if (queueMayChange) spotifyQueueRefreshRequested = true;
+    return;
+  }
+  requestSpotifyStatus({ queue: queueMayChange });
+}
+
+function scheduleSpotifyStatus(playback) {
+  const now = Date.now();
+  let next = now + (jamSessionActive ? SPOTIFY_ACTIVE_STATUS_INTERVAL_MS : SPOTIFY_IDLE_STATUS_INTERVAL_MS);
+  const durationMs = Number(playback?.item?.duration_ms || 0);
+  if (jamSessionActive && playback?.is_playing && durationMs > 0) {
+    const remainingMs = Math.max(0, durationMs - Number(playback.progress_ms || 0));
+    next = Math.min(next, now + remainingMs + SPOTIFY_TRACK_END_DELAY_MS);
+  }
+  nextSpotifyStatusAt = next;
+}
+
+const SPOTIFY_LONG_BLOCK_MS = 60_000;
+
+function markSpotifyUnavailable() {
+  const now = Date.now();
+  const longBlock = spotifyRetryAt - now > SPOTIFY_LONG_BLOCK_MS;
+  const withinGracePeriod = lastSpotifyPlaybackAt > 0 && now - lastSpotifyPlaybackAt <= SPOTIFY_STATUS_GRACE_MS;
+  if (withinGracePeriod && !longBlock) return;
+  runtime.spotify = 'unavailable';
+  if (!longBlock) {
+    runtime.spotifyMessage = 'Spotify ist vorübergehend nicht erreichbar. Es wird automatisch erneut versucht.';
+    return;
+  }
+  // A long Spotify block outlasts any retry, so name its end on the local
+  // page and in Jam instead of suggesting a short outage.
+  const until = new Date(spotifyRetryAt).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+  runtime.spotifyMessage = `Spotify sperrt die Wiedergabesteuerung dieses Spotify-Kontos wegen zu vieler Anfragen bis etwa ${until} Uhr. `
+    + 'Eine andere Spotify-App hilft dagegen nicht. Danach verbindet sich der Controller automatisch wieder.';
+}
+
+async function sendHeartbeat() {
+  if (heartbeating || !state.controllerToken || runtime.needsPairing) return;
+  heartbeating = true;
+  const controllerToken = state.controllerToken;
+  try {
+    let playbackAvailable = false;
+    let publicPlayback = null;
+    const now = Date.now();
+    if (browserPlayback) {
+      // Fresh from the browser player: needs no Spotify request, even during
+      // a Spotify block. A change requested meanwhile keeps its own check.
+      const playback = browserPlayback;
+      browserPlayback = null;
+      playbackAvailable = true;
+      lastSpotifyPlaybackAt = now;
+      prepareSpotifyQueueCache(playback);
+      publicPlayback = playback;
+      if (nextSpotifyStatusAt > 0) nextSpotifyStatusAt = Math.max(nextSpotifyStatusAt, now + SPOTIFY_BROWSER_STATUS_INTERVAL_MS);
+    } else if (now < spotifyRetryAt) {
+      // Asking again during a Spotify block only fills the log.
+      markSpotifyUnavailable();
+    } else if (now >= nextSpotifyStatusAt) {
+      // Planned before the request: a failure waits for the next regular slot.
+      // A change requested meanwhile keeps its immediate check, because this
+      // answer may predate it.
+      const requestsBefore = spotifyStatusRequests;
+      scheduleSpotifyStatus(null);
+      try {
+        const playback = await spotify('/me/player');
+        if (spotifyStatusRequests === requestsBefore) scheduleSpotifyStatus(playback);
+        playbackAvailable = true;
+        lastSpotifyPlaybackAt = Date.now();
+        prepareSpotifyQueueCache(playback);
+        publicPlayback = playback;
+        runtime.spotify = 'connected';
+        runtime.spotifyMessage = null;
+      } catch (error) {
+        if (error instanceof SpotifyAuthorizationError) {
+          markSpotifyAuthorizationRequired(error.message);
+        } else {
+          markSpotifyUnavailable();
+          console.error('[Jam] Spotify-Status:', error.message);
+        }
+      }
+    }
+    await postControllerHeartbeat(controllerToken, playbackAvailable, publicPlayback);
+    if (playbackAvailable && publicPlayback) void refreshSpotifyQueue(publicPlayback);
+  } finally {
+    heartbeating = false;
+  }
+}
+
+function refreshSpotifyStatusNow() {
+  requestSpotifyStatus();
+  return sendHeartbeat();
 }
 
 const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url || '/', `http://${HOST}:${PORT}`);
+    if (url.pathname === '/web-player/state') {
+      const headers = localApiHeaders(req);
+      if (!headers) {
+        writeJson(res, 403, { error: 'Diese lokale Anfrage ist für die konfigurierte Respawn-Adresse nicht freigegeben.' });
+        return;
+      }
+      if (req.method === 'OPTIONS') {
+        res.writeHead(204, headers).end();
+        return;
+      }
+      if (req.method !== 'POST') {
+        writeJson(res, 405, { error: 'Methode nicht erlaubt.' }, headers);
+        return;
+      }
+      let playback;
+      try {
+        playback = browserPlaybackFromReport(await readJsonBody(req, BROWSER_STATE_MAX_BYTES));
+      } catch (error) {
+        writeJson(res, 400, { error: error.message }, headers);
+        return;
+      }
+      if (playback === undefined) {
+        writeJson(res, 400, { error: 'Ungültiger Wiedergabestand.' }, headers);
+        return;
+      }
+      acceptBrowserPlayback(playback);
+      res.writeHead(204, headers).end();
+      return;
+    }
     if (url.pathname === '/web-player/status' || url.pathname === '/web-player/token') {
       const headers = localApiHeaders(req);
       if (!headers) {
@@ -741,7 +1159,7 @@ const server = http.createServer(async (req, res) => {
     }
     if (req.method === 'POST' && url.pathname === '/retry') {
       await readLocalForm(req);
-      await sendHeartbeat();
+      await refreshSpotifyStatusNow();
       res.writeHead(302, { Location: '/' }).end();
       return;
     }
@@ -822,5 +1240,5 @@ function openSetupPageOnce() {
 }
 
 setInterval(pollCommands, 500).unref();
-setInterval(sendHeartbeat, 3_000).unref();
+setInterval(sendHeartbeat, HEARTBEAT_INTERVAL_MS).unref();
 if (state.controllerToken) void sendHeartbeat();

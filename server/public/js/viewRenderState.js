@@ -82,6 +82,9 @@ function captureFocusedElement(root) {
   if (element.matches('input, textarea, select')) snapshot.value = element.value;
   if (element.matches('input[type="checkbox"], input[type="radio"]')) snapshot.checked = element.checked;
   if (element.hasAttribute('aria-expanded')) snapshot.expanded = element.getAttribute('aria-expanded') === 'true';
+  // The view heading is focused by script after navigation and is only
+  // focusable through that tabindex. A re-render builds it anew without one.
+  if (element.getAttribute('tabindex') === '-1') snapshot.scriptFocus = true;
   if ('selectionStart' in element && typeof element.selectionStart === 'number') {
     snapshot.selectionStart = element.selectionStart;
     snapshot.selectionEnd = element.selectionEnd;
@@ -136,6 +139,9 @@ export function restoreViewRenderState(root, snapshot) {
 
   const focused = snapshot.focus && find(root, snapshot.focus.selector);
   if (focused instanceof HTMLElement) {
+    // Without its tabindex the rebuilt heading ignores focus(), and focus
+    // falls back to <body> after every background refresh.
+    if (snapshot.focus.scriptFocus && !focused.hasAttribute('tabindex')) focused.tabIndex = -1;
     if ('value' in snapshot.focus && focused.matches('input, textarea, select')) focused.value = snapshot.focus.value;
     if ('checked' in snapshot.focus && focused.matches('input[type="checkbox"], input[type="radio"]')) focused.checked = snapshot.focus.checked;
     const restoredByComponent = !focused.dispatchEvent(new CustomEvent(RESTORE_FOCUS_EVENT, {

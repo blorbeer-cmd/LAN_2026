@@ -176,7 +176,7 @@ kanonischen öffentlichen HTTPS-Ursprung in `PUBLIC_BASE_URL`; standardmäßig b
 Die vorhandene Compose-Datei übernimmt beide Werte aus der nicht versionierten `.env`.
 Der normale Healthcheck setzt keine Erreichbarkeit von ChatGPT voraus.
 
-Persönliche, eventgebundene OAuth-Freigaben und Bereinigungspläne werden durch Migration 138
+Persönliche, eventgebundene OAuth-Freigaben und Bereinigungspläne werden durch Migration 141
 in derselben SQLite-Datenbank gespeichert. Token werden nur gehasht abgelegt. Vor einem
 öffentlichen Wiederanlauf nach Restore die Freigaben prüfen und unerwünschte Zugänge widerrufen;
 ein Backup kann ältere Freigaben enthalten. Kurzlebige, noch nicht eingelöste OAuth-Anfragen

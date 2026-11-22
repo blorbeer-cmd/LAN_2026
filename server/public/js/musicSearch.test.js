@@ -8,6 +8,27 @@ import {
   musicSearchResultsHtml,
   musicSetupHtml,
 } from './views/music.js';
+import { lockMyIdToSession } from './whoami.js';
+
+function asPlayer(id, render) {
+  const previousDocument = globalThis.document;
+  const previousWindow = globalThis.window;
+  const previousCustomEvent = globalThis.CustomEvent;
+  globalThis.document = { querySelector: () => null };
+  globalThis.window = { dispatchEvent: () => {} };
+  globalThis.CustomEvent = class CustomEvent {
+    constructor(type) { this.type = type; }
+  };
+  lockMyIdToSession(id);
+  try {
+    return render();
+  } finally {
+    lockMyIdToSession('');
+    globalThis.document = previousDocument;
+    globalThis.window = previousWindow;
+    globalThis.CustomEvent = previousCustomEvent;
+  }
+}
 
 const searchResults = {
   tracks: [{
@@ -116,9 +137,9 @@ test('music session places the queue directly below the current playback', () =>
   }), /id="music-disconnect">Entkoppeln/);
 });
 
-test('music queue shortens long titles and opens full requests from their row', () => {
+test('music queue keeps titles static and makes the complete request row draggable', () => {
   const longName = 'Symphony No. 9 in D Minor, Op. 125 <Choral> IV. Presto';
-  const html = musicActiveSessionHtml({
+  const html = asPlayer('p-1', () => musicActiveSessionHtml({
     warning: null,
     session: {
       currentTrack: null,
@@ -133,8 +154,12 @@ test('music queue shortens long titles and opens full requests from their row', 
       progressMs: 0,
       playbackUpdatedAt: null,
     },
-  });
-  assert.match(html, /data-music-detail="req-1" title="Symphony No\. 9 in D Minor, Op\. 125 &lt;Choral&gt; IV\. Presto">Symphony No\. 9 in D Minor, Op\. 125 &lt;Cho…</);
+  }));
+  assert.match(html, /class="music-queue-row music-queue-request" role="row" data-music-request="req-1" draggable="true" tabindex="0"/);
+  assert.match(html, /class="music-queue-title" title="Symphony No\. 9 in D Minor, Op\. 125 &lt;Choral&gt; IV\. Presto">Symphony No\. 9 in D Minor, Op\. 125 &lt;Cho…</);
+  assert.match(html, /data-music-detail="req-1" aria-label="Symphony No\. 9 in D Minor, Op\. 125 &lt;Choral&gt; IV\. Presto verwalten"/);
+  assert.match(html, /data-music-queue-trash hidden/);
+  assert.doesNotMatch(html, /music-queue-open|music-queue-grip/);
   assert.match(html, /music-queue-who" role="cell">Kim/);
   assert.match(html, /25:20/);
   assert.doesNotMatch(html, /data-music-remove|data-music-move/);
@@ -186,10 +211,32 @@ test('music queue shows the remaining playlist tracks separately from requests',
   assert.match(html, /Der nächste Song/);
   assert.match(html, /Die Band/);
   assert.match(html, /music-queue-who" role="cell">Playlist/);
-  assert.match(html, /3 weitere Titel aus der Playlist/);
+  assert.match(html, /Noch 3 Playlist-Titel/);
   assert.match(html, /Playlist LAN &lt;Playlist&gt; startet auf LAN Boxen\./);
   assert.doesNotMatch(html, /Noch keine Wünsche/);
-  assert.doesNotMatch(html, /draggable/);
+  assert.doesNotMatch(html, /draggable|music-end-playlist/);
+});
+
+test('music queue lets members end a running playlist while requests wait behind it', () => {
+  const session = {
+    currentTrack: null,
+    playbackContext: { name: 'LAN Mix', remainingTrackCount: 12, addedByName: 'DJ Bob', nextTrack: null },
+    requests: [{
+      id: 'req-1', status: 'queued', trackUri: 'spotify:track:A', name: 'Wunsch', artist: 'Band',
+      requestedBy: 'p-2', requestedByName: 'Kim', durationMs: 180_000, imageUrl: null,
+    }],
+    hostPlayerId: 'p-9',
+    isPlaying: true,
+    deviceName: 'LAN Boxen',
+    progressMs: 0,
+    playbackUpdatedAt: null,
+  };
+  const member = asPlayer('p-1', () => musicActiveSessionHtml({ warning: null, session }));
+  assert.match(member, /<h2 id="music-queue-title">Als Nächstes<\/h2>\s*<button type="button" class="btn btn-sm" id="music-end-playlist">Playlist beenden<\/button>/);
+  assert.match(member, /data-music-request="req-1"/);
+
+  const withoutPlaylist = asPlayer('p-1', () => musicActiveSessionHtml({ warning: null, session: { ...session, playbackContext: null } }));
+  assert.doesNotMatch(withoutPlaylist, /music-end-playlist/);
 });
 
 test('music controller recovery distinguishes Spotify login from a transient outage', () => {

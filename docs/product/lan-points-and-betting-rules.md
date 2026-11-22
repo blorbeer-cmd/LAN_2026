@@ -49,7 +49,7 @@ Admins und der gespeicherte Event-Ersteller steuern unter **Events & Gruppen →
 die Anzeige. Der Ersteller erhält durch diese Rolle keine Finanz- oder Teilnehmerrechte.
 Gleichzeitige Änderungen derselben Anzeigeversion werden abgewiesen.
 
-Ausblenden entfernt Punktekonto, Verlauf, Ranglisten, Home-/Profil-Verweise, Wettbereiche und
+Ausblenden entfernt Punktekonto, Verlauf, Ranglisten, Profil-Verweise, Wettbereiche und
 Wettmitteilungen für Teilnehmer. Direkte Teilnehmer-API-Zugriffe sind gesperrt. Die administrative
 Punkteverwaltung bleibt erreichbar. Automatische Kategorie-Gutschriften und bestehende Wetten
 werden weiter abgewickelt; die Sichtbarkeit setzt nichts zurück. Neue Tipps, Änderungen und
@@ -150,7 +150,8 @@ frühere Endstände bleiben unverändert.
 Nach Eventende sind neue Tipps gesperrt, während Ergebnisse und Verlauf sichtbar bleiben.
 
 Ändert sich die Aufstellung eines Wettbewerbs vor dem Spiel, etwa durch Verschieben eines Spielers
-im Feinschliff oder durch ein korrigiertes Vorrundenspiel im K.-o.-Baum, gilt:
+im Feinschliff, durch Entfernen eines Spielers (auch wenn dabei ein Team wegfällt) oder durch ein
+korrigiertes Vorrundenspiel im K.-o.-Baum, gilt:
 
 - Ohne Tipps übernimmt der bestehende Markt die neue Aufstellung. Link und Mitteilung bleiben gültig.
 - Ein offener Markt mit Tipps wird vollständig erstattet. Im selben Schritt öffnet für dieselbe
@@ -253,14 +254,18 @@ To-do-Zeilen, -Formulare und -Details wiederholen die einheitliche Punktevergüt
 
 Die LAN-Übersicht bietet getrennte einklappbare Ranglisten für Orga, Spielen, Wetten und den
 Gesamtstand. Jede Kategorie zeigt die eigenen „Punkte“, den Rang und die „Platzpunkte“; die Rangliste
-verwendet dieselben berechtigten Plätze wie die Gesamtwertung. Verläufe und Diagramme lassen
+verwendet dieselben berechtigten Plätze wie die Gesamtwertung. Ihre Zeilen stellen die Kategoriepunkte
+rechts als „N P.“ in den Vordergrund; die Platzpunkte stehen darunter als „Wertung für Gesamtranking: N P.“.
+Die Wetten-Rangliste führt alle Teilnehmer: Punkte sind dort Wett-Startguthaben plus Nettoergebnis
+(ohne Wetten also 100 P.), Teilnehmer ohne Platz folgen den platzierten ohne Platznummer. Orga und
+Spielen listen nur platzierte Teilnehmer. Verläufe und Diagramme lassen
 sich aufklappen; die LAN-Punkteansicht enthält keine Spieleliste, nur die Tippübersicht. Seltenere Informationen stehen in Details oder der bestehenden Hilfe.
 
 Die Wettaktion steht im Header von Matchkarten, auch bei geschlossener Spielkarte. Ein einzelnes
 Angebot behält seine Statusbeschriftung („Jetzt tippen“, „Tipp ändern“, „Tippdetails“), erst
-mehrere bilden das Menü „Wetten“. Mitspieler und Admins starten ein Match über die eigene
-Aktion „Spiel starten“ mit Bestätigung; sie schließt die Tipps für alle und steht nicht mehr
-neben „Jetzt tippen“ im Menü. Die Metazeile der Karte nennt den Stand: „Tipps offen“,
+mehrere bilden das Menü „Wetten“. Mitspieler und Admins starten ein Match über „Spiel starten“
+mit Bestätigung im allgemeinen Menü „Aktion“ der Matchkarte; die Aktion schließt die Tipps für
+alle und steht nie neben „Jetzt tippen“ im Menü „Wetten“. Die Metazeile der Karte nennt den Stand: „Tipps offen“,
 „Tipps geschlossen“ oder „Abgerechnet“, Topf, Tippanzahl und den eigenen Tipp mit Team und
 Einsatz beziehungsweise nach der Abrechnung den Nettowert. Turnierkarten fassen alle Märkte
 zusammen: offene Tipprunden, sonst „Tipps geschlossen“, solange ein Ergebnis aussteht, danach
@@ -314,7 +319,7 @@ abwechselnder Hintergrundfläche, auch im geschlossenen Zustand.
 Auf schmalen Telefonen steht die Tippaktion unter dem Begegnungstext. Erstattete Märkte bleiben
 als Historie einsehbar und nennen im Tippdialog dauerhaft die Rückgabe aller Einsätze sowie den
 vorhandenen Erstattungsgrund. Das gilt auch nach erneutem Öffnen und bei einer Live-Erstattung.
-Gibt es offene Tipprunden, führt „Tipps ansehen“ auf Home dorthin. Admins finden in der
+Home zeigt kein Punktekonto; Punkte und Tipps erreicht man über die Navigation. Admins finden in der
 Punkteverwaltung unter „Wettrunden“ alle Märkte mit Status, Topf, Tippanzahl und den Aktionen
 Schließen, Wiederöffnen, Erstatten und Stornieren. Vor „LAN-Endwertung festschreiben“ nennt die
 Bestätigung die noch nicht abgerechneten Runden.

@@ -102,9 +102,9 @@ test('personal auth binds APIs to the session and protects API keys', () => {
       assert.equal(db.prepare('SELECT 1 FROM skills WHERE player_id = ? AND game_id = ?').get(bob.account.id, game.body.id), undefined);
 
       const catalogByMember = await request(app).post('/api/games').set('Cookie', alice.cookie).send({
-        name: 'Unauthorized Catalog Game',
+        name: 'Member Catalog Game',
       });
-      assert.equal(catalogByMember.status, 403);
+      assert.equal(catalogByMember.status, 201, JSON.stringify(catalogByMember.body));
       const suggestionByMember = await request(app).post('/api/games').set('Cookie', alice.cookie).send({
         name: 'Allowed Suggested Game',
         status: 'suggestion',

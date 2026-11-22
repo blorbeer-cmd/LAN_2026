@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { entryHtml } from './notificationBanner.js';
+import { api } from './api.js';
+import { lockMyIdToSession } from './whoami.js';
+import { entryHtml, markFeedEntriesSeen, notificationFeedEntries, refreshNotificationBanner } from './notificationBanner.js';
 
 const baseEntry = {
   id: 'entry-1',
@@ -100,4 +102,46 @@ test('a still-open entry with a future expiry is unaffected', () => {
   assert.match(html, /is-unread/);
   assert.doesNotMatch(html, /is-obsolete/);
   assert.doesNotMatch(html, /Obsolet|Abgelaufen/);
+});
+
+test('the center names the creator next to the title and in the link label', () => {
+  const html = entryHtml({ ...baseEntry, url: '/#broadcast', title: 'Durchsage', actorName: 'Anna' });
+  assert.match(html, /notification-center-entry-name">Durchsage von Anna</);
+  assert.match(html, /aria-label="Durchsage von Anna: Zu den Durchsagen"/);
+});
+
+test('the feed for the navigation counters is only known after a successful load and read', async () => {
+  const previous = { log: api.push.log, current: api.push.current, seen: api.push.seen, window: globalThis.window, document: globalThis.document };
+  globalThis.window = new EventTarget();
+  globalThis.document = { querySelector: () => null, getElementById: () => null };
+  let fail = true;
+  api.push.log = async () => {
+    if (fail) throw new Error('Service Unavailable');
+    return { entries: [{ ...baseEntry, seen: false }] };
+  };
+  api.push.current = async () => ({ entry: null });
+  try {
+    lockMyIdToSession('p1');
+    await refreshNotificationBanner();
+    assert.equal(notificationFeedEntries(), null, 'after a failure the feed is still unknown');
+
+    fail = false;
+    await refreshNotificationBanner();
+    assert.deepEqual(notificationFeedEntries().map((entry) => entry.id), ['entry-1']);
+
+    // A failed "read" write reports false, so the opened area can retry,
+    // and the reloaded entry is unread again.
+    api.push.seen = async () => { throw new Error('Service Unavailable'); };
+    assert.equal(await markFeedEntriesSeen(['entry-1']), false);
+    assert.equal(notificationFeedEntries()[0].seen, false);
+    api.push.seen = async () => ({});
+    assert.equal(await markFeedEntriesSeen(['entry-1']), true);
+    assert.equal(notificationFeedEntries()[0].seen, true);
+  } finally {
+    api.push.log = previous.log;
+    api.push.current = previous.current;
+    api.push.seen = previous.seen;
+    globalThis.window = previous.window;
+    globalThis.document = previous.document;
+  }
 });

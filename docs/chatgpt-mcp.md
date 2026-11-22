@@ -178,7 +178,7 @@ unerwünschte alte Zugänge widerrufen, bevor der Server wieder öffentlich zug�
 
 Die Integrationssuite `src/test/api.mcp.test.ts` prüft unter anderem OAuth/PKCE, Wiederholungen,
 Token-Widerruf, Schema-Validierung, nebenwirkungsfreie Vorschauen, Statistikdefinitionen,
-Umfragen ohne Antworten und veränderte/geschützte Löschkandidaten. Migration 138 wird mit
+Umfragen ohne Antworten und veränderte/geschützte Löschkandidaten. Migration 141 wird mit
 Legacy-Daten, Fehlerrollback und Wiederholung geprüft. Der bestehende Shell-Browser-Owner
 prüft die persönliche Verwaltungsseite und die leere Bereinigungsvorschau auf Handy und Laptop.
 

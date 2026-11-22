@@ -61,6 +61,7 @@ accessibility issues, responsive regressions, shadows and breakpoint decisions.
 | `--accent-2` | `#9163f5` | Brand gradient midpoint (violet) |
 | `--accent-3` | `#ef5da8` | Brand gradient end (pink) |
 | `--accent-gradient` | gradient of the three above | Primary buttons, wordmark, progress bars, brand touches |
+| `--accent-gradient-strong` | gradient of `--accent-strong` `#3d6fe0`, `--accent-2-strong` `#6a3fd8`, `--accent-3-strong` `#c2357f` | Same brand hues, deep enough for small white text (≥ 4.6:1 along the whole gradient): navigation and bell counters |
 | `--accent-text` | `#ffffff` | Text/icon color on top of `--accent-gradient` |
 | `--accent-bg` | `rgba(91, 140, 255, 0.16)` | Tinted accent fill for selected/active chip-style controls |
 | `--accent-bg-subtle` | `rgba(91, 140, 255, 0.07)` | Faint tint marking the signed-in player's own rows among equal siblings (tournament boards) |
@@ -226,7 +227,7 @@ columns; below that it keeps the shared modal width.
 `--search-select-results-max-height` (320px) keeps a long searchable option list usable without
 letting it cover the full page; additional results scroll inside the dark listbox.
 `--shell-bottom-inset` reserves the phone/laptop bottom navigation plus safe area and becomes zero
-for the wide desktop side rail. `--desktop-nav-width` (176px) keeps that rail compact while labels
+for the wide desktop side rail. `--desktop-nav-width` (192px) keeps that rail compact while labels
 remain visible, while `--desktop-supporting-pane-min-width` (320px) prevents supporting dashboard
 cards from collapsing below a useful scan width. Wide-desktop content may grow to 1600px; its
 centering calculation explicitly subtracts the rail so the navigation never narrows the usable
@@ -234,8 +235,10 @@ content column by accident. Mein Profil offers Automatic/Desktop/Laptop as one a
 choice. Automatic follows `--bp-xl`; below that breakpoint every preference intentionally retains
 compact geometry.
 The desktop rail uses standard 32px rows for a hovering fine pointer, with compact group spacing.
-Coarse-pointer navigation retains 44px targets. Labels and keyboard focus remain fully visible;
-the main list scrolls only when the available window height still cannot fit its entries.
+Coarse-pointer navigation retains 44px targets. Labels and keyboard focus remain fully visible.
+When the window is too short for the whole main list, Automatic uses the laptop shell instead of a
+scrolling rail and returns to the rail once the window is tall enough; an explicit Desktop choice
+keeps the rail and lets only its main list scroll.
 
 ## Breakpoints
 
@@ -326,8 +329,9 @@ they are next changed, and new work follows them right away.
 11. **Present results the same way everywhere.** A winner carries the green „Win“ chip (or a green
     winning score), the losers are muted and a draw reads „Remis“; gold frames or result badges are
     not used. Each result row or card has one fixed trailing action slot: „+“ for an open result,
-    a pencil for a recorded one. The „+“ itself stays neutral; on a fresh Match draw the
-    highlighted next step is the rightmost „Turnier erstellen“ in the primary gradient. Recording and editing open one compact dialog: choose a winner or enter point totals, then use the compact, right-aligned „Speichern“ action in either mode. Standings are real tables
+    a pencil for a recorded one. Match cards carry too many actions for single buttons: their
+    general actions, including recording or editing the result, share one „Aktion“ menu, while
+    betting keeps its separate „Wetten“ menu beside it. Recording and editing open one compact dialog: choose a winner or enter point totals, then use the compact, right-aligned „Speichern“ action in either mode. Standings are real tables
     with column headers, not packed strings.
 12. **Make selection lists quick to scan.** Selection lists are sorted alphabetically unless the
     order itself carries meaning (rankings, results). A list offers one bulk toggle that selects
@@ -440,6 +444,9 @@ Components are plain CSS classes (no JS component library) in `style.css`:
 - **Notification center** — presents personal notification state with text as well as visual
   treatment. Product lifecycles, actions and expiry rules live in
   [Product rules](../docs/product/README.md).
+- **Navigation counter** — `.nav-badge` puts the number of new notifications and open To-Dos of an
+  area on its navigation icon and disappears once the area is opened; geometry and accessibility
+  follow the [Navigationszähler](frontend-contracts/components/nav-badge.md) contract.
 - **Connection status** — `.connection-status` is the single global technical-state strip below the
   topbar. A short initial Socket.IO connection stays hidden to avoid startup flicker; offline and
   reconnect states remain visible with explicit German text until a confirmed reconnect hides the
@@ -724,8 +731,8 @@ nothing and produce a misleading success.
   right of the text they explain; display-only views carry no info tooltips.
 - [ ] Primary actions are compact header buttons, submits are right-aligned, and no button or red
   action spans the full card width without a documented reason.
-- [ ] Results use the „Win“ chip, muted losers and one trailing „+“/pencil slot with the shared
-  compact result dialog.
+- [ ] Results use the „Win“ chip, muted losers and one trailing „+“/pencil slot (Match cards: an
+  „Aktion“ menu entry) with the shared compact result dialog.
 - [ ] Selection lists are alphabetical, offer one bulk toggle and a visible named search field,
   and touch layouts have an alternative to drag and drop.
 - [ ] No accent rail or accent frame is used as decoration.

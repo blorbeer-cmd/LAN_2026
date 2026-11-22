@@ -11,19 +11,41 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu TV-Kiosk, Jam
   clock line up with the outer edges of the cards. The keyboard-accessible toggle reflects whether
   browser fullscreen is active, idles out of sight in fullscreen until the mouse moves, and is
   omitted where the Fullscreen API is missing.
+- **Type sizes**: The Broadcast is read from across the room and uses two text sizes only: the
+  content size (`--font-size-xl`, the newsticker lead set the benchmark) for everything people
+  read, card headings included, and one step smaller (`--font-size-lg`) for secondary details such
+  as ages, counts, kickers and status chips.
 - **Banner**: Only the newest active system notification appears below the header as one
   full-width brand-gradient banner; without one, the cards move up directly below the header.
   Title and body share one line separated by a dash and may wrap to a second line; the right side
   shows the notification's age („gerade eben“, „vor 12 Min.“, „vor 3 Std.“, „seit Samstag“)
-  instead of a second clock time. A notification disappears when its topic is resolved or expires
-  or when a newer one replaces it. Separate food-order summary cards are omitted because order
+  instead of a second clock time. A notification disappears when its topic is resolved or expires,
+  when a newer one replaces it, and at the latest ten minutes after it was sent. Separate food-order summary cards are omitted because order
   pushes already use this banner.
 - **Cards**: Four cards remain a 2×2 grid: Live-Status and Newsticker above Abstimmung and
-  Turnier/Ergebnisse, with the Jam bar below. Banner, header and Jam bar share the card edges and the card
+  Turnier/Ergebnisse. The Jam bar sits between the banner and the cards. Banner, header and Jam bar share the card edges and the card
   content inset. A card without data centers one short line at content size in the whole card.
-- **Live-Status**: shows every participant including offline ones, playing first. It uses the
-  fewest columns (up to three, each at least 240 px wide) that show everyone; only if even that does
-  not fit do pages rotate, marked by dots.
+- **Live-Status**: shows every participant including offline ones, alphabetically by name regardless
+  of status so live updates never move people around. Like Home, but
+  without the own pause toggle („Dein Status“), a single-line strip beside the Live-Status heading
+  names each running game with its player count (people icon plus number, „N Spieler“ as accessible
+  name), largest group first; it is omitted while nobody plays and never wraps: game names stay
+  whole, games that do not fit, the smallest groups first, are summed up in one compact „+N“ label
+  („N weitere Spiele“ as accessible name). The largest game always stays and keeps its whole name
+  wherever it fits beside that label. Otherwise only its name shortens, never below about six
+  characters next to its count, so the label keeps every other running game counted; the label
+  gives way only where even that shortest name would not fit beside it. Each player row shows an
+  avatar, name, and status marker: a glowing green diamond for
+  „Spielt“, a filled blue circle for „Online“, an amber ring for „Pause“ and a hollow grey ring for
+  „Offline“. In forced colors, the diamond and circle remain filled, the pause ring is dashed and
+  the offline ring is solid. The German state stays available as the marker's accessible name and tooltip. The roster
+  uses four columns on wide cards and fewer on narrow cards, budgeting 140 px per column including spacing. Short
+  rosters stretch their row surfaces across the available card height while text, avatars and markers keep their
+  established size. Long player names are shortened
+  with an ellipsis instead of
+  widening a column. If the roster exceeds the available height, the rows tighten first. Larger
+  rosters rotate pages, marked by dots. The game counts
+  stay in the heading while pages rotate. On narrow cards the strip sits below the heading text.
 - **Newsticker**: a timeline of playful, clearly invented headlines. The server writes one new
   line every three to ten minutes for the whole event, so every Broadcast screen of that event shows the same
   feed; a new feed starts with a full set of ten lines. A screen that runs on a signed-in account
@@ -51,7 +73,10 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu TV-Kiosk, Jam
   The displayed round vertically centers its participant
   count in the status header and show the current ranking in one column, with every game name
   replaced by a stable, differently sized random-character mask plus blur so the room display
-  cannot influence voting. Single-choice runoffs are explicitly labeled „Stichwahl“. Rows keep
+  cannot influence voting. Single-choice runoffs are explicitly labeled „Stichwahl“. The muted
+  line below the heading — of the running round and of the revealed result — names the title and
+  the starter („von <Name>“); like in the Vote view, legacy rounds and deleted starters show no
+  name. Rows keep
   their normal size; the card shows as many as fit and re-fits whenever its height changes, for
   example when entering fullscreen. After a round closes, a five-second countdown hides every
   result and reuses Arcade's large layered gradient/glow number with its per-second pop effect.
@@ -117,19 +142,39 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu TV-Kiosk, Jam
   table with one fixed „Hinzufügen“ or „Abspielen“ column. A playlist
   result starts its complete Spotify playback context and replaces the
   current playback plus pending requests after explicit confirmation. While that context is active,
-  „Als Nächstes“ reads Spotify's live queue and names the actual next track. It then shows the
-  remaining playlist-track count separately from additional song requests.
-  Those requests follow Spotify's append-only queue in request order; reorder and remove
-  controls stay hidden because Spotify exposes neither operation for its live queue. Requests form a quiet table without column headers and
+  „Als Nächstes“ reads Spotify's live queue and lists the next five songs in Spotify's order,
+  playlist songs and requests alike (a controller package downloaded before this change reports
+  only the next song until it is downloaded again). Below them it shows how many further playlist
+  songs remain. A request removed during the playlist is left out of that list.
+  The same song may be requested several times; each copy is its own request with its own
+  requester and position. When a song ends and the identical song starts again from the
+  beginning while a copy still waits, that copy becomes the playing request.
+  Those requests follow Spotify's append-only queue in request order; reordering stays hidden
+  while a playlist is active because Spotify exposes no reorder for its live queue. Removing a
+  request still works: it leaves Respawn's queue immediately, and because Spotify cannot drop it
+  from its own queue, the Jam skips that song the moment Spotify starts it. While a playlist is
+  active, the header of „Als Nächstes“ carries a neutral „Playlist beenden“ for every member,
+  confirmed in a red dialog. The song playing at that moment may finish; afterwards the waiting
+  requests play in their order, or the Jam pauses when none wait. The playlist and its preview
+  leave app and kiosk at once. The end is remembered: should Spotify keep playing that playlist
+  anyway, the next playlist song counts as foreign playback and is replaced by the waiting requests
+  or paused. Of two parallel ends one wins, the other receives `409`. Otherwise a playlist
+  finishes naturally, is replaced by another explicitly confirmed playlist, or ends with the Jam.
+  Requests form a quiet table without column headers and
   with equal row heights: position, small artwork, title (shortened after 40 characters) above the
   artist, requester (the viewer's own name in bold) and duration; on phones the requester joins the
-  artist line. Their order is the shared queue order. Clicking a row opens a detail dialog with the
-  full title, album, requester, duration and position plus equally wide „Nach oben“, „Nach unten“
-  and „Entfernen“; every member may reorder or remove every request. On pointer devices two or more
-  queued requests can also be reordered through native drag-and-drop. Respawn persists that order and replaces the active Spotify URI context at the
-  current playback position so the visible order also becomes the actual playback order.
-  The kiosk reuses a single compact full-width music bar below the fixed dashboard and shows current
-  track, progress and the actual next track without exposing controls or Spotify credentials. If
+  artist line. Their order is the shared queue order. Titles are static text. On fine-pointer
+  devices the complete request row is draggable without a permanent handle: dropping between rows
+  reorders it, and starting a drag reveals a fixed trash target that removes it on drop. Keyboard
+  users focus the row and use the arrow keys or Delete. Touch layouts expose one trailing management
+  action with the available „Nach oben“, „Nach unten“ and „Entfernen“ alternatives. Every member may remove
+  every request; when no playlist controls the order, every member may also reorder them. Respawn
+  persists that order and replaces the active Spotify URI context at the current playback position
+  so the visible order also becomes the actual playback order.
+  The kiosk reuses a single compact full-width music bar between the banner and the dashboard cards.
+  It uses smaller artwork and exactly two text lines per side: title above artist/requester, without
+  separate „Jetzt läuft“ or „Als Nächstes“ labels. Current progress and time share the metadata line.
+  The bar shows the actual next track without exposing controls or Spotify credentials. If
   Spotify has not exposed a next track yet, it shows the playlist's shuffle state, remaining count
   and waiting song requests instead of an empty request message. The fixed
   music bar offers one local setup action before a session when the Jam controller runs on that
@@ -159,6 +204,16 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu TV-Kiosk, Jam
   controller only after a required confirmation checkbox, with both actions side by side.
   Respawn's offline state therefore offers reconnection first and a new download only as a fallback.
   Controller requests have bounded timeouts and retry automatically after transient network errors.
+  Current playback is reported independently from the slower Spotify queue lookup, so queue latency
+  cannot hold the progress display back. A short Spotify status failure keeps the last successful
+  playback and connected state for 30 seconds; only a sustained outage shows the recovery message.
+  Spotify rate limits are retried after the advertised delay; a long block names its end and is
+  waited out without further Spotify requests. To stay within the shared Spotify app quota, the
+  controller keeps its three-second Respawn heartbeat but reads Spotify only after a command that
+  can change what it shows, at a Jam start, shortly after the expected song end and otherwise every
+  20 seconds during a Jam or once a minute without one. Song wishes from search results reuse the
+  searched track details instead of a second Spotify lookup. A Respawn browser player on the controller computer reports its own
+  state changes through the loopback controller, which then needs Spotify only as a safety net.
   Every group owner and admin can end the active Jam and then explicitly disconnect the controller
   through the collapsible „Verbindung verwalten“ card with a neutral „Entkoppeln“ and a red
   confirmation.

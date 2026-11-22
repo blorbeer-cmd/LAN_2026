@@ -1,4 +1,4 @@
-import { pointsHomeHtml, currentPointStandings } from './points.js';
+import { ensurePoints, currentPointStandings } from './points.js';
 // Home (formerly "Live-Status"): the landing view and the page everyone
 // keeps coming back to during the party. Stacks, in order of urgency: what's
 // currently running (open vote / active tournament / open food order /
@@ -13,6 +13,7 @@ import { api } from '../api.js';
 import { state } from '../state.js';
 import { escapeHtml, formatDateTime, stateLabel, avatarHtml, gameChipsHtml } from '../format.js';
 import { getMyId } from '../whoami.js';
+import { activeGameGroups } from '../liveActivity.js';
 import { showToast } from '../toast.js';
 import { icon } from '../icons.js';
 import { renderSeatingPlan } from './seating.js';
@@ -580,42 +581,29 @@ function wireMyTodos(container, ctx) {
 // running right now and how many/who — the player names sit in a tooltip so
 // the chip row stays compact even with a long roster on one game.
 function renderActiveGroups(players) {
-  const byGame = new Map();
-  for (const p of players) {
-    if (p.state !== 'playing') continue;
-    for (const g of p.games) {
-      const entry = byGame.get(g.game_id) ?? { id: g.game_id, name: g.game_name, icon: g.game_icon, players: [] };
-      entry.players.push(p.name);
-      byGame.set(g.game_id, entry);
-    }
-  }
-  if (byGame.size === 0) return '';
-
-  const groups = [...byGame.values()]
-    .sort((a, b) => b.players.length - a.players.length)
-    .map((g) => {
-      const count = g.players.length;
-      const namesList = g.players.slice().sort((a, b) => a.localeCompare(b, 'de')).join(', ');
-      return `
-      <div class="chip" title="${escapeHtml(namesList)}"><strong>${escapeHtml(g.name)}</strong> <span class="muted">· ${count} Spieler</span></div>`;
-    })
+  const groups = activeGameGroups(players);
+  if (groups.length === 0) return '';
+  const chips = groups
+    .map((g) => `
+      <div class="chip" title="${escapeHtml(g.players.join(', '))}"><strong>${escapeHtml(g.name)}</strong> <span class="muted">· ${g.players.length} Spieler</span></div>`)
     .join('');
 
   return `
     <div class="home-page-subsection stack">
       <h3>Gerade aktiv</h3>
-      <div class="chip-list">${groups}</div>
+      <div class="chip-list">${chips}</div>
     </div>
   `;
 }
 
 // Leaderboard snapshot: the top six as a RankedList, read top to bottom.
-function renderLeaderboardTop() {
+function renderLeaderboardTop(ctx) {
   // The Auswertung area (leaderboard/analytics/hallOfFame) is only reachable
   // with the device-local Admin mode active (see app.js's switchView()) — a
   // preview here would otherwise offer a "Gesamte Rangliste" link that
   // silently redirects a regular member to Essen instead.
   if (!isAdmin()) return '';
+  ensurePoints(ctx);
   const lanStandings = currentPointStandings();
   const standings = lanStandings ?? state.leaderboard?.standings ?? [];
   if (standings.length === 0) return '';
@@ -678,7 +666,6 @@ export function renderHome(container, ctx) {
       <div class="grouped-page-sections home-desktop-layout">
         ${renderStatus()}
         ${renderMyTodos()}
-        ${pointsHomeHtml(ctx)}
         ${emptyStateHtml({
           text: 'Noch keine Spieler.',
           illustration: { src: '/img/mascot.svg', alt: '', width: 72, height: 66, className: 'mascot' },
@@ -740,7 +727,7 @@ export function renderHome(container, ctx) {
     <h1 class="view-title">Home</h1>
     <div class="grouped-page-sections home-desktop-layout">
       ${renderGeneralEventOverview()}
-      ${isEventlessGroup ? `${renderMyTodos()}${renderGroupMembers()}` : `${renderStatus()}${renderMyTodos()}${pointsHomeHtml(ctx)}`}
+      ${isEventlessGroup ? `${renderMyTodos()}${renderGroupMembers()}` : `${renderStatus()}${renderMyTodos()}`}
       ${
         trackingEnabled
           ? `<section class="card grouped-page-section stack" aria-labelledby="home-live-title">
@@ -752,7 +739,7 @@ export function renderHome(container, ctx) {
           : ''
       }
       ${seatingEnabled ? renderHomeSeating(ctx) : ''}
-      ${trackingEnabled ? renderLeaderboardTop() : ''}
+      ${trackingEnabled ? renderLeaderboardTop(ctx) : ''}
     </div>
   `;
 

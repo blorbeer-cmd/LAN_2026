@@ -22,14 +22,27 @@ function rowsHtml(entries, admin = false) {
   </li>`).join('')}</ol>`;
 }
 
+// Betting lists every participant on the wallet scale: the shared start
+// credit plus the net betting result, so nobody without a place disappears.
+// Players without a place follow the ranked ones without a place number.
+function categoryRows(data, key) {
+  const rows = data.standings ?? [];
+  const byName = (a, b) => a.name.localeCompare(b.name, 'de');
+  if (key !== 'betting') return rows.filter((row) => row.categories[key].rank !== null)
+    .sort((a, b) => a.categories[key].rank - b.categories[key].rank || byName(a, b));
+  const rank = (row) => row.categories.betting.rank ?? Infinity;
+  return [...rows].sort((a, b) => rank(a) - rank(b) || b.categories.betting.raw - a.categories.betting.raw || byName(a, b));
+}
+
 export function categoryPointsHtml(data, { columns = 2 } = {}) {
+  const bettingStart = data.settings?.initial_points ?? 0;
+  const shown = (key, value) => key === 'betting' ? bettingStart + value : value;
   const categories = Object.entries(POINT_CATEGORIES).map(([key, label]) => {
     const score = data.categoryStanding?.categories?.[key];
-    const leaders = (data.standings ?? []).filter((row) => row.categories[key].rank !== null)
-      .sort((a, b) => a.categories[key].rank - b.categories[key].rank || a.name.localeCompare(b.name, 'de'));
+    const leaders = categoryRows(data, key);
     const ranking = leaders.length ? rankedListHtml(leaders.map((row) => ({
-      rank: row.categories[key].rank, title: e(row.name),
-      meta: `${e(row.categories[key].raw)} Punkte`, value: `${e(row.categories[key].placePoints)} P.`,
+      rank: row.categories[key].rank ?? '', title: e(row.name),
+      meta: `Wertung für Gesamtranking: ${e(row.categories[key].placePoints)} P.`, value: `${e(shown(key, row.categories[key].raw))} P.`,
     })), { ranked: true, columns, label: `${label}-Rangliste` }) : emptyStateHtml('Noch keine Platzierung.');
     const participation = data.bettingParticipation;
     const needsMinimum = key === 'betting' && score?.rank == null && participation && !participation.hasMinimum;
@@ -38,7 +51,7 @@ export function categoryPointsHtml(data, { columns = 2 } = {}) {
       ? `${participation.settledTips}/${participation.minimumTips} abgerechnete Tipps · Noch ${missing === 1 ? 'ein regulär abgerechneter Tipp' : `${missing} regulär abgerechnete Tipps`} nötig. Für einen Platz muss dein Nettogewinn positiv sein.`
       : participation && (data.categoryBalances?.betting ?? 0) <= 0 ? 'Noch kein Platz: Für die Wettwertung ist positiver Nettogewinn nötig.' : '';
     return pointsSectionHtml(`ranking-${key}`, label, `${hint ? `<p class="muted">${e(hint)}</p>` : ''}${ranking}`, {
-      metaHtml: `<span data-category-balance="${key}">${e(data.categoryBalances?.[key] ?? 0)}</span> Punkte${score ? ` · <span data-category-score="${key}">${score.rank === null ? 'Kein Platz' : `Platz ${score.rank}`} · ${e(score.placePoints)} Platzpunkte</span>` : ''}${needsMinimum ? ` · ${e(participation.settledTips)}/${e(participation.minimumTips)} abgerechnet` : ''}`,
+      metaHtml: `<span data-category-balance="${key}">${e(shown(key, data.categoryBalances?.[key] ?? 0))}</span> Punkte${score ? ` · <span data-category-score="${key}">${score.rank === null ? 'Kein Platz' : `Platz ${score.rank}`} · ${e(score.placePoints)} Platzpunkte</span>` : ''}${needsMinimum ? ` · ${e(participation.settledTips)}/${e(participation.minimumTips)} abgerechnet` : ''}`,
       label: `${label}-Rangliste`,
     });
   }).join('');

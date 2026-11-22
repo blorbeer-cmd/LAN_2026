@@ -433,6 +433,28 @@ function checkClearFx(prefix, playerState) {
   }
 }
 
+function paintNextPiece(piece) {
+  const canvas = document.querySelector('#tetris-next-piece');
+  const type = piece?.type ?? '';
+  if (!canvas || canvas.dataset.piece === type) return;
+  canvas.dataset.piece = type;
+  canvas.setAttribute('aria-label', type ? `Nächster Stein: ${type}` : 'Kein nächster Stein');
+  canvas.closest('.tetris-next').classList.toggle('is-empty', !piece);
+
+  const cx = canvas.getContext('2d');
+  cx.clearRect(0, 0, canvas.width, canvas.height);
+  if (!piece) return;
+
+  const cell = 18;
+  const xs = piece.cells.map(([x]) => x);
+  const ys = piece.cells.map(([, y]) => y);
+  // Centre the occupied cells, including pieces whose spawn origin is offset.
+  const left = (canvas.width - (Math.min(...xs) + Math.max(...xs) + 1) * cell) / 2;
+  const top = (canvas.height - (Math.min(...ys) + Math.max(...ys) + 1) * cell) / 2;
+  cx.fillStyle = COLORS[piece.color];
+  for (const [x, y] of piece.cells) cx.fillRect(left + x * cell, top + y * cell, cell - 1, cell - 1);
+}
+
 function paint() {
   if (!latestState) return;
   const me = latestState.players.find((player) => player.playerId === myId());
@@ -446,6 +468,7 @@ function paint() {
     column.classList.toggle('is-eliminated', Boolean(playerState && !playerState.alive));
     column.classList.toggle('is-target', match?.mode === 'arena' && me?.targetId === playerState?.playerId);
   });
+  paintNextPiece(me?.alive ? me.nextPiece : null);
   updateArenaInfo();
   paintOverlay();
 }
@@ -570,8 +593,20 @@ function endResultHtml() {
 
 // Both boards use the same fixed internal resolution; CSS scales them to equal
 // display size. An extra overlay canvas carries the particle effects.
-function boardColumn(prefix, label, player, { primary = false } = {}) {
+function boardColumn(prefix, label, player, { primary = false, arenaLocal = false } = {}) {
   const profile = { ...(playerById(player.id) ?? {}), ...player };
+  const nextPreview = arenaLocal && !match.ended ? `
+      <div class="tetris-next is-empty">
+        <span aria-hidden="true">Nächster Stein</span>
+        <canvas id="tetris-next-piece" width="96" height="48" role="img" aria-label="Kein nächster Stein"></canvas>
+      </div>` : '';
+  const playfield = `
+      <div id="${prefix}-wrap" class="tetris-canvas-wrap"${arenaLocal ? ' data-countdown-anchor' : ''}>
+        <canvas id="${prefix}" width="${BOARD_W}" height="${BOARD_H}" class="tetris-canvas"></canvas>
+        <canvas id="${prefix}-fx" width="${BOARD_W}" height="${BOARD_H}" class="tetris-fx" aria-hidden="true"></canvas>
+        ${prefix === 'tetris-mine' ? `<div id="tetris-overlay" class="tetris-overlay" hidden></div>` : ''}
+        <div id="${prefix}-incoming" class="tetris-incoming"></div>
+      </div>`;
   return `
     <div class="tetris-board-col${primary ? ' is-primary' : ''}" data-tetris-player-id="${escapeHtml(player.id)}" data-tetris-prefix="${prefix}">
       <div class="tetris-board-head">
@@ -579,12 +614,7 @@ function boardColumn(prefix, label, player, { primary = false } = {}) {
         <span class="tetris-board-name player-name">${escapeHtml(label)}</span>
         <span id="${prefix}-score" class="tetris-board-score"></span>
       </div>
-      <div id="${prefix}-wrap" class="tetris-canvas-wrap">
-        <canvas id="${prefix}" width="${BOARD_W}" height="${BOARD_H}" class="tetris-canvas"></canvas>
-        <canvas id="${prefix}-fx" width="${BOARD_W}" height="${BOARD_H}" class="tetris-fx" aria-hidden="true"></canvas>
-        ${prefix === 'tetris-mine' ? `<div id="tetris-overlay" class="tetris-overlay" hidden></div>` : ''}
-        <div id="${prefix}-incoming" class="tetris-incoming"></div>
-      </div>
+      ${nextPreview ? `<div class="tetris-primary-playfield">${playfield}${nextPreview}</div>` : playfield}
       <div id="${prefix}-stats" class="muted tetris-stats-line arcade-fullscreen-hidden"></div>
     </div>`;
 }
@@ -637,7 +667,7 @@ export function renderTetris(container, _ctx) {
   const boardFor = (player, index, primary = false) => {
     const prefix = primary ? 'tetris-mine' : `tetris-player-${index}`;
     const label = player.id === myId() ? 'Du' : player.name;
-    return boardColumn(prefix, label, player, { primary });
+    return boardColumn(prefix, label, player, { primary, arenaLocal: match.mode === 'arena' && player === mine });
   };
   const boardLayout =
     match.mode === 'arena' && mine
@@ -652,7 +682,7 @@ export function renderTetris(container, _ctx) {
     <div id="tetris-game" class="grouped-page-sections">
       ${endResultHtml()}
       <section class="card arcade-stage">
-        <div id="tetris-boards" data-countdown-anchor class="tetris-boards ${match.mode === 'arena' ? 'is-arena' : 'is-duel'}">
+        <div id="tetris-boards"${match.mode === 'arena' && mine ? '' : ' data-countdown-anchor'} class="tetris-boards ${match.mode === 'arena' ? 'is-arena' : 'is-duel'}">
           ${boardLayout}
         </div>
       </section>

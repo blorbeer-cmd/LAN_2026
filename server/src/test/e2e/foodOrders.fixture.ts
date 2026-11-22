@@ -324,7 +324,9 @@ flowTest('Essensbestellung: direkte Zahlung pro Personenblock und Lebenszyklus',
   await page.route('**/api/food-orders', closeRefreshRoute);
   // A short phone viewport keeps the compact sent card taller than the
   // scroller, so a scroll reset would still be observable after closing.
-  await page.setViewportSize({ width: 390, height: 480 });
+  // Opening Essen has already read its notification, so no highlight strip
+  // takes height away from the scroller here (see navBadges.js).
+  await page.setViewportSize({ width: 390, height: 400 });
   const foodScroller = page.locator('#view-container');
   const scrollTopBeforeClose = await foodScroller.evaluate((element) => {
     element.scrollTop = element.scrollHeight;
@@ -338,6 +340,10 @@ flowTest('Essensbestellung: direkte Zahlung pro Personenblock und Lebenszyklus',
     await page.waitForSelector('[data-food-history][open] [data-closed-order] .food-order-meta:has-text("Abgeschickt")');
     assert.equal(await page.getByText('Lädt…', { exact: true }).count(), 0);
     assert.equal(await page.locator('[data-closed-order]', { hasText: 'Pizza bei Luigi' }).isVisible(), true);
+    assert.ok(
+      await foodScroller.evaluate((element) => element.scrollHeight > element.clientHeight),
+      'the closed order must still overflow the scroller, or a scroll reset would go unnoticed',
+    );
     assert.ok(await foodScroller.evaluate((element) => element.scrollTop > 0));
   } finally {
     releaseCloseRefresh();
