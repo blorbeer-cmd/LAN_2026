@@ -158,9 +158,6 @@ async function perform(button, action, done) {
 function numberField(name, label, value, min, max, disabled = false) {
   return `<label class="stack"><span class="field-label is-required">${label}</span><input name="${name}" type="number" value="${value}" min="${min}" max="${max}" step="1" required ${disabled ? 'disabled' : ''}></label>`;
 }
-function kpi(value, label) {
-  return `<div class="my-stats-kpi"><span class="my-stats-kpi-value">${e(value)}</span><span class="my-stats-kpi-label">${label}</span></div>`;
-}
 function overviewHtml(data) {
   return pointsSectionHtml('wallet', 'Wettguthaben', `
     ${data.settings.prize_info ? `<span>${e(data.settings.prize_info)}</span>` : ''}
@@ -169,21 +166,6 @@ function overviewHtml(data) {
     metaHtml: `${data.settings.closed_at ? '<span>Endstand</span> · ' : ''}<span data-wallet-total>${data.wallet.total}</span> P. gesamt · <span data-wallet-available>${data.wallet.available}</span> P. frei${data.wallet.held ? ` · <span data-wallet-held>${data.wallet.held}</span> P. reserviert` : ''}`,
   });
 }
-
-export function pointsHomeHtml(ctx) {
-  if (!state.activeEvent?.pointsEnabled) return '';
-  ensurePoints(ctx);
-  const data = currentData();
-  if (!data?.settings) return '';
-  const open = data.rounds.filter((r) => r.status === 'open' && !r.replaced);
-  // The open rounds lead straight to the tips list on the points page.
-  const tipsAction = open.length ? '<button type="button" class="btn btn-sm" data-navigate="points">Tipps ansehen</button>' : '';
-  return `<section class="card stack" aria-label="Meine LAN-Punkte"><div class="row-between"><h2>Meine LAN-Punkte</h2><button type="button" class="btn btn-sm" data-navigate="points">Punktekonto öffnen</button></div>
-    <div class="my-stats-kpis">${kpi(data.wallet.total, 'Wettguthaben')}${kpi(Math.max(0, data.wallet.available), 'Verfügbar')}${kpi(open.length, 'Offene Tipprunden')}</div>
-    ${tipsAction ? `<div class="row" style="justify-content:flex-end">${tipsAction}</div>` : ''}
-    <p class="muted">${data.settings.closed_at ? 'Die Endwertung steht fest.' : 'Orga- und Spielpunkte sammeln und mit separatem Wettguthaben tippen.'}</p></section>`;
-}
-
 function bettingRound(type, id) {
   if (!state.activeEvent?.pointsEnabled) return null;
   // A round replaced after a lineup change stays only in the points history.

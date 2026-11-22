@@ -1,4 +1,4 @@
-import { pointsHomeHtml, currentPointStandings } from './points.js';
+import { ensurePoints, currentPointStandings } from './points.js';
 // Home (formerly "Live-Status"): the landing view and the page everyone
 // keeps coming back to during the party. Stacks, in order of urgency: what's
 // currently running (open vote / active tournament / open food order /
@@ -597,12 +597,13 @@ function renderActiveGroups(players) {
 }
 
 // Leaderboard snapshot: the top six as a RankedList, read top to bottom.
-function renderLeaderboardTop() {
+function renderLeaderboardTop(ctx) {
   // The Auswertung area (leaderboard/analytics/hallOfFame) is only reachable
   // with the device-local Admin mode active (see app.js's switchView()) — a
   // preview here would otherwise offer a "Gesamte Rangliste" link that
   // silently redirects a regular member to Essen instead.
   if (!isAdmin()) return '';
+  ensurePoints(ctx);
   const lanStandings = currentPointStandings();
   const standings = lanStandings ?? state.leaderboard?.standings ?? [];
   if (standings.length === 0) return '';
@@ -665,7 +666,6 @@ export function renderHome(container, ctx) {
       <div class="grouped-page-sections home-desktop-layout">
         ${renderStatus()}
         ${renderMyTodos()}
-        ${pointsHomeHtml(ctx)}
         ${emptyStateHtml({
           text: 'Noch keine Spieler.',
           illustration: { src: '/img/mascot.svg', alt: '', width: 72, height: 66, className: 'mascot' },
@@ -727,7 +727,7 @@ export function renderHome(container, ctx) {
     <h1 class="view-title">Home</h1>
     <div class="grouped-page-sections home-desktop-layout">
       ${renderGeneralEventOverview()}
-      ${isEventlessGroup ? `${renderMyTodos()}${renderGroupMembers()}` : `${renderStatus()}${renderMyTodos()}${pointsHomeHtml(ctx)}`}
+      ${isEventlessGroup ? `${renderMyTodos()}${renderGroupMembers()}` : `${renderStatus()}${renderMyTodos()}`}
       ${
         trackingEnabled
           ? `<section class="card grouped-page-section stack" aria-labelledby="home-live-title">
@@ -739,7 +739,7 @@ export function renderHome(container, ctx) {
           : ''
       }
       ${seatingEnabled ? renderHomeSeating(ctx) : ''}
-      ${trackingEnabled ? renderLeaderboardTop() : ''}
+      ${trackingEnabled ? renderLeaderboardTop(ctx) : ''}
     </div>
   `;
 

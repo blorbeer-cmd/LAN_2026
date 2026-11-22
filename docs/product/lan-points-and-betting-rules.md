@@ -49,7 +49,7 @@ Admins und der gespeicherte Event-Ersteller steuern unter **Events & Gruppen →
 die Anzeige. Der Ersteller erhält durch diese Rolle keine Finanz- oder Teilnehmerrechte.
 Gleichzeitige Änderungen derselben Anzeigeversion werden abgewiesen.
 
-Ausblenden entfernt Punktekonto, Verlauf, Ranglisten, Home-/Profil-Verweise, Wettbereiche und
+Ausblenden entfernt Punktekonto, Verlauf, Ranglisten, Profil-Verweise, Wettbereiche und
 Wettmitteilungen für Teilnehmer. Direkte Teilnehmer-API-Zugriffe sind gesperrt. Die administrative
 Punkteverwaltung bleibt erreichbar. Automatische Kategorie-Gutschriften und bestehende Wetten
 werden weiter abgewickelt; die Sichtbarkeit setzt nichts zurück. Neue Tipps, Änderungen und
@@ -319,7 +319,7 @@ abwechselnder Hintergrundfläche, auch im geschlossenen Zustand.
 Auf schmalen Telefonen steht die Tippaktion unter dem Begegnungstext. Erstattete Märkte bleiben
 als Historie einsehbar und nennen im Tippdialog dauerhaft die Rückgabe aller Einsätze sowie den
 vorhandenen Erstattungsgrund. Das gilt auch nach erneutem Öffnen und bei einer Live-Erstattung.
-Gibt es offene Tipprunden, führt „Tipps ansehen“ auf Home dorthin. Admins finden in der
+Home zeigt kein Punktekonto; Punkte und Tipps erreicht man über die Navigation. Admins finden in der
 Punkteverwaltung unter „Wettrunden“ alle Märkte mit Status, Topf, Tippanzahl und den Aktionen
 Schließen, Wiederöffnen, Erstatten und Stornieren. Vor „LAN-Endwertung festschreiben“ nennt die
 Bestätigung die noch nicht abgerechneten Runden.

@@ -49,7 +49,7 @@ function desktopNavigation(group, order, {
 const BETTING_CHANGED = 'betting:changed';
 
 const REFRESH_ON = Object.freeze({
-  home: [CORE_REALTIME_EVENTS.players, CORE_REALTIME_EVENTS.games, CORE_REALTIME_EVENTS.skills, CORE_REALTIME_EVENTS.leaderboard, CORE_REALTIME_EVENTS.events, BETTING_CHANGED],
+  home: [CORE_REALTIME_EVENTS.players, CORE_REALTIME_EVENTS.games, CORE_REALTIME_EVENTS.skills, CORE_REALTIME_EVENTS.leaderboard, CORE_REALTIME_EVENTS.events],
   matchmaking: [CORE_REALTIME_EVENTS.players, CORE_REALTIME_EVENTS.games, CORE_REALTIME_EVENTS.skills, CORE_REALTIME_EVENTS.leaderboard, BETTING_CHANGED],
   votes: [CORE_REALTIME_EVENTS.players, CORE_REALTIME_EVENTS.games],
   leaderboard: [CORE_REALTIME_EVENTS.players, CORE_REALTIME_EVENTS.games, CORE_REALTIME_EVENTS.leaderboard],
