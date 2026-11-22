@@ -22,6 +22,15 @@ Installation.
   separat angezeigt und in Eingangsreihenfolge an Spotifys Live-Warteschlange angehängt.
   Währenddessen sind Sortieren und Entfernen ausgeblendet, weil Spotify seine Live-Warteschlange
   dafür nicht veränderbar bereitstellt.
+- Jeder Songwunsch läuft genau einmal und in der Reihenfolge der Warteschlange. Startet Jam
+  Songwünsche, schaltet der Controller in Spotify Zufallswiedergabe (auch Smart Shuffle) und
+  Wiederholen aus; bei einer Playlist nur Wiederholen. Das kostet je Start zwei beziehungsweise
+  eine zusätzliche Spotify-Anfrage.
+- Ist die Warteschlange leer, pausiert Jam kurz vor dem Ende des letzten Songwunschs. Respawn plant
+  diese Pause bei jedem Songwechsel neu, nicht nur bei Änderungen der Warteschlange. Startet
+  Spotify trotzdem einen fremden Titel (Autoplay) oder den letzten Songwunsch erneut (Wiederholen),
+  pausiert Respawn ihn beim nächsten Abgleich. Danach gilt Jam als frei: Ein neuer Songwunsch
+  startet sofort.
 - Der Kiosk bietet vor dem Sessionstart einmalig **Kiosk-Ton aktivieren** an, wenn der lokale
   Controller auf demselben Gerät läuft. Danach erscheint der Kiosk-Browser als Spotify-Gerät. In
   der laufenden Session zeigt er Titel, Fortschritt und nächsten Songwunsch, aber keine gemeinsame

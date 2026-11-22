@@ -394,6 +394,7 @@ test('Jam controller asks Spotify only after changes and song ends and waits out
   let queueReads = 0;
   let playing = false;
   let blockSpotify = false;
+  const playbackChanges = [];
   const respawn = http.createServer((req, res) => {
     const chunks = [];
     req.on('data', (chunk) => chunks.push(chunk));
@@ -444,6 +445,11 @@ test('Jam controller asks Spotify only after changes and song ends and waits out
       return;
     }
     if (req.url?.startsWith('/v1/me/player/pause') || req.url?.startsWith('/v1/me/player/queue?')) {
+      res.writeHead(204).end();
+      return;
+    }
+    if (req.method === 'PUT' && /^\/v1\/me\/player\/(play|shuffle|repeat)\?/.test(req.url || '')) {
+      playbackChanges.push(req.url);
       res.writeHead(204).end();
       return;
     }
@@ -533,6 +539,21 @@ test('Jam controller asks Spotify only after changes and song ends and waits out
   await waitFor(() => commandResults[1]);
   await waitFor(() => playerRequests === 5 && queueReads === 3);
 
+  // Starting requests switches off shuffle and repeat left on in the Spotify
+  // app. A playlist may stay shuffled, but must not repeat either.
+  nextCommand = { id: 'command-requests', type: 'playUris', payload: { uris: ['spotify:track:track-2'], deviceId: 'device-1' } };
+  await waitFor(() => commandResults[2]);
+  nextCommand = { id: 'command-playlist', type: 'playContext', payload: { uri: 'spotify:playlist:AAAAAAAAAAAAAAAAAAAAAA', deviceId: 'device-1' } };
+  await waitFor(() => commandResults[3]);
+  assert.deepEqual([commandResults[2].ok, commandResults[3].ok], [true, true]);
+  assert.deepEqual(playbackChanges, [
+    '/v1/me/player/play?device_id=device-1',
+    '/v1/me/player/shuffle?state=false&device_id=device-1',
+    '/v1/me/player/repeat?state=off&device_id=device-1',
+    '/v1/me/player/play?device_id=device-1',
+    '/v1/me/player/repeat?state=off&device_id=device-1',
+  ]);
+
   // A long Spotify block is named and waited out instead of hammered.
   blockSpotify = true;
   nextCommand = { id: 'command-3', type: 'pause', payload: { deviceId: 'device-1' } };
@@ -548,7 +569,7 @@ test('Jam controller asks Spotify only after changes and song ends and waits out
   const page = await (await fetch(`http://127.0.0.1:${controllerPort}`)).text();
   const shown = Number(page.match(/Spotify-Anfragen in der letzten Stunde<\/span><strong>(\d+)</)?.[1]);
   assert.equal(shown, spotifyRequests, 'the local page shows every Spotify request of the last hour');
-  assert.match(page, /Davon: [^<]*Status \d+[^<]*Warteschlange 3[^<]*</);
+  assert.match(page, new RegExp(`Davon: [^<]*Status \\d+[^<]*Warteschlange ${queueReads}[^<]*<`));
 });
 
 test('Jam controller forwards browser player reports instead of asking Spotify', async (t) => {
