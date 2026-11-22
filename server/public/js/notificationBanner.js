@@ -28,6 +28,20 @@ let entries = [];
 let highlightEntry = null;
 let loadedForId = null;
 let loading = false;
+// Read-state writes still on their way to the server. "Aufräumen" only removes
+// entries the server already knows as read, so it waits for these first;
+// otherwise a quick "Alle gelesen" → "Aufräumen" could reach the server in the
+// opposite order and the cleaned entry would come back on the next refresh.
+const pendingSeenWrites = new Set();
+
+function trackSeenWrite(request) {
+  pendingSeenWrites.add(request);
+  request.then(
+    () => pendingSeenWrites.delete(request),
+    () => pendingSeenWrites.delete(request),
+  );
+  return request;
+}
 let loadError = false;
 let isOpen = false;
 let expiryRefreshTimer = null;
@@ -145,7 +159,7 @@ async function markSeen(entryId, { navigate, eventId, target = null } = {}) {
   }
   renderBanner();
   try {
-    await api.push.seen(entryId, playerId);
+    await trackSeenWrite(api.push.seen(entryId, playerId));
     if (navigate) {
       setOpen(false);
       window.dispatchEvent(new CustomEvent('respawn:event-navigate', { detail: { view: navigate, eventId, target } }));
@@ -189,7 +203,7 @@ async function markAllSeen() {
   highlightEntry = null;
   renderBanner();
   try {
-    await api.push.seenAll(playerId);
+    await trackSeenWrite(api.push.seenAll(playerId));
   } catch (err) {
     entries = previousEntries;
     highlightEntry = previousHighlight;
@@ -235,6 +249,13 @@ async function hideResolvedEntries() {
     highlightEntry = null;
   }
   renderBanner();
+  const seenWrites = await Promise.allSettled([...pendingSeenWrites]);
+  if (seenWrites.some((result) => result.status === 'rejected')) {
+    // The failed read write already rolled its entries back and showed its
+    // own error; reload so the center matches what the server kept.
+    await refreshNotificationBanner();
+    return;
+  }
   try {
     await api.push.hideResolved(playerId);
   } catch (err) {
@@ -415,7 +436,7 @@ export async function settleNotificationTarget(targetId) {
   }
   renderBanner();
   try {
-    await Promise.all(matching.map((entry) => api.push.seen(entry.id, playerId)));
+    await Promise.all(matching.map((entry) => trackSeenWrite(api.push.seen(entry.id, playerId))));
   } catch (error) {
     await refreshNotificationBanner();
     showToast(error.message, { error: true });

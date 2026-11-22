@@ -115,8 +115,24 @@ const INFORMATIONAL_PUSH_TYPES = new Set([
   'event-withdrawn-acceptance',
 ]);
 
-export function isInformationalPushType(notificationType: string | null | undefined): boolean {
-  return notificationType != null && INFORMATIONAL_PUSH_TYPES.has(notificationType);
+// Before these pushes carried their own type they were stored as the generic
+// 'message'. Their fixed titles and target views identify them unambiguously,
+// so rows written before the update are cleaned up like new ones.
+const LEGACY_INFORMATIONAL_MESSAGES = new Set([
+  'Übernommen\u0000/#checklist',
+  'Eventplanung geändert\u0000/#events',
+  'Eventtermin geändert\u0000/#events',
+  'Eventtermin entfernt\u0000/#events',
+]);
+
+export function isInformationalPushEntry(entry: {
+  notificationType: string | null;
+  title: string;
+  url: string | null;
+}): boolean {
+  if (entry.notificationType == null) return false;
+  if (INFORMATIONAL_PUSH_TYPES.has(entry.notificationType)) return true;
+  return entry.notificationType === 'message' && LEGACY_INFORMATIONAL_MESSAGES.has(`${entry.title}\u0000${entry.url ?? ''}`);
 }
 
 export function isDeduplicatedPushTopic(topicKey: string): boolean {
@@ -408,7 +424,7 @@ export function getPushLogEntriesFor(
     .map(({ playerIds: _playerIds, topicKey: _topicKey, hidden: _hidden, seen, ...entry }) => ({
       ...entry,
       seen: seen === 1,
-      informational: isInformationalPushType(entry.notificationType),
+      informational: isInformationalPushEntry(entry),
     }));
 }
 
@@ -445,7 +461,7 @@ export function getPushLogEntriesForPlayer(
     .map(({ playerIds: _playerIds, topicKey: _topicKey, hidden: _hidden, seen, ...entry }) => ({
       ...entry,
       seen: seen === 1,
-      informational: isInformationalPushType(entry.notificationType),
+      informational: isInformationalPushEntry(entry),
     }));
 }
 
