@@ -166,6 +166,25 @@ sieht ihn erst nach „Allen erneut zeigen“ wieder.
 Reverse-Proxy oder Tunnel vor der App müssen Request-Bodys in Videogröße durchlassen. Der
 Cloudflare-Tunnel erlaubt im kostenlosen Tarif bis 100 MB pro Request; daher die Grenze oben.
 
+## Match-Screenshots
+
+Teilnehmende können an ein erfasstes Match-Ergebnis bis zu vier Screenshots hängen. Die Bilder
+liegen nicht in SQLite, sondern als Dateien im Ordner `match-screenshots` neben `DB_FILE`, im
+Docker-Setup also unter `/opt/respawn/data/match-screenshots/` auf dem gesicherten Datenvolume.
+`MATCH_SCREENSHOT_DIR` kann einen anderen Pfad setzen. Die Tabelle `match_screenshots` verweist
+nur auf die Dateien (`<id>.jpg`, `.png` oder `.webp`).
+
+Der Browser verkleinert ein Bild vor dem Upload auf höchstens 1920 px und sendet JPEG; der Server
+nimmt JPEG, PNG und WebP bis 5 MB an und prüft die Dateisignatur. Ein Upload landet zuerst in einer
+temporären Datei (`.<id>.upload`) und wird erst nach vollständigem Empfang umbenannt.
+
+Die SQLite-Snapshots unter „Backup und Restore“ enthalten die Bilder nicht. Wer die Screenshots
+sichern will, kopiert den Ordner zusammen mit dem Datenvolume. Nach einem Restore eines älteren
+Snapshots entfernt der Server beim Start und danach stündlich Dateien, auf die keine Zeile mehr
+verweist, ebenso liegengebliebene temporäre Dateien, die älter als eine Stunde sind. Dieselbe
+Bereinigung läuft direkt nach dem Löschen eines Matches; Bilder gelöschter Events oder Spiele
+verschwinden spätestens beim nächsten stündlichen Lauf.
+
 ## Produktions-Deployment
 
 Der Workflow `.github/workflows/deploy.yml` baut bereits in jedem Pull Request das vollständige

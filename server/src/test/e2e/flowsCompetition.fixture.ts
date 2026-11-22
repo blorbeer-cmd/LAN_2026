@@ -1125,7 +1125,7 @@ flowTest('Vote: a 0-5 round with a visible interim result and anonymous voters',
   assert.equal(await latest.locator('[data-open-vote-round]').count(), 0, 'an anonymous round offers no vote table');
 });
 
-flowTest('matchmaking Historie marks a recorded draw as Unentschieden', async () => {
+flowTest('matchmaking Historie marks a recorded draw as Unentschieden and keeps a screenshot with it', async () => {
   await openTeams();
   await page.click('#mm-generate');
   await openMatchmakingHistory();
@@ -1258,7 +1258,46 @@ flowTest('matchmaking Historie marks a recorded draw as Unentschieden', async ()
     'general match actions share one menu beside the betting controls');
   const historyActions = await historyMenu.locator('.action-menu-panel button').evaluateAll((buttons) =>
     buttons.map((button) => button.textContent?.trim()));
-  assert.deepEqual(historyActions, ['Ergebnis bearbeiten', 'Rematch', 'Match löschen']);
+  assert.deepEqual(historyActions, ['Ergebnis bearbeiten', 'Screenshot hochladen', 'Rematch', 'Match löschen']);
+
+  // A screenshot of the final scoreboard: the browser scales a large capture
+  // down and re-encodes it before the upload, the tile shows it with a count,
+  // and the uploader removes it again after confirming.
+  const capture = await page.evaluate(() => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 2400;
+    canvas.height = 1200;
+    canvas.getContext('2d')!.fillRect(0, 0, canvas.width, canvas.height);
+    return canvas.toDataURL('image/png').split(',')[1];
+  });
+  await historyMenu.locator(':scope > summary').click();
+  const [chooser] = await Promise.all([
+    page.waitForEvent('filechooser'),
+    historyMenu.locator('.action-menu-panel button', { hasText: 'Screenshot hochladen' }).click(),
+  ]);
+  const [upload] = await Promise.all([
+    page.waitForResponse((res) => /^\/api\/matches\/[^/]+\/screenshots$/.test(new URL(res.url()).pathname)
+      && res.request().method() === 'POST'),
+    chooser.setFiles({ name: 'scoreboard.png', mimeType: 'image/png', buffer: Buffer.from(capture, 'base64') }),
+  ]);
+  assert.equal(upload.status(), 201);
+  assert.equal(upload.request().headers()['content-type'], 'image/jpeg');
+  await page.locator('.toast', { hasText: 'Screenshot gespeichert.' }).waitFor();
+  const thumbnail = recordedMatch.locator('.matchmaking-history-screenshot-image');
+  await thumbnail.scrollIntoViewIfNeeded();
+  assert.deepEqual(await thumbnail.evaluate(async (image: HTMLImageElement) => {
+    await image.decode();
+    return [image.naturalWidth, image.naturalHeight];
+  }), [1920, 960], 'the upload is scaled to the 1920px long side');
+  assert.equal(await recordedMatch.getByRole('img', { name: '1 Screenshot' }).count(), 1,
+    'the collapsed header counts the screenshot');
+  assert.equal(await recordedMatch.getByRole('link', { name: /^Screenshot 1 von 1: .+ in voller Größe öffnen$/ }).getAttribute('target'), '_blank');
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true,
+    'the thumbnails cause no horizontal overflow on a phone');
+  await recordedMatch.getByRole('button', { name: 'Screenshot 1 löschen' }).click();
+  await page.getByRole('alertdialog', { name: 'Screenshot löschen' }).getByRole('button', { name: 'Löschen' }).click();
+  await thumbnail.waitFor({ state: 'detached' });
+  assert.equal(await recordedMatch.locator('.matchmaking-history-screenshot-count').count(), 0);
 });
 
 flowTest('matchmaking Historie derives the winner and keeps open games and sections after saving a result', async (t) => {

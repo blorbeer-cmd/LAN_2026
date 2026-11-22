@@ -167,11 +167,22 @@ Die Spielberechnung übernimmt die Platzregel des Zielkonzepts
   actions share one „Aktion“ menu, kept separate from the „Wetten“ menu beside it: an open draw
   offers „Server und Passwort“, „Ergebnis eintragen“, „Spieler hinzufügen“ (only while an event
   participant is not in the lineup yet), „Neu mischen“, „Turnier erstellen“ and, while its tips are
-  open, „Spiel starten“; a recorded draw offers „Ergebnis bearbeiten“ and „Rematch“;
+  open, „Spiel starten“; a recorded draw offers „Ergebnis bearbeiten“, „Screenshot hochladen“ (until
+  the match holds four screenshots) and „Rematch“;
   every open or recorded game card offers admins and owners a red delete entry („Auslosung löschen“,
   „Match löschen“) with confirmation; regular members see no delete controls, including on the tournament detail page. A single remaining action stays a direct button. Removing a recorded draw removes its linked result from the ranking. A tournament tile offers „Turnier“ and, for admins and owners, a trash action using the existing tournament delete behavior; already recorded tournament matches remain in the ranking, and the confirmation explains this. Its expanded state shows tournament teams,
   players and available standings or match totals. A participating player's game title is bold in a collapsed Match tile; only their name is bold in expanded teams. Open draws show every player's skill. Completed tournament headers show the winning team with „Win“ and the tournament name; team details use the same compact place numbers as Match teams in the team-name line, including the finalist's second place, with an explicit place label in the title and accessible name. The number replaces the extra Win chip inside the team card; table points stay beside the team name. With a played third-place match, the semifinal losers carry places 3 and 4 the same way. Knockout exits without a distinct place appear in the context line below the players. „Ergebnis bearbeiten“ precedes „Rematch“; tournament actions
   need no empty action slot.
+  Match screenshots: every participant of the event who can record results can attach up to four
+  screenshots (e.g. the final scoreboard) to a recorded Match result. The browser scales a picked
+  image down to at most 1920 px on its long side and uploads it as JPEG; the server accepts JPEG,
+  PNG and WebP up to 5 MB. The uploading tile opens and shows „Screenshot wird hochgeladen…“ until
+  the toast confirms „Screenshot gespeichert.“. The collapsed tile's meta line counts the
+  screenshots with an image icon; the expanded tile shows them as thumbnails below the teams with
+  the uploader and time, and a thumbnail opens the full image in a new tab. The uploader and admins
+  or owners see a trash action that deletes after confirmation. Screenshots never change the result,
+  stay available while betting freezes the result, and disappear together with their match.
+  Tournament fixtures and results entered in Admin offer no screenshots yet.
   „Turnier erstellen“ opens one compact dialog: Turnierformat, the group fields for „Gruppenphase +
   K.O.“, one name field per team (at most 30 characters; a team with a single player is prefilled with that
   player's name, a drafted team as „Team <Captain>“, a drawn one as „Team 1“ …), the options side by

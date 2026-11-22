@@ -70,6 +70,15 @@ export const config = {
       ? ''
       : path.join(path.dirname(configuredDbFile), 'media'),
 
+  // Screenshots attached to recorded match results. Like the trailer they are
+  // files beside the database (the mounted /app/data volume in production),
+  // so the SQLite file and its snapshots stay small. Empty disables uploads.
+  matchScreenshotDir: process.env.MATCH_SCREENSHOT_DIR
+    ? path.resolve(process.env.MATCH_SCREENSHOT_DIR)
+    : configuredDbFile === ':memory:'
+      ? ''
+      : path.join(path.dirname(configuredDbFile), 'match-screenshots'),
+
   // Append-only, hash-only erasure ledger. Production startup requires an
   // explicit path so operators deliberately place it on storage independent
   // from the SQLite database and its backups.

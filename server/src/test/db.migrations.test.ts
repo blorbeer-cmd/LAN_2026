@@ -18,7 +18,7 @@ import Database from 'better-sqlite3';
 import { EVENT_FEATURE_KEYS } from '../eventFeatureCatalog';
 
 const DB_JS_PATH = path.join(__dirname, '..', 'db.js');
-const EXPECTED_MIGRATION_VERSIONS = Array.from({ length: 140 }, (_, index) => index + 1);
+const EXPECTED_MIGRATION_VERSIONS = Array.from({ length: 141 }, (_, index) => index + 1);
 const BOOTSTRAP_ADMINS_JS_PATH = path.join(__dirname, '..', 'bootstrapAdmins.js');
 
 test('points migrations leave legacy LANs hidden and preserve background balances across replay', () => {
@@ -5456,6 +5456,36 @@ test('migration 140 adds empty server details to existing draws, rolls back a pa
   assert.deepEqual(migrated.prepare('SELECT server_address, server_password FROM matchmaking_draws').all(),
     [{ server_address: null, server_password: null }]);
   assert.deepEqual(migrated.pragma('foreign_key_check'), []);
+  migrated.close();
+  fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
+});
+
+test('migration 141 adds the screenshot table, rolls back a partial failure and replays', () => {
+  const dbFile = makeTempDbPath('match-screenshots');
+  runMigrations(dbFile);
+  const fixture = new Database(dbFile);
+  fixture.exec(`DROP TABLE match_screenshots;
+    DELETE FROM schema_migrations WHERE version=141;
+    -- Blocks only the last statement: the table must not survive the failure.
+    CREATE TABLE idx_match_screenshots_uploader (id TEXT);`);
+  fixture.close();
+  assert.throws(() => runMigrations(dbFile), /already/);
+  const failed = new Database(dbFile);
+  assert.equal(failed.prepare("SELECT 1 FROM sqlite_master WHERE name='match_screenshots'").get(), undefined);
+  assert.equal(failed.prepare('SELECT 1 FROM schema_migrations WHERE version=141').get(), undefined);
+  failed.exec('DROP TABLE idx_match_screenshots_uploader');
+  failed.close();
+  runMigrations(dbFile);
+  runMigrations(dbFile);
+  const migrated = new Database(dbFile, { readonly: true });
+  assert.ok(migrated.prepare('SELECT 1 FROM schema_migrations WHERE version=141').get());
+  assert.deepEqual((migrated.pragma('table_info(match_screenshots)') as Array<{ name: string }>).map((column) => column.name),
+    ['id', 'match_id', 'uploaded_by', 'content_type', 'size', 'created_at']);
+  assert.deepEqual(
+    (migrated.pragma('foreign_key_list(match_screenshots)') as Array<{ table: string; on_delete: string }>)
+      .map(({ table, on_delete }) => `${table}:${on_delete}`).sort(),
+    ['matches:CASCADE', 'players:SET NULL'],
+  );
   migrated.close();
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
 });
