@@ -1,8 +1,5 @@
-// End-to-end test of the real agent loop against the real (built) server —
-// no mocks. Since this sandbox is Linux, we exercise the `ps -A` fallback path
-// instead of the PowerShell probe, but the flow is identical: fetch the
-// allow-list, ask the OS about exactly those names, report, show up on the
-// live board.
+// End-to-end test of the real agent loop against the built server. The agent
+// fetches the allow-list, probes the OS, reports and shows up on the live board.
 //
 // Trick: our own Node process is always running, so we map the name the
 // production probe returns for it to a throwaway game. Recent Node/Linux
@@ -13,6 +10,8 @@
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const { spawn } = require('child_process');
+const { once } = require('node:events');
+const { setTimeout: delay } = require('node:timers/promises');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -23,16 +22,19 @@ const ADMIN_NAME = 'Agent E2E Admin';
 const ADMIN_PASSWORD = 'agent-e2e-admin-password';
 
 let serverProcess;
-let stopAgent;
-let tempDir;
-let configFile;
-let stateFilePath;
-let player;
 let adminCookie;
-let playerCookie;
+
+async function waitFor(check, message) {
+  const deadline = Date.now() + 15_000;
+  do {
+    if (await check()) return;
+    await delay(100);
+  } while (Date.now() < deadline);
+  assert.fail(message);
+}
 
 function startServer(serverEntry, timeoutMs = 10_000) {
-  const child = spawn('node', [serverEntry], {
+  const child = spawn(process.execPath, [serverEntry], {
     env: {
       ...process.env,
       PORT: '0',
@@ -118,13 +120,11 @@ before(async () => {
   assert.equal(reauthenticated.status, 204);
 });
 
-after(async () => {
-  if (stopAgent) stopAgent();
+after(() => {
   serverProcess?.kill();
-  if (tempDir) fs.rmSync(tempDir, { recursive: true, force: true });
 });
 
-test('agent reports the running node process and the server reflects it as "playing"', async () => {
+test('the agent reports a running game and follows pause and resume from the web profile', async (t) => {
   // The lookup is targeted, so the candidate spellings go in and whichever one
   // this platform actually uses comes back out.
   const { processNames } = await probeSystem({ allowedProcessNames: ['node.exe', 'node', 'mainthread'] });
@@ -138,11 +138,14 @@ test('agent reports the running node process and the server reflects it as "play
     body: JSON.stringify({ name: 'E2E Node Game' }),
   });
   const game = await gameRes.json();
-  await fetch(`${BASE_URL}/api/games/${game.id}/processes`, {
+  assert.equal(gameRes.status, 201, JSON.stringify(game));
+  const processRes = await fetch(`${BASE_URL}/api/games/${game.id}/processes`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Cookie: adminCookie },
     body: JSON.stringify({ processName: nodeProcessName }),
   });
+
+  assert.ok(processRes.ok, await processRes.text());
 
   // Create a player and grab their API key.
   const playerRes = await fetch(`${BASE_URL}/api/players`, {
@@ -150,7 +153,8 @@ test('agent reports the running node process and the server reflects it as "play
     headers: { 'Content-Type': 'application/json', Cookie: adminCookie },
     body: JSON.stringify({ name: 'E2E Agent Player' }),
   });
-  player = await playerRes.json();
+  const player = await playerRes.json();
+  assert.equal(playerRes.status, 201, JSON.stringify(player));
   const inviteRes = await fetch(`${BASE_URL}/api/auth/invites`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Cookie: adminCookie },
@@ -164,7 +168,7 @@ test('agent reports the running node process and the server reflects it as "play
     body: JSON.stringify({ code: invite.code, password: 'agent-e2e-player-password' }),
   });
   assert.equal(claimRes.status, 200);
-  playerCookie = claimRes.headers.get('set-cookie').split(';')[0];
+  const playerCookie = claimRes.headers.get('set-cookie').split(';')[0];
 
   // Agent reports are deliberately counted only inside the account's active
   // event, while that event's tracking window is open and the participant has
@@ -220,53 +224,43 @@ test('agent reports the running node process and the server reflects it as "play
   });
   assert.equal(consentRes.status, 200, await consentRes.text());
 
-  // Write a real agent config file and start the real agent loop.
-  tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-e2e-'));
-  configFile = path.join(tempDir, 'agent.config.json');
-  stateFilePath = path.join(path.dirname(configFile), 'agent.state.json');
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-e2e-'));
+  const configFile = path.join(tempDir, 'agent.config.json');
+  const stateFilePath = path.join(tempDir, 'agent.state.json');
   fs.writeFileSync(
     configFile,
-    JSON.stringify({ serverUrl: BASE_URL, apiKey: player.api_key, pollIntervalMs: 300 })
+    JSON.stringify({ serverUrl: BASE_URL, apiKey: player.api_key, pollIntervalMs: 1_000 })
   );
 
-  const { start } = require('../../index.js');
-  stopAgent = start(configFile);
-
-  // Give it a couple of poll cycles to scan + report.
-  await new Promise((r) => setTimeout(r, 1200));
-
-  const liveRes = await fetch(`${BASE_URL}/api/live`, { headers: { Cookie: adminCookie } });
-  const board = await liveRes.json();
-  const entry = board.find((p) => p.player_id === player.id);
-
-  assert.ok(entry, 'player should appear on the live board');
-  assert.equal(entry.state, 'playing');
-  assert.ok(
-    entry.games.some((g) => g.game_id === game.id),
-    'the E2E Node Game should be listed as currently running'
-  );
-});
-
-test('pausing via the web profile (PATCH /api/players) is picked up by the already-running agent', async () => {
-  // The productive web profile uses the player's personal session.
-  await fetch(`${BASE_URL}/api/players/${player.id}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json', Cookie: playerCookie },
-    body: JSON.stringify({ trackingPaused: true }),
+  const agent = spawn(process.execPath, [path.join(__dirname, '..', '..', 'index.js'), configFile], {
+    stdio: 'ignore',
+    windowsHide: true,
+  });
+  const exited = once(agent, 'exit');
+  t.after(async () => {
+    agent.kill();
+    await exited;
+    fs.rmSync(tempDir, { recursive: true, force: true });
   });
 
-  // Wait for the agent's next tick (pollIntervalMs=300) to pick this up via
-  // the report response and mirror it into its local state file.
-  await new Promise((r) => setTimeout(r, 700));
-  const paused = JSON.parse(fs.readFileSync(stateFilePath, 'utf8'));
-  assert.equal(paused.paused, true, 'agent should mirror the server-side pause locally');
+  await waitFor(async () => {
+    const liveRes = await fetch(`${BASE_URL}/api/live`, { headers: { Cookie: adminCookie } });
+    assert.equal(liveRes.status, 200);
+    const board = await liveRes.json();
+    const entry = board.find((row) => row.player_id === player.id);
+    return entry?.state === 'playing' && entry.games.some((item) => item.game_id === game.id);
+  }, 'the agent never reported the running test game to the live board');
 
-  await fetch(`${BASE_URL}/api/players/${player.id}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json', Cookie: playerCookie },
-    body: JSON.stringify({ trackingPaused: false }),
-  });
-  await new Promise((r) => setTimeout(r, 700));
-  const resumed = JSON.parse(fs.readFileSync(stateFilePath, 'utf8'));
-  assert.equal(resumed.paused, false, 'agent should mirror the server-side resume locally');
+  for (const paused of [true, false]) {
+    const response = await fetch(`${BASE_URL}/api/players/${player.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Cookie: playerCookie },
+      body: JSON.stringify({ trackingPaused: paused }),
+    });
+    assert.ok(response.ok, await response.text());
+    await waitFor(
+      () => fs.existsSync(stateFilePath) && JSON.parse(fs.readFileSync(stateFilePath, 'utf8')).paused === paused,
+      `the agent did not mirror trackingPaused=${paused} into its local state`,
+    );
+  }
 });

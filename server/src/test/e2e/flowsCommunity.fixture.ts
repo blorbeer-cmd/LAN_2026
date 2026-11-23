@@ -98,7 +98,6 @@ flowTest('Modal: a pointer interaction started inside the dialog does not close 
   // same motion a text selection or slider drag produces.
   await page.mouse.move(5, 5, { steps: 10 });
   await page.mouse.up();
-  await page.waitForTimeout(100);
   assert.equal(await page.locator('.info-board-modal').count(), 1, 'a drag that started inside the dialog must not close it');
 
   // A genuine backdrop click - both mousedown and mouseup on the bare

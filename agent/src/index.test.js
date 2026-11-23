@@ -293,38 +293,42 @@ test('formatLocalTime pads hours/minutes/seconds to two digits', () => {
   assert.equal(formatLocalTime(d), '03:07:09');
 });
 
-// Runs index.js the way Windows does — as the entry point, not by importing
-// start() — because that wiring is exactly what broke: the shutdown cleanup
-// lived only in start()'s return value, which the entry point discarded.
-// An in-process test cannot see that difference.
-test('shutting the running agent down removes the local control runtime file', async () => {
+test('a graceful shutdown of the CLI removes its control runtime file', { timeout: 15_000 }, async (t) => {
   const installDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-shutdown-test-'));
   const configPath = path.join(installDir, 'agent.config.json');
   const accessPath = path.join(installDir, '.respawn-control.json');
-  // Unreachable server: the agent logs a failed tick and keeps running, which
-  // is all this test needs. It must not touch a real server.
-  fs.writeFileSync(
-    configPath,
-    JSON.stringify({ serverUrl: 'http://127.0.0.1:1', apiKey: 'shutdown-test-key', pollIntervalMs: 60_000 })
+  const server = await startFakeServer((_req, res) => {
+    res.setHeader('Content-Type', 'application/json');
+    res.end('{}');
+  });
+  t.after(() => server.close());
+  fs.writeFileSync(configPath, JSON.stringify({
+    serverUrl: serverUrl(server), apiKey: 'shutdown-test-key', pollIntervalMs: 60_000,
+  }));
+
+  const windows = process.platform === 'win32';
+  // Windows kill('SIGTERM') terminates Node without running its signal handler.
+  // Deliver the Node event in the child while still running the actual CLI.
+  const signalBridge = 'data:text/javascript,' + encodeURIComponent(
+    "process.once('message', () => process.emit('SIGTERM'))",
   );
-
-  const agent = spawn(process.execPath, [path.join(__dirname, 'index.js'), configPath], { stdio: 'ignore' });
+  const args = windows ? ['--import', signalBridge] : [];
+  const agent = spawn(process.execPath, [...args, path.join(__dirname, 'index.js'), configPath], {
+    stdio: windows ? ['ignore', 'ignore', 'ignore', 'ipc'] : 'ignore',
+  });
   const exited = once(agent, 'exit');
-
-  try {
-    await waitFor(() => fs.existsSync(accessPath), 'the agent never published its control runtime file');
-    agent.kill('SIGTERM');
-    await exited;
-
-    assert.equal(
-      fs.existsSync(accessPath),
-      false,
-      'a stopped agent must not leave the origin and access key of its dead control server behind'
-    );
-  } finally {
+  t.after(async () => {
     agent.kill('SIGKILL');
+    await exited;
     fs.rmSync(installDir, { recursive: true, force: true });
-  }
+  });
+
+  await waitFor(() => fs.existsSync(accessPath), 'the agent never published its control runtime file');
+  if (windows) agent.send('shutdown');
+  else agent.kill('SIGTERM');
+
+  assert.deepEqual(await exited, [0, null]);
+  assert.equal(fs.existsSync(accessPath), false);
 });
 
 // Proves the whole hint chain in one go: the server's expectedAgentVersion

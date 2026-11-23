@@ -220,30 +220,18 @@ test('GET /api/votes/history/:round 404s for a round that never happened, and re
   assert.equal(garbage.status, 400);
 });
 
-test('GET /api/votes/history leaves out a round that ended without any ballot', async () => {
-  await request(app).post('/api/votes/start');
-  const res = await request(app).post('/api/votes/close');
-  assert.deepEqual(res.body.winnerGameIds, []);
+test('vote history lists completed ballots newest first and omits an empty round', async () => {
+  await request(app).post('/api/votes/start').expect(201);
+  const empty = await request(app).post('/api/votes/close').expect(200);
+  assert.deepEqual(empty.body.winnerGameIds, []);
 
-  const history = await request(app).get('/api/votes/history');
-  assert.equal(history.body.history.some((h: { round: number }) => h.round === res.body.round), false);
-});
-
-test('GET /api/votes/history keeps closed rounds in time order even without votes', async () => {
-  // At this point round 1 (has votes) and round 2 (nobody voted, hidden from
-  // history) are both closed. Close a brand-new round 3 with a vote so
-  // the newest round in history has a result. Voting for Age of Empires 2 here (rather than CS2)
-  // keeps this round's win out of the later "each result row reports its
-  // all-time vote win count" assertions, which pin CS2's and Rocket League's
-  // counts to exactly 1.
-  await request(app).post('/api/votes/start').send({ mode: 'single' });
-  await request(app).post('/api/votes').send({ playerId: playerA, gameId: gameAoe2 });
-  const closed = await request(app).post('/api/votes/close');
-
-  const history = await request(app).get('/api/votes/history');
-  const rounds = history.body.history.map((h: { round: number }) => h.round);
-  assert.deepEqual(rounds, [closed.body.round, 1]);
-  assert.equal((await request(app).get('/api/votes/history/2')).status, 200);
+  // Use a different winner from the earlier round to preserve the later tally.
+  await request(app).post('/api/votes/start').send({ mode: 'single' }).expect(201);
+  await request(app).post('/api/votes').send({ playerId: playerA, gameId: gameAoe2 }).expect(200);
+  const closed = await request(app).post('/api/votes/close').expect(200);
+  const history = await request(app).get('/api/votes/history').expect(200);
+  assert.deepEqual(history.body.history.map((round: { round: number }) => round.round), [closed.body.round, 1]);
+  await request(app).get(`/api/votes/history/${empty.body.round}`).expect(200);
 });
 
 test('DELETE /api/votes/history/:round removes a closed round with its ballots', async () => {

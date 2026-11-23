@@ -340,43 +340,29 @@ test('admin onboarding uses the same shared tour without admin-only steps', asyn
   }
 });
 
-test('logging out drops back to the login gate, and logging back in works', async () => {
+test('logout restores the login gate and only a valid personal session survives a reload', async () => {
   await page.click('.nav-btn[data-view="more"]');
-
   await page.click('[data-navigate="profile"]');
-  await page.waitForSelector('#profile-logout');
-  await page.click('#profile-logout');
-
-  await page.waitForSelector('#auth-screen:not([hidden])');
-  await page.waitForSelector('#auth-name');
-
-  await page.fill('#auth-name', NAME);
-  await page.fill('#auth-password', PASSWORD);
-  await page.click('#auth-form button[type="submit"]');
-
-  await waitForPlayerData(page);
-});
-
-test('a wrong password on the login gate shows an error and does not proceed', async () => {
-  await page.click('.nav-btn[data-view="more"]');
-
-  await page.click('[data-navigate="profile"]');
-  await page.waitForSelector('#profile-logout');
   await page.click('#profile-logout');
   await page.waitForSelector('#auth-screen:not([hidden])');
+
+  await page.goto(`${BASE_URL}/?token=obsolete-shared-token`);
+  await page.waitForSelector('#auth-screen:not([hidden])');
+  assert.equal(await page.locator('#app').isHidden(), true);
 
   await page.fill('#auth-name', NAME);
   await page.fill('#auth-password', 'not the right password');
   await page.click('#auth-form button[type="submit"]');
-
   await page.waitForSelector('#auth-error:not([hidden])');
-  const appHidden = await page.getAttribute('#app', 'hidden');
-  assert.notEqual(appHidden, null);
+  assert.equal(await page.locator('#app').isHidden(), true);
 
-  // Recover the session for any later test that might reuse this page.
   await page.fill('#auth-password', PASSWORD);
   await page.click('#auth-form button[type="submit"]');
-  await page.waitForSelector('#app:not([hidden])');
+  await waitForPlayerData(page);
+
+  await page.reload();
+  await waitForPlayerData(page);
+  assert.equal(await page.locator('#auth-screen').isHidden(), true);
 });
 
 test('a logged-in user can leave a stale action link without editing the URL', async () => {
