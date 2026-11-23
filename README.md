@@ -3,7 +3,7 @@
 Ein kleines, selbst gehostetes Web-Tool für unsere jährliche LAN-Party (~15 Leute, 3 Tage).
 Alles Wichtige an einem Ort: **Teams zusammenstellen**, **abstimmen was als Nächstes gespielt wird**,
 **live sehen wer gerade was zockt**, **Turniere durchspielen** und ein **Wochenend-Leaderboard**.
-Jeder öffnet einfach die URL im Handy-Browser und legt sich in unter einer Minute selbst ein
+Jeder öffnet einfach die URL im Browser – meist am eigenen LAN-Rechner, zwischendurch am Handy – und legt sich in unter einer Minute selbst ein
 Profil an – keine App-Installation, kein Account, kein langes Formular.
 
 ## Was kann das Tool?

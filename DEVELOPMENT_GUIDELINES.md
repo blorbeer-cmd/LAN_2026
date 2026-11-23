@@ -68,8 +68,9 @@ passt:
 
 1. **Zuverlässigkeit:** Das System läuft die gesamte dreitägige LAN ohne manuellen Neustart. Ein
    fehlerhafter oder verschwundener Client darf Server und andere Clients nicht beeinträchtigen.
-2. **Einfache und schnelle Bedienung:** Wichtige Aktionen sind auf Handy und Laptop ohne Erklärung
-   in wenigen Schritten erreichbar.
+2. **Einfache und schnelle Bedienung:** Wichtige Aktionen sind ohne Erklärung in wenigen Schritten
+   erreichbar. Hauptgerät ist der Rechner am LAN-Platz – im Vollbild und im halbbreiten Fenster
+   neben dem Spiel; das Handy bleibt vollständig nutzbar, ist aber nachrangig.
 3. **Modernes, intuitives Design:** Aufgeräumt, dark-mode-freundlich, responsive und mit klaren,
    zugänglichen Zuständen für „spielt“, „pausiert“ und „offline“.
 4. **Schlanke Wartbarkeit:** Keine unnötigen Abstraktionen oder Abhängigkeiten. Für rund 15

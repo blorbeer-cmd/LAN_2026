@@ -15,6 +15,16 @@ Für den betroffenen fachlichen Ablauf anschließend im Einstieg
 [`../../docs/product/README.md`](../../docs/product/README.md) nur die einschlägigen Produktregeln
 bestimmen und lesen; nicht pauschal alle Produktregeldateien laden.
 
+Produktkontext für Designentscheidungen (Hauptgerät, Nutzungssituation, Prioritäten) steht kurz in
+[`../../PRODUCT.md`](../../PRODUCT.md).
+
+Design-Hilfswerkzeuge wie das Claude-Plugin Impeccable (`/impeccable critique`, `audit`, `polish`)
+dürfen für Bewertung und Feinschliff genutzt werden, sind aber keine Pflicht und nicht in jeder
+Umgebung verfügbar. Bei Widersprüchen gelten `DESIGN_SYSTEM.md` und die Komponentenverträge, nicht
+die Voreinstellungen des Werkzeugs; bewusst erlaubte Muster wie die Verlaufs-Wortmarke oder
+Akzentschienen (Regel 3) sind keine Befunde. Werkzeugartefakte unter `.impeccable/` werden nicht
+committet.
+
 Für Frontendänderungen aus `server/` mindestens ausführen:
 
 - `npm run lint`

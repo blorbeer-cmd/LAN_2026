@@ -134,8 +134,8 @@ absichern.
 
 | ID | Anforderung |
 |----|-------------|
-| NFR-06 | Jede Kernaktion ist in wenigen Klicks und ohne Erklärung erreichbar („Handy raus, URL auf, loslegen"). |
-| NFR-07 | Funktioniert flüssig auf Handy und Laptop (responsive), Touch-freundliche Bedienelemente. |
+| NFR-06 | Jede Kernaktion ist in wenigen Klicks und ohne Erklärung erreichbar („Browser auf, URL rein, loslegen"). |
+| NFR-07 | Primär für den Rechner am LAN-Platz gestaltet (Vollbild und halbbreites Fenster neben dem Spiel); auf Handy und Laptop vollständig nutzbar (responsive), bei Touch-Bedienung mit ausreichend großen Bedienelementen. |
 | NFR-08 | Keine langen Formulare; sinnvolle Vorbelegungen und Defaults. |
 | NFR-09 | Erste sinnvolle Anzeige lädt schnell (< ~1 s im LAN/über Cloud), auch bei ~15 gleichzeitigen Nutzern. |
 
