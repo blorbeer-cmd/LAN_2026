@@ -692,6 +692,11 @@ export function renderProfile(container, ctx) {
             meta: 'Meldet andere Geräte ab',
             action: '<button type="button" class="btn btn-sm" id="profile-password-open">Ändern</button>',
           })}
+          ${profileRow({
+            title: 'MCP-Verbindungen',
+            meta: 'Event-Freigaben ansehen und widerrufen',
+            action: '<a class="btn btn-sm" href="/mcp/manage">Verwalten</a>',
+          })}
           ${me.is_admin ? profileRow({
             title: 'Admin-Modus',
             meta: `${adminModeActive ? 'An' : 'Aus'} · zeigt Test-Spieler${eventHasFeature(state.activeEvent, 'arcade') ? ' und KI-Gegner im Arcade' : ''}`,

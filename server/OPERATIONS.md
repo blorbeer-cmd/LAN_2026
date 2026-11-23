@@ -168,6 +168,33 @@ Cloudflare-Tunnel erlaubt im kostenlosen Tarif bis 100 MB pro Request; daher die
 
 ## Produktions-Deployment
 
+### MCP und manuelle Auslosungsbereinigung
+
+Der MCP-Endpunkt `/mcp` ist Teil desselben Node-Prozesses und Runtime-Images. Er benötigt
+keinen zweiten Dienst oder zusätzlichen Port. Aktivierung über `MCP_ENABLED=1` und einen
+kanonischen öffentlichen HTTPS-Ursprung in `PUBLIC_BASE_URL`; standardmäßig bleibt er geschlossen.
+Die vorhandene Compose-Datei übernimmt beide Werte aus der nicht versionierten `.env`.
+Der normale Healthcheck setzt keine Erreichbarkeit eines MCP-Clients voraus.
+
+Persönliche, eventgebundene OAuth-Freigaben und Bereinigungspläne werden durch Migration 141
+in derselben SQLite-Datenbank gespeichert. Token werden nur gehasht abgelegt. Vor einem
+öffentlichen Wiederanlauf nach Restore die Freigaben prüfen und unerwünschte Zugänge widerrufen;
+ein Backup kann ältere Freigaben enthalten. Kurzlebige, noch nicht eingelöste OAuth-Anfragen
+werden bei Neustart verworfen und müssen erneut begonnen werden.
+
+Admins erstellen Löschpläne für alte Auslosungen ohne Ergebnis über MCP. Der
+Bestätigungslink öffnet den konkreten Plan zur Prüfung und Bestätigung in Respawn.
+Geschützte Turnier- und Wettbezüge bleiben erhalten. Es wird kein Cleanup-Scheduler eingerichtet. Details und Prüfschritte:
+[MCP](../docs/chatgpt-mcp.md).
+
+### Regulärer Ablauf
+
+Die drei Browser-E2E-Jobs und die Bestätigung einer Testlauf-Regression verwenden ausdrücklich
+`ubuntu-24.04`. Playwright 1.56.1 unterstützt das inzwischen von `ubuntu-latest` gelieferte
+Ubuntu 26.04 nicht; ohne diese Festlegung scheitert bereits die Chromium-Installation vor den
+Tests. Die übrigen Jobs behalten ihre bisherige Runner-Auswahl. Der visuelle Bildvergleich
+verwendet weiterhin unverändert seinen separat gepinnten Referenzcontainer.
+
 Der Workflow `.github/workflows/deploy.yml` baut bereits in jedem Pull Request das vollständige
 Runtime-Image, veröffentlicht es dort aber nicht. Für jeden relevanten Push auf `main` wird das mit
 dem Commit-SHA getaggte Image anschließend veröffentlicht. Reine Markdown- und `docs/`-Änderungen

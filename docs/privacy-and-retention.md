@@ -7,6 +7,30 @@ Betreiber für seine konkrete Installation festlegen.
 
 ## Leitlinien
 
+### Optionale MCP-Anbindung
+
+Eine persönliche OAuth-Verbindung erlaubt dem freigegebenen MCP-Client den Abruf ausgewählter Daten genau eines
+freigegebenen Events. Dazu gehören Teilnehmernamen, Spiele, vorhandene Statistiken,
+sichtbare Umfragebeteiligung und veröffentlichte Auswertungen. Bei der Freigabe wird auf die
+Verarbeitung im Chat hingewiesen. Passwort, Agent-Keys, Sitzungstoken, Recovery-Codes,
+WLAN-Passwörter und fremde individuelle Stimmzettel werden nicht an MCP-Clients ausgegeben.
+
+Die Tabellen `mcp_connections` und `mcp_clients` speichern Kontext, Freigaben, Laufzeiten,
+Clientzuordnung und ausschließlich Token-Hashes. Verbindungen laufen spätestens nach 30 Tagen
+aus und lassen sich unter „Mein Profil → MCP-Verbindungen“ widerrufen. Das verhindert
+weitere Abrufe, entfernt aber keine bereits im Chat sichtbaren Daten. Die Clientregistrierung
+bleibt für die Wiederverwendung durch den MCP-Client bestehen. Der Betreiber berücksichtigt den
+optionalen Datenabruf bei seinen Hinweisen zum eingesetzten Dienstleister.
+
+`draw_cleanup_plans` speichert ausschließlich die vom Admin ausgewählte Bereinigung mit IDs,
+Kriterien und Ausgang. Pläne gelten zehn Minuten; abgelaufene Plandetails werden bei der nächsten
+Vorschau nach weiteren sieben Tagen entfernt. Kontolöschung entfernt die eigenen Verbindungen
+und Pläne per Fremdschlüssel. Das bestehende Admin-Audit erfasst Löschaktionen ohne Tokens oder
+Passwörter. Für MCP werden keine allgemeinen Seitenaufrufe, Klicks oder Gesprächsverläufe in
+Respawn gespeichert. Details: [MCP](chatgpt-mcp.md).
+
+### Allgemeine Leitlinien
+
 - Respawn erhebt nur Daten, die ein sichtbares Produktmerkmal oder den sicheren Betrieb tragen.
 - Spielaktivität wird nur für das aktuell gewählte, laufende Event mit bestätigter Teilnahme,
   aktiviertem Tracking und gültiger, versionierter Einwilligung verarbeitet.

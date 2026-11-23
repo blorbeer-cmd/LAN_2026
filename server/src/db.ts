@@ -7,6 +7,7 @@ import fs from 'fs';
 import path from 'path';
 import { nanoid } from 'nanoid';
 import { config } from './config';
+import { installMcpSchema } from './mcp/schema';
 import { DEFAULT_QUIZ_QUESTIONS } from './arcade/quizQuestions';
 import { DEFAULT_SCRIBBLE_WORDS } from './arcade/scribbleWords';
 import {
@@ -6178,6 +6179,9 @@ registerMigration({ version: 140, name: 'store optional server details on open m
   if (!columns.some((column) => column.name === 'server_password'))
     db.exec('ALTER TABLE matchmaking_draws ADD COLUMN server_password TEXT');
 } });
+
+registerMigration({ version: 141, name: 'scoped MCP connections and confirmed draw cleanup plans',
+  up: () => installMcpSchema(db) });
 
 runRegisteredMigrations();
 

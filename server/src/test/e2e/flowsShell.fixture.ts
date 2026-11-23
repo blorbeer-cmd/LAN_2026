@@ -4,7 +4,8 @@
 // Sibling tests here intentionally share that state and run in order.
 
 import assert from 'node:assert/strict';
-import { addSessionCookie, switchSessionCookie, finishE2EOnboarding } from './authHelpers';
+import { addSessionCookie, switchSessionCookie, finishE2EOnboarding, authenticatedServerEnv, loginE2EAdmin } from './authHelpers';
+import { startE2EServer } from './e2eServer';
 import { trackE2EContext } from './e2eDiagnostics';
 import {
   flowTest,
@@ -31,6 +32,26 @@ import { assertControlHeights, assertNoOverflow } from './visualHelpers';
 import { clickActionMenuEntry } from './actionMenuHelpers';
 
 registerFlowFixture('shell');
+
+flowTest('personal MCP management is available without a standalone cleanup form', async (t) => {
+  const server = await startE2EServer(authenticatedServerEnv());
+  t.after(() => server.process.kill());
+  const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  t.after(() => context.close());
+  await trackE2EContext(context, 'mcp-management');
+  const cookie = await loginE2EAdmin(server.baseUrl);
+  await addSessionCookie(context, server.baseUrl, cookie);
+  const integrationPage = await context.newPage();
+  await integrationPage.goto(`${server.baseUrl}/mcp/manage`);
+  await integrationPage.getByRole('heading', { name: 'MCP-Verbindungen', level: 2, exact: true }).waitFor();
+  assert.equal(await integrationPage.locator('#mcp-cleanup').count(), 0);
+  assert.equal(await integrationPage.getByRole('button', { name: 'Vorschau erstellen' }).count(), 0);
+  await assertNoOverflow(integrationPage.locator('body'));
+  await integrationPage.setViewportSize({ width: 1024, height: 768 });
+  await assertNoOverflow(integrationPage.locator('body'));
+  const standaloneCleanup = await integrationPage.goto(`${server.baseUrl}/admin/draw-cleanup`);
+  assert.equal(standaloneCleanup?.status(), 404);
+});
 
 const GROUP_NAME = 'E2E Skatrunde';
 const GROUP_NOTE = 'Jeden Donnerstag';
@@ -1526,6 +1547,7 @@ flowTest('the authenticated admin role owns the seating editor and backup tools'
   assert.equal(await page.locator('#admin-feature-usage-refresh').count(), 0);
   assert.equal(await page.locator('#admin-feedback-title').count(), 0);
   assert.equal(await page.locator('[aria-label="Werkzeuge"] .profile-row').count(), 6);
+  assert.equal(await page.locator('[aria-label="Werkzeuge"] a[href="/admin/draw-cleanup"]').count(), 0);
   assert.equal(await page.locator('[data-navigate="pointsAdmin"]').count(), 1);
   await page.click('[data-navigate="adminFeatureUsage"]');
   await page.waitForSelector('#admin-feature-usage-refresh');

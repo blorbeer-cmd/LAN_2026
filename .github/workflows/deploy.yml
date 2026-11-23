@@ -133,7 +133,7 @@ jobs:
     name: Browser E2E Core
     needs: changes
     if: needs.changes.outputs.e2e_core == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Leave a bounded diagnostics window after the original E2E attempt. Without
     # this headroom a trace retry can hit the job deadline, turn the result into
     # `cancelled`, and prevent the diagnostic artifact from being uploaded.
@@ -210,7 +210,7 @@ jobs:
     name: Browser E2E Arcade smoke
     needs: changes
     if: needs.changes.outputs.e2e_arcade_smoke == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     defaults:
       run:
@@ -272,7 +272,7 @@ jobs:
     name: Browser E2E Arcade
     needs: changes
     if: needs.changes.outputs.e2e_arcade == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 35
     defaults:
       run:
@@ -430,7 +430,7 @@ jobs:
       fail-fast: false
       matrix:
         include: ${{ fromJSON(needs['test-performance-detect'].outputs.suspicions || '[]') }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     defaults:
       run:
