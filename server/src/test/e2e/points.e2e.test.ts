@@ -1184,13 +1184,16 @@ test('poll and event-start travel awards update the open personal journal live',
     await history.getByText('Umfrage abgeschlossen: Gemeinsame Pause', { exact: true }).waitFor();
     await history.getByText('Ankunft eingetragen', { exact: true }).waitFor();
     await history.getByText('Abreise eingetragen', { exact: true }).waitFor();
-    // The rules page is a linkable local route that reads the server's rule set.
-    await member.getByRole('button', { name: 'Regeln: So funktionieren LAN-Punkte', exact: true }).click();
+    // The area's help dialog links the rules page, a local route that reads the server's rule set.
+    await member.getByRole('button', { name: 'LAN-Punkte kennenlernen', exact: true }).click();
+    await member.getByRole('dialog', { name: 'LAN-Punkte kennenlernen', exact: true })
+      .getByRole('link', { name: 'Alle Regeln: So funktionieren LAN-Punkte', exact: true }).click();
     await member.getByRole('heading', { level: 1, name: 'So funktionieren LAN-Punkte' }).waitFor();
     assert.match(member.url(), /#points\/regeln$/);
     const orgaRules = member.getByRole('list', { name: 'Orga-Punkte je Aktion' });
     await orgaRules.getByRole('listitem').filter({ hasText: 'Umfrage abgeschlossen' }).getByText('3 P.', { exact: true }).waitFor();
     await member.getByText('Bei aktuell 3 Teilnehmenden bringt Platz 1 also 3 P., der letzte Platz 1 P.', { exact: false }).waitFor();
+    await member.getByRole('dialog', { name: 'LAN-Punkte kennenlernen', exact: true }).waitFor({ state: 'detached' });
     await member.getByRole('button', { name: 'Mein Punktekonto', exact: true }).click();
     await member.getByRole('heading', { level: 1, name: 'Meine LAN-Punkte' }).waitFor();
     assert.deepEqual(pageErrors, []);

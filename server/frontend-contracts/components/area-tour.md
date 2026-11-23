@@ -25,6 +25,10 @@ Spieltitel aus; außerhalb des Vollbilds gilt wieder die normale Titelzeile.
 ## 4. Varianten
 
 Der Einstieg öffnet ein Standardmodal mit Tourstart und bei mehreren Kapiteln deren Auswahl.
+Eine Tour kann mit `link: { label, view, localRoute }` zusätzlich auf eine ausführlichere Seite
+verweisen (LAN-Punkte: „Alle Regeln: So funktionieren LAN-Punkte“). Der Verweis ist ein echter
+Link mit passendem Hash, schließt die Auswahl und navigiert innerhalb der App; auf der verlinkten
+Seite selbst entfällt er.
 Die laufende Tour verwendet `.area-tour-backdrop`: Dialog oben oder unten und eine separate
 nichtinteraktive Hervorhebung. Das Tourmodal enthält nur Erklärung und Navigation.
 Home, Events & Gruppen, Spiele, Vote, Umfragen, An-/Abreise, To-Do/Packliste, Essen, Match,

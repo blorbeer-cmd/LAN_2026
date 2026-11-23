@@ -319,7 +319,8 @@ abwechselnder Hintergrundfläche, auch im geschlossenen Zustand.
 Auf schmalen Telefonen steht die Tippaktion unter dem Begegnungstext. Erstattete Märkte bleiben
 als Historie einsehbar und nennen im Tippdialog dauerhaft die Rückgabe aller Einsätze sowie den
 vorhandenen Erstattungsgrund. Das gilt auch nach erneutem Öffnen und bei einer Live-Erstattung.
-Das „i“ direkt rechts neben dem Titel „Meine LAN-Punkte“ öffnet die Regeln. Die Seite „So funktionieren LAN-Punkte“
+Der Hilfedialog des „?“ neben „Meine LAN-Punkte“ verlinkt „Alle Regeln: So funktionieren
+LAN-Punkte“. Die Seite „So funktionieren LAN-Punkte“
 (`#points/regeln`) erklärt Gesamtwertung und Platzpunkte mit der aktuellen Teilnehmerzahl, die
 Orga-Punkte je Aktion, Match- und Turnierpunkte, Wettguthaben, Höchsteinsatz, Tippschluss,
 Abrechnung mit Beispiel und Erstattungsfälle sowie den Buchungszeitpunkt und einen hinterlegten
