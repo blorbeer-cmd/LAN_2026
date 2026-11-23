@@ -15,6 +15,7 @@ import { captureViewRenderState, restoreViewRenderState } from '../viewRenderSta
 import { profileRow } from '../profileRow.js';
 import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
 import { pointsRulesHtml } from '../pointsRules.js';
+import { icon } from '../icons.js';
 
 let cached = null;
 let stale = true;
@@ -720,7 +721,7 @@ export function renderPoints(container, ctx) {
   ensurePoints(ctx);
   const data = currentData();
   if (ctx.localRoute?.()?.kind === 'rules') return renderPointsRules(container, ctx, data);
-  const header = `<div class="row-between page-title-row points-actions"><h1 class="view-title">Meine LAN-Punkte</h1><div class="row points-actions"><button type="button" class="btn btn-sm" data-points-rules>Regeln</button><button type="button" class="btn btn-sm" data-points-reports>Meldungen</button>${isGroupAdmin() ? '<button type="button" class="btn btn-sm" data-navigate="pointsAdmin">Punkte verwalten</button>' : ''}</div></div>`;
+  const header = `<div class="row-between page-title-row points-actions"><h1 class="view-title points-title" aria-label="Meine LAN-Punkte">Meine LAN-Punkte<button type="button" class="icon-btn" data-points-rules aria-label="Regeln: So funktionieren LAN-Punkte" title="Regeln">${icon('info')}</button></h1><div class="row points-actions"><button type="button" class="btn btn-sm" data-points-reports>Meldungen</button>${isGroupAdmin() ? '<button type="button" class="btn btn-sm" data-navigate="pointsAdmin">Punkte verwalten</button>' : ''}</div></div>`;
   if (!data?.settings) {
     container.innerHTML = `${header}${emptyStateHtml(loadError || (data ? 'Für diese LAN ist noch keine Punktewertung aktiviert.' : state.activeEvent?.eventType === 'lan' ? 'Punktekonto wird geladen…' : 'Wähle ein LAN-Event.'))}${loadError ? '<button type="button" class="btn" data-points-retry>Erneut laden</button>' : ''}`;
     wirePointsReportButtons(container);

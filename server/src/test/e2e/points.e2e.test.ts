@@ -1185,7 +1185,7 @@ test('poll and event-start travel awards update the open personal journal live',
     await history.getByText('Ankunft eingetragen', { exact: true }).waitFor();
     await history.getByText('Abreise eingetragen', { exact: true }).waitFor();
     // The rules page is a linkable local route that reads the server's rule set.
-    await member.getByRole('button', { name: 'Regeln', exact: true }).click();
+    await member.getByRole('button', { name: 'Regeln: So funktionieren LAN-Punkte', exact: true }).click();
     await member.getByRole('heading', { level: 1, name: 'So funktionieren LAN-Punkte' }).waitFor();
     assert.match(member.url(), /#points\/regeln$/);
     const orgaRules = member.getByRole('list', { name: 'Orga-Punkte je Aktion' });
