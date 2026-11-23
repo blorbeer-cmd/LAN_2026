@@ -168,13 +168,13 @@ Cloudflare-Tunnel erlaubt im kostenlosen Tarif bis 100 MB pro Request; daher die
 
 ## Produktions-Deployment
 
-### ChatGPT/MCP und manuelle Auslosungsbereinigung
+### MCP und manuelle Auslosungsbereinigung
 
 Der MCP-Endpunkt `/mcp` ist Teil desselben Node-Prozesses und Runtime-Images. Er benötigt
 keinen zweiten Dienst oder zusätzlichen Port. Aktivierung über `MCP_ENABLED=1` und einen
 kanonischen öffentlichen HTTPS-Ursprung in `PUBLIC_BASE_URL`; standardmäßig bleibt er geschlossen.
 Die vorhandene Compose-Datei übernimmt beide Werte aus der nicht versionierten `.env`.
-Der normale Healthcheck setzt keine Erreichbarkeit von ChatGPT voraus.
+Der normale Healthcheck setzt keine Erreichbarkeit eines MCP-Clients voraus.
 
 Persönliche, eventgebundene OAuth-Freigaben und Bereinigungspläne werden durch Migration 141
 in derselben SQLite-Datenbank gespeichert. Token werden nur gehasht abgelegt. Vor einem
@@ -185,7 +185,7 @@ werden bei Neustart verworfen und müssen erneut begonnen werden.
 Admins erstellen Löschpläne für alte Auslosungen ohne Ergebnis über MCP. Der
 Bestätigungslink öffnet den konkreten Plan zur Prüfung und Bestätigung in Respawn.
 Geschützte Turnier- und Wettbezüge bleiben erhalten. Es wird kein Cleanup-Scheduler eingerichtet. Details und Prüfschritte:
-[ChatGPT/MCP](../docs/chatgpt-mcp.md).
+[MCP](../docs/chatgpt-mcp.md).
 
 ### Regulärer Ablauf
 

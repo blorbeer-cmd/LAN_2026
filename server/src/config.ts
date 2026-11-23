@@ -83,6 +83,7 @@ export const config = {
 
   // Ships in the normal server image; activation requires a canonical HTTPS URL.
   mcpEnabled: boolFromEnv('MCP_ENABLED'),
+  mcpAdditionalRedirectUris: (process.env.MCP_ADDITIONAL_REDIRECT_URIS ?? '').split(',').map((uri) => uri.trim()).filter(Boolean),
 
   // A player is considered "offline" if the agent hasn't reported within this
   // many milliseconds. Keeps the board honest when an agent crashes or a PC

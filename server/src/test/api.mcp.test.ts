@@ -44,8 +44,9 @@ function fixture() {
   return { actor, member, event, game, cookie, memberCookie, draw, prefix };
 }
 
-async function connect(f: ReturnType<typeof fixture>, cleanup = false) {
-  const redirect = 'https://chatgpt.com/connector_platform_oauth_redirect';
+const chatGptRedirect = 'https://chatgpt.com/connector_platform_oauth_redirect';
+
+async function connect(f: ReturnType<typeof fixture>, cleanup = false, redirect = chatGptRedirect) {
   const registered = await request(app).post('/mcp/oauth/register').send({ redirect_uris: [redirect], token_endpoint_auth_method: 'none' });
   assert.equal(registered.status, 201, JSON.stringify(registered.body));
   const clientId = registered.body.client_id as string;
@@ -63,6 +64,7 @@ async function connect(f: ReturnType<typeof fixture>, cleanup = false) {
   const consent = consents.find((r) => r.status === 200)!;
   assert.equal(consent.status, 200, JSON.stringify(consent.body));
   const target = new URL(consent.body.redirect);
+  assert.equal(target.origin + target.pathname, redirect);
   assert.equal(target.searchParams.get('state'), 'test-state');
   assert.equal(target.searchParams.get('iss'), base);
   const exchange = { grant_type: 'authorization_code', code: target.searchParams.get('code'), client_id: clientId,
@@ -292,4 +294,37 @@ test('disabled MCP leaves health and personal management available without stand
   assert.equal((await request(app).get('/admin/draw-cleanup')).status, 404);
   assert.equal((await request(app).post('/api/integrations/cleanup/preview').set('Cookie', f.cookie).set('Origin', base)
     .send({ eventId: f.event, age: 7, unit: 'days' })).status, 404);
+});
+
+
+test('Claude and a configured MCP client give a member separate, revocable event grants', async (t) => {
+  const now = Date.now() + 120_000;
+  t.mock.method(Date, 'now', () => now);
+  const customRedirect = 'https://mcp-client.example/oauth/callback';
+  const configured = config.mcpAdditionalRedirectUris;
+  Object.assign(config, { mcpAdditionalRedirectUris: [customRedirect, 'https://mcp-client.example/*'] });
+  t.after(() => Object.assign(config, { mcpAdditionalRedirectUris: configured }));
+  const member = fixture();
+  const f = { ...member, cookie: member.memberCookie };
+  const claude = await connect(f, true, 'https://claude.ai/api/mcp/auth_callback');
+  const custom = await connect(f, false, customRedirect);
+
+  for (const redirect of ['https://claude.ai/api/mcp/other', customRedirect + '/other', 'https://mcp-client.example/*']) {
+    const registration = await request(app).post('/mcp/oauth/register').send({ redirect_uris: [redirect] });
+    assert.equal(registration.status, 400, redirect);
+  }
+  for (const token of [claude.token, custom.token]) {
+    const response = await rpc(token, 'tools/call', { name: 'get_context', arguments: {} });
+    assert.equal(response.body.result.structuredContent.eventId, f.event);
+  }
+  const denied = await rpc(claude.token, 'tools/call', { name: 'preview_draw_cleanup', arguments: { age: 1, unit: 'days' } });
+  assert.equal(denied.body.result.isError, true);
+  const status = await request(app).get('/api/integrations/status').set('Cookie', f.cookie);
+  assert.equal(status.status, 200);
+  assert.deepEqual(status.body.connections.map((entry: { client: string }) => entry.client).sort(), ['Claude', 'mcp-client.example']);
+  const claudeConnection = status.body.connections.find((entry: { client: string }) => entry.client === 'Claude');
+  assert.equal((await request(app).delete('/api/integrations/connections/' + claudeConnection.id)
+    .set('Cookie', f.cookie).set('Origin', base)).status, 204);
+  assert.equal((await rpc(claude.token, 'tools/list')).status, 401);
+  assert.equal((await rpc(custom.token, 'tools/list')).status, 200);
 });

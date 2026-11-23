@@ -61,12 +61,26 @@ function tokens(connectionId: string) {
     expires_in: Math.max(0, Math.floor((accessExpiry - Date.now()) / 1000)), scope: connection.scopes };
 }
 
+const CLAUDE_REDIRECT_URI = 'https://claude.ai/api/mcp/auth_callback';
+
+function isChatGptRedirect(uri: URL): boolean {
+  return uri.origin === 'https://chatgpt.com' &&
+    (uri.pathname === '/connector_platform_oauth_redirect' || /^\/connector\/oauth\/[A-Za-z0-9_-]+$/.test(uri.pathname));
+}
+
+export function oauthClientLabel(redirect: string): string {
+  const uri = new URL(redirect);
+  if (isChatGptRedirect(uri)) return 'ChatGPT';
+  if (redirect === CLAUDE_REDIRECT_URI) return 'Claude';
+  return uri.host;
+}
+
 function validRedirect(raw: unknown): raw is string {
-  if (typeof raw !== 'string') return false;
+  if (typeof raw !== 'string' || raw.length > 2048) return false;
   try {
     const uri = new URL(raw);
-    return uri.origin === 'https://chatgpt.com' && !uri.search && !uri.hash &&
-      (uri.pathname === '/connector_platform_oauth_redirect' || /^\/connector\/oauth\/[A-Za-z0-9_-]+$/.test(uri.pathname));
+    if (uri.protocol !== 'https:' || uri.href !== raw || uri.username || uri.password || /[?#*]/.test(raw)) return false;
+    return isChatGptRedirect(uri) || raw === CLAUDE_REDIRECT_URI || config.mcpAdditionalRedirectUris.includes(raw);
   } catch { return false; }
 }
 
@@ -94,7 +108,7 @@ export function mountOAuth(router: Router): void {
     const redirects: unknown = req.body?.redirect_uris;
     if (!Array.isArray(redirects) || redirects.length !== 1 || !validRedirect(redirects[0]) ||
         (req.body.token_endpoint_auth_method !== undefined && req.body.token_endpoint_auth_method !== 'none')) {
-      return res.status(400).json({ error: 'invalid_client_metadata', error_description: 'Nur der exakte ChatGPT-Callback und PKCE ohne Client-Secret sind unterstützt.' });
+      return res.status(400).json({ error: 'invalid_client_metadata', error_description: 'Eine freigegebene Rücksprungadresse und PKCE ohne Client-Secret sind erforderlich.' });
     }
     const count = db.prepare('SELECT COUNT(*) FROM mcp_clients').pluck().get() as number;
     if (count >= 1000) throw new IntegrationError('Registrierungslimit erreicht.', 429);
@@ -107,7 +121,7 @@ export function mountOAuth(router: Router): void {
     purgeTransient(); limitRequests(`authorize:${req.ip}`, 30);
     const q = req.query;
     const client = typeof q.client_id === 'string' ? db.prepare('SELECT redirect_uri FROM mcp_clients WHERE id=?').get(q.client_id) as { redirect_uri: string } | undefined : undefined;
-    if (!client || q.redirect_uri !== client.redirect_uri || q.response_type !== 'code' || q.code_challenge_method !== 'S256' ||
+    if (!client || !validRedirect(client.redirect_uri) || q.redirect_uri !== client.redirect_uri || q.response_type !== 'code' || q.code_challenge_method !== 'S256' ||
         typeof q.code_challenge !== 'string' || !/^[\w-]{43}$/.test(q.code_challenge) ||
         typeof q.state !== 'string' || q.state.length < 1 || q.state.length > 2048 ||
         q.resource !== `${mcpBaseUrl()}/mcp`) throw new IntegrationError('Ungültige OAuth-Anfrage.');
@@ -123,7 +137,7 @@ export function mountOAuth(router: Router): void {
     purgeTransient();
     const request = pending.get(req.params.id);
     if (!request) throw new IntegrationError('Verbindungsanfrage abgelaufen.', 404);
-    res.json({ scopes: request.scopes, expiresAt: request.expires });
+    res.json({ client: oauthClientLabel(request.redirect), scopes: request.scopes, expiresAt: request.expires });
   }));
   router.post('/mcp/oauth/consent', sameOrigin, requireUser, route((req, res) => {
     purgeTransient();

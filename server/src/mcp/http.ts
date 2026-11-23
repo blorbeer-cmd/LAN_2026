@@ -10,7 +10,7 @@ import { context, overview, gameOptions, gameOptionsSchema, competitions, statis
   previewTeams, teamPreviewSchema, eventSummary } from './data';
 import { cleanupPlanDetails, executeCleanup, previewCleanup } from './cleanup';
 import { IntegrationError, mcpBaseUrl } from './access';
-import { limitRequests, mountOAuth, resolveConnection, route, sameOrigin } from './oauth';
+import { limitRequests, mountOAuth, oauthClientLabel, resolveConnection, route, sameOrigin } from './oauth';
 
 async function createMcpServer(token: string): Promise<Server> {
   // Disabled MCP must not load the protocol runtime into every normal app/test.
@@ -113,7 +113,7 @@ export function mountMcp(app: Express): void {
   mountOAuth(router);
   router.get(['/mcp/connect', '/mcp/manage', '/admin/draw-cleanup'], (req, res) => {
     if (req.path === '/admin/draw-cleanup' && (typeof req.query.plan !== 'string' || !req.query.plan)) {
-      res.status(404).send('Öffne den Bestätigungslink aus ChatGPT.');
+      res.status(404).send('Öffne den Bestätigungslink aus deinem MCP-Client.');
       return;
     }
     res.sendFile(path.join(__dirname, '..', '..', 'public', 'mcp.html'));
@@ -164,10 +164,13 @@ export function mountMcp(app: Express): void {
       WHERE ep.player_id=? AND ep.status='accepted' AND e.is_test=0 AND e.status IN ('published','ended') ORDER BY e.starts_at DESC`)
       .all(req.player!.id) as Array<{ id: string; name: string; role: string }>;
     const connections = db.prepare(`SELECT c.id,c.scopes,c.event_id AS eventId,e.name AS eventName,c.created_at AS createdAt,
-      c.expires_at AS expiresAt FROM mcp_connections c JOIN events e ON e.id=c.event_id
+      c.expires_at AS expiresAt, client.redirect_uri AS redirectUri
+      FROM mcp_connections c JOIN events e ON e.id=c.event_id JOIN mcp_clients client ON client.id=c.client_id
       WHERE c.player_id=? AND c.revoked_at IS NULL AND c.expires_at>? ORDER BY c.created_at DESC`)
-      .all(req.player!.id, Date.now());
-    res.json({ enabled: config.mcpEnabled, endpoint, configurationError, name: req.player!.name, events, connections });
+      .all(req.player!.id, Date.now()) as Array<{ id: string; scopes: string; eventId: string; eventName: string;
+        createdAt: number; expiresAt: number; redirectUri: string }>;
+    res.json({ enabled: config.mcpEnabled, endpoint, configurationError, name: req.player!.name, events,
+      connections: connections.map(({ redirectUri, ...connection }) => ({ ...connection, client: oauthClientLabel(redirectUri) })) });
   }));
   browser.delete('/connections/:id', sameOrigin, route((req, res) => {
     db.prepare('UPDATE mcp_connections SET revoked_at=? WHERE id=? AND player_id=?').run(Date.now(), req.params.id, req.player!.id);

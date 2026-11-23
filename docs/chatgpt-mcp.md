@@ -1,8 +1,8 @@
-# Respawn in ChatGPT
+# Respawn mit MCP verbinden
 
 Respawn stellt einen MCP-Server im normalen Node-Prozess unter `/mcp` bereit. Er wird mit dem
 üblichen Server-Image gebaut und ausgeliefert. Es gibt keinen zweiten Container, Port oder
-OpenAI-Modellschlüssel für diese Anbindung. ChatGPT benötigt Internetzugang zum öffentlichen
+Modellschlüssel für diese Anbindung. Der MCP-Client benötigt Zugriff auf den öffentlichen
 HTTPS-Endpunkt; der normale Respawn-Betrieb bleibt davon unabhängig.
 
 ## Server aktivieren
@@ -43,7 +43,7 @@ curl -i https://deine-respawn-domain.example/.well-known/oauth-authorization-ser
 Die Metadaten müssen den tatsächlichen HTTPS-Ursprung und die Ressource mit `/mcp` nennen.
 Ein POST auf `/mcp` ohne gültigen Bearer-Token liefert `401` mit einem `WWW-Authenticate`-Hinweis.
 Ein GET auf `/mcp` liefert `405`: verwendet wird zustandsloses Streamable HTTP über POST, kein
-dauerhafter SSE-Abonnementkanal. `/api/health` bleibt unabhängig von ChatGPT.
+dauerhafter SSE-Abonnementkanal. `/api/health` bleibt unabhängig vom MCP-Client.
 
 ## In ChatGPT verbinden
 
@@ -67,9 +67,28 @@ ChatGPT-Funktion nicht frei.
 
 Die aktuellen Schritte und mögliche Änderungen stehen in der
 [OpenAI-Anleitung für eigene MCP-Server](https://developers.openai.com/api/docs/guides/custom-mcp-server).
-Die Implementierung unterstützt die dort beschriebenen ChatGPT-Callbacks, einschließlich des
-stabilen Callbacks mit OAuth-Issuer-Prüfung und des Callback-ID-spezifischen Pfads. Andere
-OAuth-Clients und frei wählbare Rücksprungadressen werden im privaten Pilot nicht registriert.
+Die Implementierung unterstützt den stabilen ChatGPT-Callback und den Callback mit
+verbindungsspezifischem Pfad.
+
+## In Claude verbinden
+
+In **Anpassen → Connectors** einen benutzerdefinierten Connector anlegen. Als Server-URL
+denselben öffentlichen `/mcp`-Endpunkt eintragen. Unter OAuth-Client **Automatisch registrieren**
+(Register automatically) auswählen. Mit dem persönlichen Respawn-Konto anmelden und das
+gewünschte Event freigeben. Respawn akzeptiert Claudes dokumentierten Callback
+`https://claude.ai/api/mcp/auth_callback`. Die Schritte stehen in der
+[Claude-Anleitung für eigene Connectors](https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp).
+
+## Weitere MCP-Clients verbinden
+
+Der Client benötigt Streamable HTTP, dynamische OAuth-Client-Registrierung ohne Client-Secret,
+PKCE mit S256 und die MCP-Ressourcenkennung im OAuth-Ablauf. In der Server-`.env` lassen sich
+zusätzliche vollständige HTTPS-Rücksprungadressen kommagetrennt in
+`MCP_ADDITIONAL_REDIRECT_URIS` eintragen, etwa
+`MCP_ADDITIONAL_REDIRECT_URIS=https://client.example/oauth/callback`. Adressen werden exakt
+abgeglichen. Platzhalter, Zugangsdaten, Query-Parameter und Fragmente sind unzulässig.
+Nach einer Änderung die Serverkonfiguration übernehmen. Das Entfernen einer Adresse
+verhindert neue Freigaben. Bestehende Freigaben lassen sich im Profil widerrufen.
 
 ## Beispiele
 
@@ -122,10 +141,10 @@ werden durch eine einzelne Event-Freigabe nicht zugänglich.
 
 ## Admin-Bereinigung
 
-Admins mit der OAuth-Freigabe `draws:cleanup` können in ChatGPT einen Löschplan vorbereiten.
+Admins mit der OAuth-Freigabe `draws:cleanup` können in ihrem MCP-Client einen Löschplan vorbereiten.
 Der Bestätigungslink öffnet die zugehörige Vorschau in Respawn.
 
-1. In ChatGPT ein positives Alter in ganzen Stunden oder Tagen angeben. Ein Tag entspricht
+1. Im MCP-Client ein positives Alter in ganzen Stunden oder Tagen angeben. Ein Tag entspricht
    24 Stunden. Standard sind sieben Tage und automatische Auslosungen. Captain-Drafts und
    Rematches müssen ausdrücklich einbezogen werden.
 2. Den Bestätigungslink öffnen. Die Vorschau zeigt Stichtag, betroffene Auslosungen und Gründe
@@ -154,7 +173,7 @@ stillschweigend gelöscht. Dann über Spiel oder höheres Alter eingrenzen. Ein 
 
 ## Zugriff widerrufen und Betrieb
 
-**Mein Profil → ChatGPT-Verbindungen → Verwalten** zeigt die eigenen Verbindungen. Widerruf
+**Mein Profil → MCP-Verbindungen → Verwalten** zeigt die eigenen Verbindungen. Widerruf
 verhindert weitere Abrufe und die Ausführung verknüpfter Löschpläne. Bereits im Chat angezeigte
 Daten werden dadurch nicht aus dem Gespräch entfernt.
 
@@ -179,5 +198,5 @@ Umfragen ohne Antworten und veränderte/geschützte Löschkandidaten. Migration 
 Legacy-Daten, Fehlerrollback und Wiederholung geprüft. Der bestehende Shell-Browser-Owner
 prüft die persönliche Verwaltungsseite auf Handy und Laptop sowie das Verhalten ohne Bestätigungslink.
 
-Eine Verbindung im tatsächlichen ChatGPT-Konto und das produktive HTTPS-Routing müssen nach
+Die Verbindung in den tatsächlichen ChatGPT- und Claude-Konten und das produktive HTTPS-Routing müssen nach
 dem Deployment separat geprüft werden. Lokale Tests sind kein Nachweis eines Live-Deployments.

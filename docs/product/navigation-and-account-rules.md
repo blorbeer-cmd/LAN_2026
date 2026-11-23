@@ -155,11 +155,11 @@ Diese Datei enthält die aus dem Designkern verschobenen Regeln zu Routen, Rolle
 
 ## Profile und Admin
 
-- Unter „Mein Profil → ChatGPT-Verbindungen“ öffnet „Verwalten“ die persönliche Seite
+- Unter „Mein Profil → MCP-Verbindungen“ öffnet „Verwalten“ die persönliche Seite
   `/mcp/manage`. Sie zeigt Event-Freigaben und erlaubt deren sofortigen Widerruf. Die Verbindung
   erfordert eine persönliche Anmeldung und gilt genau für das bei OAuth ausgewählte Event.
 - Admins können alte Match-Auslosungen ohne Ergebnis über eine dafür freigegebene
-  ChatGPT-Verbindung zur Bereinigung auswählen. Der Bestätigungslink öffnet in Respawn
+  MCP-Verbindung zur Bereinigung auswählen. Der Bestätigungslink öffnet in Respawn
   die konkrete Auswahl mit Stichtag und geschützten Einträgen. Die dauerhafte Löschung
   erfordert die Bestätigung im Browser und eine aktuelle Passwortbestätigung.
   Änderungen seit der Vorschau machen den Plan ungültig.

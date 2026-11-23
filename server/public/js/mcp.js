@@ -10,7 +10,7 @@ const status = document.querySelector('#mcp-status');
 const query = new URLSearchParams(location.search);
 const requestId = query.get('request');
 const planId = query.get('plan');
-const title = requestId ? 'Respawn mit ChatGPT verbinden' : planId ? 'Auslosungen aufräumen' : 'ChatGPT-Verbindungen';
+const title = requestId ? 'MCP-Verbindung freigeben' : planId ? 'Auslosungen aufräumen' : 'MCP-Verbindungen';
 document.title = `${title} – Respawn`;
 document.querySelector('.view-title').textContent = title;
 let account;
@@ -54,8 +54,7 @@ async function consent() {
   const pending = await apiFetch(`/mcp/oauth/pending/${encodeURIComponent(requestId)}`);
   message(`Angemeldet als ${account.name}`);
   content.innerHTML = `<section class="card stack grouped-page-section">
-    <h2>Respawn mit ChatGPT verbinden</h2>
-    <p>ChatGPT darf die freigegebenen Daten des gewählten Events abrufen: Teilnehmer, Spiele, Statistiken,
+    <p><strong>${escapeHtml(pending.client)}</strong> darf die freigegebenen Daten des gewählten Events abrufen: Teilnehmer, Spiele, Statistiken,
       Umfragen und veröffentlichte Auswertungen. Abgerufene Daten werden im Chat verarbeitet.</p>
     ${pending.scopes.includes('teams:preview') ? '<p>Unverbindliche Teamvorschläge sind erlaubt.</p>' : ''}
     <form id="mcp-consent" class="stack">
@@ -71,7 +70,7 @@ async function consent() {
     const form = content.querySelector('form');
     const result = await post('/mcp/oauth/consent', { requestId, deny, eventId: form.elements.eventId.value,
       allowCleanup: form.elements.allowCleanup?.checked === true });
-    // The server returns only its registered, exact ChatGPT redirect URI.
+    // The server returns only its exact registered redirect URI.
     location.assign(result.redirect);
   };
   content.querySelector('form').addEventListener('submit', (event) => {
@@ -110,19 +109,18 @@ async function showPlan(id) {
 function manage() {
   message(`Angemeldet als ${account.name}`);
   content.innerHTML = `<section class="card stack grouped-page-section">
-    <h2>ChatGPT-Verbindungen</h2>
+    <h2>MCP-Verbindungen</h2>
     ${account.endpoint ? `<label class="field-label" for="mcp-endpoint">MCP-Server-URL</label>
       <input id="mcp-endpoint" readonly value="${escapeHtml(account.endpoint)}" />
-      <p>In ChatGPT unter Plugins einen eigenen MCP-Server mit dieser URL und OAuth hinzufügen.
-        Anschließend das Respawn-Plugin im Chat über @ auswählen.</p>` : `<p>${escapeHtml(account.configurationError || 'MCP ist auf diesem Server noch nicht eingerichtet. Die Orga kann den Zugang aktivieren.')}</p>`}
+      <p>Füge diese URL in deinem MCP-Client als Server mit OAuth hinzu.</p>` : `<p>${escapeHtml(account.configurationError || 'MCP ist auf diesem Server noch nicht eingerichtet. Die Orga kann den Zugang aktivieren.')}</p>`}
     <div class="stack">${account.connections.length ? account.connections.map((connection) => `
       <div class="profile-row"><div class="profile-row-main"><span class="profile-row-text">
         <span class="profile-row-title">${escapeHtml(connection.eventName)}</span>
-        <span class="profile-row-meta">Bis ${escapeHtml(formatDateTime(connection.expiresAt))} · ${escapeHtml(scopeLabels(connection.scopes))}</span>
+        <span class="profile-row-meta">${escapeHtml(connection.client)} · Bis ${escapeHtml(formatDateTime(connection.expiresAt))} · ${escapeHtml(scopeLabels(connection.scopes))}</span>
       </span></div><div class="profile-row-action"><button class="btn btn-sm" data-revoke="${escapeHtml(connection.id)}">Widerrufen</button></div></div>`).join('') : '<p>Keine aktiven Verbindungen.</p>'}</div>
     </section>`;
   content.querySelectorAll('[data-revoke]').forEach((button) => button.addEventListener('click', () => busy(button, async () => {
-    if (!(await confirmDialog('Diese ChatGPT-Verbindung widerrufen?', { confirmText: 'Widerrufen' }))) return;
+    if (!(await confirmDialog('Diese MCP-Verbindung widerrufen?', { confirmText: 'Widerrufen' }))) return;
     await apiFetch(`/api/integrations/connections/${encodeURIComponent(button.dataset.revoke)}`, { method: 'DELETE' });
     message('Verbindung widerrufen. Bereits im Chat angezeigte Daten bleiben dort sichtbar.');
     await start();

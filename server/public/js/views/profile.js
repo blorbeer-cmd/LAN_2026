@@ -693,7 +693,7 @@ export function renderProfile(container, ctx) {
             action: '<button type="button" class="btn btn-sm" id="profile-password-open">Ändern</button>',
           })}
           ${profileRow({
-            title: 'ChatGPT-Verbindungen',
+            title: 'MCP-Verbindungen',
             meta: 'Event-Freigaben ansehen und widerrufen',
             action: '<a class="btn btn-sm" href="/mcp/manage">Verwalten</a>',
           })}

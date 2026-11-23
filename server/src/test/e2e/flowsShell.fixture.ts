@@ -43,7 +43,7 @@ flowTest('personal MCP management is available without a standalone cleanup form
   await addSessionCookie(context, server.baseUrl, cookie);
   const integrationPage = await context.newPage();
   await integrationPage.goto(`${server.baseUrl}/mcp/manage`);
-  await integrationPage.getByRole('heading', { name: 'ChatGPT-Verbindungen', level: 2, exact: true }).waitFor();
+  await integrationPage.getByRole('heading', { name: 'MCP-Verbindungen', level: 2, exact: true }).waitFor();
   assert.equal(await integrationPage.locator('#mcp-cleanup').count(), 0);
   assert.equal(await integrationPage.getByRole('button', { name: 'Vorschau erstellen' }).count(), 0);
   await assertNoOverflow(integrationPage.locator('body'));

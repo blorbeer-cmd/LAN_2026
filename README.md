@@ -348,9 +348,9 @@ Details zur Teststrategie: [`server/TESTING.md`](server/TESTING.md).
 
 ## Tech-Stack
 
-Die optionale ChatGPT-Anbindung wird im selben Server mit ausgeliefert. Aktivierung,
+Die optionale MCP-Anbindung wird im selben Server mit ausgeliefert. Aktivierung,
 OAuth-Anmeldung, Statistikfragen und die Admin-Bereinigung alter Match-Auslosungen ohne Ergebnis:
-[ChatGPT/MCP einrichten](docs/chatgpt-mcp.md).
+[MCP einrichten](docs/chatgpt-mcp.md).
 
 - **Server**: Node.js, TypeScript, Express, better-sqlite3, Socket.IO, `web-push` (Push-Benachrichtigungen),
   `qrcode` (Einladungs-QR-Code), `archiver` (personalisierte Agent-ZIP)
