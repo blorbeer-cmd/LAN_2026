@@ -102,8 +102,8 @@
   --seating-seat-height: calc(var(--avatar-size-lg) + var(--space-2));
   --assignment-select-width: 112px;
   /* Narrowest match screenshot thumbnail: a scoreboard stays recognizable,
-     and two fit side by side on a 390px phone. */
-  --match-screenshot-min-width: 140px;
+     and two fit side by side in a match tile on a 390px phone. */
+  --match-screenshot-min-width: 120px;
   /* Fixed width keeps the food-order payment toggle stable beside the PayPal
      action while its label, position count and amount change. */
   --payment-marker-width: 96px;

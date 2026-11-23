@@ -1239,12 +1239,14 @@ function historyScreenshotsHtml(draw) {
     const url = api.matches.screenshotUrl(draw.matchId, shot.id);
     const label = `Screenshot ${index + 1} von ${screenshots.length}: ${draw.gameName}`;
     const canDelete = shot.uploadedBy === getMyId() || isGroupAdmin();
+    // On a phone the line is cut off; the title keeps uploader and time readable.
+    const caption = `${shot.uploadedByName ? `${shot.uploadedByName} · ` : ''}${formatDateTime(shot.uploadedAt)}`;
     return `<figure class="matchmaking-history-screenshot">
       <a class="matchmaking-history-screenshot-link" href="${escapeHtml(url)}" target="_blank" rel="noopener" aria-label="${escapeHtml(label)} in voller Größe öffnen">
         <img class="matchmaking-history-screenshot-image" src="${escapeHtml(url)}" alt="${escapeHtml(label)}" loading="lazy" decoding="async" />
       </a>
       <figcaption class="matchmaking-history-screenshot-caption">
-        <span class="muted">${shot.uploadedByName ? `${escapeHtml(shot.uploadedByName)} · ` : ''}${formatDateTime(shot.uploadedAt)}</span>
+        <span class="muted" title="${escapeHtml(caption)}">${escapeHtml(caption)}</span>
         ${canDelete ? `<button type="button" class="icon-btn" data-delete-screenshot="${escapeHtml(shot.id)}" data-screenshot-draw="${escapeHtml(draw.id)}" aria-label="Screenshot ${index + 1} löschen" title="Screenshot löschen">${icon('trash')}</button>` : ''}
       </figcaption>
     </figure>`;

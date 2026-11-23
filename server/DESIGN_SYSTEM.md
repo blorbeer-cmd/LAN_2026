@@ -211,8 +211,8 @@ the same size. The long sides shrink all their seats evenly instead of scrolling
 plan turns upright so the long sides become two columns of full-width seats.
 `--assignment-select-width` (112px) keeps repeated player-to-team selectors aligned independently
 of player-name length.
-`--match-screenshot-min-width` (140px) is the narrowest Match screenshot thumbnail: a scoreboard
-stays recognizable and two thumbnails fit side by side on a 390px phone.
+`--match-screenshot-min-width` (120px) is the narrowest Match screenshot thumbnail: a scoreboard
+stays recognizable and two thumbnails fit side by side in a match tile on a 390px phone.
 `--payment-marker-width` (96px, 88px only below 360px) keeps the checkbox-like payment toggle of
 food orders and Event participants stable while its state and the amount change. It is the toggle's
 width wherever the row has room for it; on phones the action cluster fills whatever its row leaves
