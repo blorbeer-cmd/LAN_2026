@@ -137,7 +137,10 @@ test('only the uploader or an admin removes a screenshot, and deleting the match
 });
 
 test('the cleanup keeps live files and young uploads, and removes orphans and stale temporary files', () => {
-  const live = db.prepare('SELECT id FROM match_screenshots LIMIT 1').get() as { id: string };
+  // Every remaining row, JPEG and PNG alike, must keep its file.
+  const live = (db.prepare('SELECT id, content_type FROM match_screenshots ORDER BY id').all() as Array<{ id: string; content_type: string }>)
+    .map((row) => `${row.id}.${row.content_type === 'image/png' ? 'png' : 'jpg'}`);
+  assert.ok(live.some((name) => name.endsWith('.png')) && live.some((name) => name.endsWith('.jpg')));
   fs.writeFileSync(path.join(screenshotDir, 'orphan.jpg'), JPEG);
   fs.writeFileSync(path.join(screenshotDir, '.young.upload'), JPEG);
   const stale = path.join(screenshotDir, '.stale.upload');
@@ -146,7 +149,7 @@ test('the cleanup keeps live files and young uploads, and removes orphans and st
   fs.utimesSync(stale, twoHoursAgo, twoHoursAgo);
 
   assert.equal(pruneMatchScreenshotFiles(), 2);
-  assert.ok(files().includes(`${live.id}.jpg`));
+  for (const name of live) assert.ok(files().includes(name), name);
   assert.ok(files().includes('.young.upload'));
   assert.ok(!files().includes('orphan.jpg'));
   assert.ok(!files().includes('.stale.upload'));
