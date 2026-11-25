@@ -313,8 +313,11 @@ they are next changed, and new work follows them right away.
    Compact actions must not increase the height of data rows. A primary action uses the Respawn
    gradient; its placement follows rule 10. A view shows at most one gradient action at a time:
    the action the page exists for. Selected states — active tabs, segments, chips, filters and
-   navigation entries — never use the gradient; they use `--accent-bg` with accent-colored text or
-   an inset accent outline, so a selection never looks like a button. Parallel secondary actions inside one footer share the
+   navigation entries — never use the gradient; like `.chip.is-active` they keep `--text` on
+   `--accent-bg` and mark the selection with an accent border or inset outline (about 11.6:1 on
+   `--bg-elevated`, 10.3:1 on `--bg-elevated-2`). `--accent` as label color on `--accent-bg` is
+   not allowed for small text: it reaches only 4.1:1 and 3.7:1 there. A selection never looks like
+   a button. Parallel secondary actions inside one footer share the
    available width. Actions for a repeated card belong in a separated, consistently positioned
    footer when variable content would otherwise make cards drift. See the
    [Controls contract](frontend-contracts/components/controls.md) for normative geometry and reflow.
@@ -339,10 +342,16 @@ they are next changed, and new work follows them right away.
    states must retain the same geometry as the populated state.
 9. **Keep product rules separate.** Routes, roles, business flows, product copy and
    domain-state details live in [Product rules](../docs/product/README.md).
-10. **Place actions compactly and predictably.** A card's primary action is a compact gradient
-    button (`.btn-primary.btn-sm`, on `--accent-gradient-strong` so its label keeps 4.5:1) at the
-    right of the card heading, like „Starten“ or „Spiel vorschlagen“. On wide layouts that card is
-    sized by rule 15, so the action stays within one glance of its heading. A form's final submit sits right-aligned at the card's end at
+10. **Place actions compactly and predictably.** A card's primary action sits as a compact button
+    at the right of the card heading, like „Starten“ or „Spiel vorschlagen“. Only the page's
+    primary action (rule 5) is a gradient button (`.btn-primary.btn-sm` on
+    `--accent-gradient-strong`); the primary actions of other cards on the same page use the
+    neutral compact button (`.btn.btn-sm`) in the same position — for example „Stichwahl starten“
+    in the result card while „Abstimmung starten“ stays the page action. The gradient label keeps
+    4.5:1 in every state: hover and focus feedback on a gradient button comes from its shadow or
+    outline, not from brightening the fill (`brightness(1.12)` drops the blue end of the strong
+    gradient from 4.6:1 to 3.8:1). On wide layouts the card is sized by rule 15, so the action
+    stays within one glance of its heading. A form's final submit sits right-aligned at the card's end at
     its natural width. Buttons spanning the full card width are avoided. Management actions such as
     „Beenden“ or „Abbrechen“ are compact neutral buttons in the card header; a destructive action
     keeps its danger meaning in the confirmation dialog instead of a large red button in the page.
@@ -381,7 +390,12 @@ they are next changed, and new work follows them right away.
     with the first view reworked under this rule. Repeated records that people compare or rate
     (games, players, results) become dense table-like rows with aligned columns on desktop, not a
     stack of tall cards. A half-screen window of about 960px beside the game is a desktop case:
-    it keeps desktop navigation and mouse-sized controls, not the phone shell.
+    with the Automatic layout, a hovering fine pointer and enough window height it gets desktop
+    navigation instead of the phone shell. This default does not override the existing
+    exceptions: an explicit Laptop choice in Mein Profil keeps the laptop shell, Automatic still
+    falls back to it when the window is too short for the rail, and a coarse pointer keeps
+    `--tap-target-size` targets (`registry:desktop-navigation` in the Controls contract,
+    `layoutMode.test.js`).
 
 ## Components
 
@@ -709,15 +723,23 @@ the following places; each is fixed in its own change and then removed from this
 these patterns into new work.
 
 - **Primary-button contrast** — `.btn-primary` (`style.css`) still paints white text on
-  `--accent-gradient` (about 3.4–3.7:1). Target: `--accent-gradient-strong` (rule 10).
+  `--accent-gradient` (about 3.4–3.7:1), and `.btn:hover` brightens every button including the
+  primary one. Target: `--accent-gradient-strong` with shadow-only hover feedback on gradient
+  buttons (rule 10).
+- **Several gradient actions per view** — after a tie, `views/votes.js` shows „Abstimmung
+  starten“ and „Stichwahl starten“ both as gradient buttons. Target: one page action with the
+  gradient, the other as a neutral compact button (rule 10).
 - **Gradient as selection** — about 16 call sites mark a selected tab, mode, tool or choice by
   adding `btn-primary` (for example the Katalog/Vorschläge/Alle tabs in `views/gameCatalog.js`
-  and the Scribble tools). Target: `--accent-bg` or the inset accent outline (rule 5).
+  and the Scribble tools). Target: `--text` on `--accent-bg` with an accent border or inset
+  outline, as in `.chip.is-active` (rule 5).
 - **Stretched desktop views** — at `--bp-xl` in Desktop mode most views are one column of cards up
   to 1600px wide, and the game catalog shows one tall card per game. Target: rule 15.
 - **Phone shell in half-screen windows** — Automatic layout shows the side rail only from
   `--bp-xl`; between `--bp-lg` and `--bp-xl` the bottom navigation and „Mehr“ menu appear on the
-  desktop. Target: desktop navigation for that range (rule 15).
+  desktop. Target: desktop navigation for that range in Automatic mode with a fine pointer and
+  enough height, keeping the Laptop choice, the short-window fallback and touch target sizes
+  (rule 15).
 - **Raw stacking values** — `z-index` uses about 19 raw literals; a toast (100) currently covers
   dialog content (50). Target: the layer scale in "Layers".
 - **Placeholder color** — `::placeholder` sets only `font-style`, so placeholders use the browser
@@ -808,10 +830,11 @@ nothing and produce a misleading success.
 - [ ] Wide layouts follow rule 15: parallel panes or a readable width instead of stretched single
   cards; headings, state and actions stay within one glance; compared or rated records are dense
   rows.
-- [ ] At most one gradient action per view; selected states use `--accent-bg` or an outline, never
-  the gradient.
-- [ ] Text contrast reaches 4.5:1 (large text 3:1), including text on gradients, badges and
-  placeholders.
+- [ ] At most one gradient action per view; other card actions are neutral compact buttons;
+  selected states use `--text` on `--accent-bg` with an accent border or outline, never the
+  gradient.
+- [ ] Text contrast reaches 4.5:1 (large text 3:1) in every state, including hover and focus, text
+  on gradients, badges and placeholders.
 - [ ] Stacking follows the layer order; dialog validation errors appear inline at the field, not
   only as a toast.
 - [ ] `check:tokens`, build, unit/integration tests and E2E tests are green, or the
