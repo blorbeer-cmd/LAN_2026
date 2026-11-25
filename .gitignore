@@ -25,6 +25,9 @@ server/.pkg-cache/
 .DS_Store
 Thumbs.db
 
+# Lokale Artefakte von Design-Hilfswerkzeugen (Impeccable)
+.impeccable/
+
 # Editor
 .vscode/
 .idea/

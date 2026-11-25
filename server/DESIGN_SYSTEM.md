@@ -33,8 +33,10 @@ then update both in the same work item so the discrepancy does not persist.
 1. Read this document completely before editing frontend files.
 2. Search for an existing token, base component, layout helper and comparable view.
    Extend a shared primitive only when the requirement is genuinely shared.
-3. Check the result at phone and laptop widths. For interaction changes, exercise
-   keyboard input and a touch-sized viewport as well as pointer input.
+3. Check the result where it is mainly used first: the LAN desktop at 1920×1080 and 1440×900 and a
+   half-screen window of about 960px beside the game. Then check phone width (390px, 320px for
+   reflow). For interaction changes, exercise mouse and keyboard first, then a touch-sized
+   viewport.
 4. Verify loading, empty, error, disabled and long-content states that the component
    can actually reach. A happy-path screenshot alone is not sufficient.
 5. Verify in proportion to the changed surface by following the matrix in
@@ -60,8 +62,8 @@ accessibility issues, responsive regressions, shadows and breakpoint decisions.
 | `--accent` | `#5b8cff` | Primary brand blue — active nav, links, focus rings, primary CTAs |
 | `--accent-2` | `#9163f5` | Brand gradient midpoint (violet) |
 | `--accent-3` | `#ef5da8` | Brand gradient end (pink) |
-| `--accent-gradient` | gradient of the three above | Primary buttons, wordmark, progress bars, brand touches |
-| `--accent-gradient-strong` | gradient of `--accent-strong` `#3d6fe0`, `--accent-2-strong` `#6a3fd8`, `--accent-3-strong` `#c2357f` | Same brand hues, deep enough for small white text (≥ 4.6:1 along the whole gradient): navigation and bell counters |
+| `--accent-gradient` | gradient of the three above | Wordmark, progress bars and non-text brand touches; never behind small text (white on it reaches only 3.1–4.0:1) |
+| `--accent-gradient-strong` | gradient of `--accent-strong` `#3d6fe0`, `--accent-2-strong` `#6a3fd8`, `--accent-3-strong` `#c2357f` | Same brand hues, deep enough for small white text (≥ 4.6:1 along the whole gradient): the one primary action per view, navigation and bell counters |
 | `--accent-text` | `#ffffff` | Text/icon color on top of `--accent-gradient` |
 | `--accent-bg` | `rgba(91, 140, 255, 0.16)` | Tinted accent fill for selected/active chip-style controls |
 | `--accent-bg-subtle` | `rgba(91, 140, 255, 0.07)` | Faint tint marking the signed-in player's own rows among equal siblings (tournament boards) |
@@ -159,6 +161,20 @@ folded into the two tokens above — each is tuned to a different blur/alpha for
 a different-sized element, and forcing them to match would either wash out a
 small icon glow or under-power a full-screen splash effect. Only exact-value
 duplicates were consolidated; deliberately distinct ones stay distinct.
+
+## Layers
+
+Stacking follows one fixed order, from bottom to top: page content, sticky shell (topbar, side
+rail, bottom navigation, notification highlight), popovers and menus, dialogs with their backdrop,
+toasts. Toasts stay visible above an open dialog but must not cover its content or actions; a
+validation error that belongs to a dialog field is shown inline in the dialog, never only as a
+toast.
+
+The current `z-index` values are still raw literals (see "Known deviations" below). The first
+change that touches stacking introduces a `--layer-*` token scale for this order in the `:root`
+block and migrates the shell, menu, dialog and toast layers to it. From then on, no new raw
+`z-index` value is added; a purely local value inside one component (e.g. `1` to lift a focus ring
+over its sibling) stays allowed with a `design-token-ok` reason.
 
 ## Motion
 
@@ -262,7 +278,8 @@ layout needs, not a phone/laptop breakpoint that happens to be slightly off.
 
 These rules are the durable outcome of the general UI-polish pass. They apply to every existing
 view and to new views unless a documented domain constraint requires a different presentation. Rules 10 to 13 were
-established with the Match and Vote pass (PR #662), rule 14 with the Profile and personal stats pass; pages not reworked yet are brought in line when
+established with the Match and Vote pass (PR #662), rule 14 with the Profile and personal stats pass, rule 15 and the one-gradient limit in rule 5 with
+the decision that the LAN desktop is the main device; pages not reworked yet are brought in line when
 they are next changed, and new work follows them right away.
 
 1. **Build pages from three visible levels.** A page consists of full-width main groups, nested
@@ -294,7 +311,13 @@ they are next changed, and new work follows them right away.
    a detached help row or to the left of a checkbox.
 5. **Keep controls aligned.** Controls sharing a row use the same visual height and baseline.
    Compact actions must not increase the height of data rows. A primary action uses the Respawn
-   gradient; its placement follows rule 10. Parallel secondary actions inside one footer share the
+   gradient; its placement follows rule 10. A view shows at most one gradient action at a time:
+   the action the page exists for. Selected states — active tabs, segments, chips, filters and
+   navigation entries — never use the gradient; like `.chip.is-active` they keep `--text` on
+   `--accent-bg` and mark the selection with an accent border or inset outline (about 11.6:1 on
+   `--bg-elevated`, 10.3:1 on `--bg-elevated-2`). `--accent` as label color on `--accent-bg` is
+   not allowed for small text: it reaches only 4.1:1 and 3.7:1 there. A selection never looks like
+   a button. Parallel secondary actions inside one footer share the
    available width. Actions for a repeated card belong in a separated, consistently positioned
    footer when variable content would otherwise make cards drift. See the
    [Controls contract](frontend-contracts/components/controls.md) for normative geometry and reflow.
@@ -319,9 +342,16 @@ they are next changed, and new work follows them right away.
    states must retain the same geometry as the populated state.
 9. **Keep product rules separate.** Routes, roles, business flows, product copy and
    domain-state details live in [Product rules](../docs/product/README.md).
-10. **Place actions compactly and predictably.** A card's primary action is a compact gradient
-    button (`.btn-primary.btn-sm`) at the right of the card heading, like „Starten“ or
-    „Spiel vorschlagen“. A form's final submit sits right-aligned at the card's end at
+10. **Place actions compactly and predictably.** A card's primary action sits as a compact button
+    at the right of the card heading, like „Starten“ or „Spiel vorschlagen“. Only the page's
+    primary action (rule 5) is a gradient button (`.btn-primary.btn-sm` on
+    `--accent-gradient-strong`); the primary actions of other cards on the same page use the
+    neutral compact button (`.btn.btn-sm`) in the same position — for example „Stichwahl starten“
+    in the result card while „Abstimmung starten“ stays the page action. The gradient label keeps
+    4.5:1 in every state: hover and focus feedback on a gradient button comes from its shadow or
+    outline, not from brightening the fill (`brightness(1.12)` drops the blue end of the strong
+    gradient from 4.6:1 to 3.8:1). On wide layouts the card is sized by rule 15, so the action
+    stays within one glance of its heading. A form's final submit sits right-aligned at the card's end at
     its natural width. Buttons spanning the full card width are avoided. Management actions such as
     „Beenden“ or „Abbrechen“ are compact neutral buttons in the card header; a destructive action
     keeps its danger meaning in the confirmation dialog instead of a large red button in the page.
@@ -350,6 +380,22 @@ they are next changed, and new work follows them right away.
     ranking is sorted by its value, largest first, and carries its place number; a list without
     rank meaning is sorted alphabetically (numbers in natural order) and carries none. Both fill
     the left column first; multi-column card grids of like entries (Home's live status) do too. Details: [RankedList](frontend-contracts/components/ranked-list.md).
+15. **Compose for the desktop first.** The LAN desktop is the main device, so wide layouts are
+    designed, not merely stretched. From `--bp-xl` in Desktop mode a view uses the width for
+    parallel content — the primary workflow beside a supporting pane of at least
+    `--desktop-supporting-pane-min-width` (for example current vote beside the ranking, or open
+    items beside live status) — instead of one column of cards growing toward 1600px. A view that
+    genuinely has only one column keeps a readable width rather than spanning the whole content
+    area, so a heading, its state and its action stay within one glance; the cap becomes a token
+    with the first view reworked under this rule. Repeated records that people compare or rate
+    (games, players, results) become dense table-like rows with aligned columns on desktop, not a
+    stack of tall cards. A half-screen window of about 960px beside the game is a desktop case:
+    with the Automatic layout, a hovering fine pointer and enough window height it gets desktop
+    navigation instead of the phone shell. This default does not override the existing
+    exceptions: an explicit Laptop choice in Mein Profil keeps the laptop shell, Automatic still
+    falls back to it when the window is too short for the rail, and a coarse pointer keeps
+    `--tap-target-size` targets (`registry:desktop-navigation` in the Controls contract,
+    `layoutMode.test.js`).
 
 ## Components
 
@@ -575,6 +621,11 @@ space pattern rather than content-dependent card heights.
   [DateTimeField](frontend-contracts/components/date-time-field.md) contracts.
 - Status, validation and selection cannot be communicated by color alone. Pair color
   with German text and, where helpful, an icon or shape.
+- Text meets WCAG 2.2 AA contrast against its actual background: at least 4.5:1, or 3:1 for large
+  text (≥ 24px, or ≥ 18.66px bold). This includes text on gradients (measured at its weakest
+  point), badge and chip labels, placeholders, counters and muted captions. Placeholders get an
+  explicit color instead of the browser default. Control boundaries, focus rings and status
+  shapes that carry meaning reach 3:1 against their surroundings.
 - Form errors identify the affected field and explain how to recover. Disabled actions
   should remain understandable; do not silently ignore a click that appears available.
 - Hover styles belong inside `@media (hover: hover)`. The default/touch state must not
@@ -665,6 +716,37 @@ The current, complete list of such exceptions in `server/public`:
 Everything else that was off-scale (values like 6px, 10px, 14px sitting
 between two spacing steps) has been rounded onto the scale.
 
+## Known deviations being migrated
+
+The rules above are binding for new and changed UI. The current implementation still deviates in
+the following places; each is fixed in its own change and then removed from this list. Do not copy
+these patterns into new work.
+
+- **Primary-button contrast** — `.btn-primary` (`style.css`) still paints white text on
+  `--accent-gradient` (about 3.4–3.7:1), and `.btn:hover` brightens every button including the
+  primary one. Target: `--accent-gradient-strong` with shadow-only hover feedback on gradient
+  buttons (rule 10).
+- **Several gradient actions per view** — after a tie, `views/votes.js` shows „Abstimmung
+  starten“ and „Stichwahl starten“ both as gradient buttons. Target: one page action with the
+  gradient, the other as a neutral compact button (rule 10).
+- **Gradient as selection** — about 16 call sites mark a selected tab, mode, tool or choice by
+  adding `btn-primary` (for example the Katalog/Vorschläge/Alle tabs in `views/gameCatalog.js`
+  and the Scribble tools). Target: `--text` on `--accent-bg` with an accent border or inset
+  outline, as in `.chip.is-active` (rule 5).
+- **Stretched desktop views** — at `--bp-xl` in Desktop mode most views are one column of cards up
+  to 1600px wide, and the game catalog shows one tall card per game. Target: rule 15.
+- **Phone shell in half-screen windows** — Automatic layout shows the side rail only from
+  `--bp-xl`; between `--bp-lg` and `--bp-xl` the bottom navigation and „Mehr“ menu appear on the
+  desktop. Target: desktop navigation for that range in Automatic mode with a fine pointer and
+  enough height, keeping the Laptop choice, the short-window fallback and touch target sizes
+  (rule 15).
+- **Raw stacking values** — `z-index` uses about 19 raw literals; a toast (100) currently covers
+  dialog content (50). Target: the layer scale in "Layers".
+- **Placeholder color** — `::placeholder` sets only `font-style`, so placeholders use the browser
+  default (about 3.2:1 on `--bg-elevated-2`). Target: an explicit token color (contrast rule).
+- **Toast-only form validation** — the food-order item form reports missing fields only through
+  toasts. Target: inline field errors ("Interaction and accessibility").
+
 ## Automated check (pre-commit)
 
 `.githooks/pre-commit` runs the design-token check described here and the staged
@@ -743,6 +825,17 @@ nothing and produce a misleading success.
 - [ ] Loading, empty, error, disabled and long-content states remain clear and stable.
 - [ ] The flow works with keyboard, visible focus, pointer and touch interaction.
 - [ ] Meaning is not color-only; reduced-motion and hover media rules are respected.
-- [ ] Phone and laptop layouts were checked, including browser zoom and long German text.
+- [ ] Desktop layouts were checked first (1920 and 1440px, and a half-screen window of about
+  960px), then phone width, including browser zoom and long German text.
+- [ ] Wide layouts follow rule 15: parallel panes or a readable width instead of stretched single
+  cards; headings, state and actions stay within one glance; compared or rated records are dense
+  rows.
+- [ ] At most one gradient action per view; other card actions are neutral compact buttons;
+  selected states use `--text` on `--accent-bg` with an accent border or outline, never the
+  gradient.
+- [ ] Text contrast reaches 4.5:1 (large text 3:1) in every state, including hover and focus, text
+  on gradients, badges and placeholders.
+- [ ] Stacking follows the layer order; dialog validation errors appear inline at the field, not
+  only as a toast.
 - [ ] `check:tokens`, build, unit/integration tests and E2E tests are green, or the
   unexecuted check and its remaining risk are explicitly reported.
