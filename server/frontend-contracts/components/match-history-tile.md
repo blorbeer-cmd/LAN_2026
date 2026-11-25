@@ -22,7 +22,8 @@ kommen bereits escaped vom Aufrufer.
 
 ## 4. Varianten
 
-Erfasstes Match mit Ergebnis, dessen „Aktion“-Menü „Ergebnis bearbeiten“ und „Rematch“ bündelt,
+Erfasstes Match mit Ergebnis, dessen „Aktion“-Menü „Ergebnis bearbeiten“, „Screenshot hochladen“
+(bis zum Limit von vier) und „Rematch“ bündelt,
 Turnier mit direktem Detail-Link und nachladbaren Teamdetails; „Ohne Ergebnis“ als separater
 Abschnitt mit bearbeitbaren Auslosungen und laufenden Turnieren. Jede Kartenart bietet Admins ein
 Löschen mit Bestätigung; bei Matchkarten ist es ein roter Eintrag im „Aktion“-Menü.
@@ -49,6 +50,12 @@ unter den Titel rücken. Teams stehen breit nebeneinander, bis zu vier Spalten, 
 Auslosung. Matchteams zeigen ihre gespeicherte Skill-Summe; alte Drafts ohne Snapshot und
 Turnierteams zeigen ausdrücklich den aktuellen Team-Skill. Die Summe steht direkt am Teamnamen,
 Ergebnispunkte stehen in derselben Kopfzeile, Spielernamen darunter.
+Screenshots eines erfassten Matches stehen im aufgeklappten Inhalt unter den Teams als Raster
+`.matchmaking-history-screenshots` mit mindestens `--match-screenshot-min-width` breiten Vorschauen
+im festen Seitenverhältnis 16:9; die Bildunterschrift nennt Hochlader und Zeit in einer gekürzten
+Zeile und trägt rechts das Löschsymbol (`.icon-btn`), das nur Hochladende und Admins sehen. Im
+geschlossenen Kopf zählt die Metazeile die Screenshots mit Bildsymbol. Während eines Uploads ist
+die Kachel geöffnet und zeigt eine Statuszeile.
 Turnierkacheln laden beim Öffnen Teams, Spieler und verfügbare Ergebnisdaten nach; Fehler bieten
 einen erneuten Ladeversuch. „Ohne Ergebnis“ steht über der Historie und ist zu Beginn geschlossen.
 Beendete Turniere nennen Sieger und Platz zwei ausdrücklich; Ligateams zeigen ihre Tabellenplätze.
@@ -91,7 +98,7 @@ das gespeicherte Ergebnis bleibt in seiner geöffneten Historienkachel sichtbar.
 
 ## 7. Erreichbare Zustände
 
-Geschlossen, geöffnet, neu gespeichertes Ergebnis, offener Draw, laufendes oder beendetes
+Geschlossen, geöffnet, neu gespeichertes Ergebnis, mit Screenshots, Screenshot-Upload läuft, offener Draw, laufendes oder beendetes
 Turnier, Ladefehler und leerer Filter.
 
 ## 8. Accessibility
@@ -101,6 +108,10 @@ und zeigt Fokus sichtbar. Sein Ziel ist mindestens `--tap-target-size` hoch. Fil
 vorhandenen Popover-Modus, damit es auf Telefonen nicht vom View-Container abgeschnitten wird. Aktionsknöpfe haben
 einen eigenen Namen und Fokus; allgemeine Matchaktionen stehen als beschriftete Einträge im
 „Aktion“-Menü, dessen zugänglicher Name mit „Aktion“ beginnt und den Spielnamen nennt.
+Jede Screenshot-Vorschau ist ein Link mit eigenem Namen („Screenshot 1 von 2: <Spiel> in voller
+Größe öffnen“), das Bild trägt denselben Alternativtext, das Löschsymbol heißt „Screenshot <n>
+löschen“, und die Anzahl im Kopf hat ein zugängliches Label („2 Screenshots“). Die Upload-
+Statuszeile ist eine `role="status"`-Region.
 
 ## 9. Repräsentative Aufrufer
 

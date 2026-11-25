@@ -26,6 +26,7 @@ import { isGroupAdmin } from '../groupContext.js';
 import { RESTORE_FOCUS_EVENT } from '../viewRenderState.js';
 import { copyText } from '../clipboard.js';
 import { actionMenuHtml } from '../actionMenu.js';
+import { screenshotUploadBlob } from '../imageUtils.js';
 
 // Persists across re-renders of this view (but not across a full page
 // reload) so toggling checkboxes survives a re-roll without extra plumbing.
@@ -1175,9 +1176,15 @@ function historyMatchHtml(draw) {
   const result = winner
     ? `<span class="tournament-fixture-score is-pick">Win</span> <strong>${escapeHtml(winnerName)}${winner.score != null && draw.teams.length !== 2 ? ` · <span class="is-win">${winner.score}</span>` : ''}</strong> ${scoreChip}`
     : `<span class="tournament-fixture-score">${draw.isDraw ? 'Remis' : 'Ohne Ergebnis'}</span>`;
-  const meta = `<span class="muted">${formatDateTime(draw.generatedAt)}</span> ${result} <span class="muted">${draw.teams.length} Teams</span>${drawCreatorHtml(draw)}${draw.source === 'draft' ? '<span class="badge">Captain Draft</span>' : ''}${competitionBettingSummaryHtml('draw', draw.id)}`;
+  const screenshots = draw.screenshots ?? [];
+  const screenshotCount = screenshots.length
+    ? `<span class="muted matchmaking-history-screenshot-count" title="${screenshotCountLabel(screenshots.length)}">${icon('image', { label: screenshotCountLabel(screenshots.length) })}${screenshots.length}</span>`
+    : '';
+  const meta = `<span class="muted">${formatDateTime(draw.generatedAt)}</span> ${result} <span class="muted">${draw.teams.length} Teams</span>${screenshotCount}${drawCreatorHtml(draw)}${draw.source === 'draft' ? '<span class="badge">Captain Draft</span>' : ''}${competitionBettingSummaryHtml('draw', draw.id)}`;
   const actions = drawActionMenuHtml(draw, [
     `<button type="button" class="btn btn-sm" data-edit-draw-result="${draw.id}">Ergebnis bearbeiten</button>`,
+    draw.matchId && screenshots.length < MATCH_SCREENSHOT_LIMIT
+      ? `<button type="button" class="btn btn-sm" data-upload-screenshot="${escapeHtml(draw.id)}">Screenshot hochladen</button>` : '',
     `<button type="button" class="btn btn-sm" data-rematch-draw="${draw.id}">Rematch</button>`,
     isGroupAdmin() ? `<button type="button" class="btn btn-sm btn-danger" data-delete-draw="${draw.id}">Match löschen</button>` : '',
   ], `match-result-${draw.id}`);
@@ -1211,7 +1218,97 @@ function historyMatchHtml(draw) {
   const seating = draw.seatConflicts > 0
     ? `<div class="muted">${icon('armchair')} ${draw.seatConflicts} von ${draw.seatPairsConsidered} Sitznachbarschaft(en) mussten trotzdem gegeneinander antreten.</div>` : '';
   return historyItemHtml(draw.id, draw.gameName, meta, `${actions}${competitionBettingHtml('draw', draw.id, pointsContext)}`,
-    `<div class="matchmaking-history-teams" data-draw-teams="${draw.id}">${teams}</div>${seating}`, '', drawIncludesMe(draw));
+    `<div class="matchmaking-history-teams" data-draw-teams="${draw.id}">${teams}</div>${seating}${historyScreenshotsHtml(draw)}`, '', drawIncludesMe(draw));
+}
+
+// Mirrors MATCH_SCREENSHOT_LIMIT in server/src/matchScreenshots.ts; the server
+// enforces it, this only hides the upload action once a match is full.
+const MATCH_SCREENSHOT_LIMIT = 4;
+const uploadingScreenshotDrawIds = new Set();
+
+function screenshotCountLabel(count) {
+  return count === 1 ? '1 Screenshot' : `${count} Screenshots`;
+}
+
+function historyScreenshotsHtml(draw) {
+  const screenshots = draw.screenshots ?? [];
+  const uploading = uploadingScreenshotDrawIds.has(draw.id)
+    ? '<div class="muted matchmaking-history-screenshot-status" role="status">Screenshot wird hochgeladen…</div>' : '';
+  if (!screenshots.length) return uploading;
+  const items = screenshots.map((shot, index) => {
+    const url = api.matches.screenshotUrl(draw.matchId, shot.id);
+    const label = `Screenshot ${index + 1} von ${screenshots.length}: ${draw.gameName}`;
+    const canDelete = shot.uploadedBy === getMyId() || isGroupAdmin();
+    // On a phone the line is cut off; the title keeps uploader and time readable.
+    const caption = `${shot.uploadedByName ? `${shot.uploadedByName} · ` : ''}${formatDateTime(shot.uploadedAt)}`;
+    return `<figure class="matchmaking-history-screenshot">
+      <a class="matchmaking-history-screenshot-link" href="${escapeHtml(url)}" target="_blank" rel="noopener" aria-label="${escapeHtml(label)} in voller Größe öffnen">
+        <img class="matchmaking-history-screenshot-image" src="${escapeHtml(url)}" alt="${escapeHtml(label)}" loading="lazy" decoding="async" />
+      </a>
+      <figcaption class="matchmaking-history-screenshot-caption">
+        <span class="muted" title="${escapeHtml(caption)}">${escapeHtml(caption)}</span>
+        ${canDelete ? `<button type="button" class="icon-btn" data-delete-screenshot="${escapeHtml(shot.id)}" data-screenshot-draw="${escapeHtml(draw.id)}" aria-label="Screenshot ${index + 1} löschen" title="Screenshot löschen">${icon('trash')}</button>` : ''}
+      </figcaption>
+    </figure>`;
+  }).join('');
+  return `<div class="matchmaking-history-screenshots" aria-label="Screenshots">${items}</div>${uploading}`;
+}
+
+// The file picker is created per click: a hidden input inside the floating
+// action menu would disappear with the menu before the user picked a file.
+function pickScreenshotFile() {
+  return new Promise((resolve) => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.hidden = true;
+    input.addEventListener('change', () => {
+      resolve(input.files?.[0] ?? null);
+      input.remove();
+    }, { once: true });
+    input.addEventListener('cancel', () => {
+      resolve(null);
+      input.remove();
+    }, { once: true });
+    document.body.append(input);
+    input.click();
+  });
+}
+
+function wireHistoryScreenshots(container, ctx) {
+  container.querySelectorAll('[data-upload-screenshot]').forEach((button) => button.addEventListener('click', async () => {
+    const draw = findDrawById(button.dataset.uploadScreenshot);
+    if (!draw?.matchId || uploadingScreenshotDrawIds.has(draw.id)) return;
+    const file = await pickScreenshotFile();
+    if (!file) return;
+    uploadingScreenshotDrawIds.add(draw.id);
+    expandedHistoryIds.add(draw.id);
+    ctx.rerender();
+    try {
+      const blob = await screenshotUploadBlob(file);
+      await api.matches.uploadScreenshot(draw.matchId, blob);
+      showToast('Screenshot gespeichert.');
+    } catch (err) {
+      showToast(err.message, { error: true });
+    } finally {
+      uploadingScreenshotDrawIds.delete(draw.id);
+      invalidateMatchmakingHistory();
+      ctx.rerender();
+    }
+  }));
+  container.querySelectorAll('[data-delete-screenshot]').forEach((button) => button.addEventListener('click', async () => {
+    const draw = findDrawById(button.dataset.screenshotDraw);
+    if (!draw?.matchId) return;
+    if (!(await confirmDialog('Diesen Screenshot löschen?', { title: 'Screenshot löschen', confirmText: 'Löschen', danger: true }))) return;
+    try {
+      await api.matches.removeScreenshot(draw.matchId, button.dataset.deleteScreenshot);
+      showToast('Screenshot gelöscht.');
+    } catch (err) {
+      showToast(err.message, { error: true });
+    }
+    invalidateMatchmakingHistory();
+    ctx.rerender();
+  }));
 }
 
 function historyTournamentDetailHtml(tournament) {
@@ -1419,6 +1516,7 @@ function wireHistory(container, ctx) {
     if (section.isConnected) historySectionOpen = section.open;
   });
   if (section) wireHistoryItemToggles(section, ctx);
+  if (section) wireHistoryScreenshots(section, ctx);
   section?.querySelectorAll('[data-history-toggle^="t-"][aria-expanded="true"]').forEach((button) =>
     loadHistoryTournamentDetail(button.dataset.historyToggle.slice(2), ctx));
   container.querySelectorAll('[data-retry-tournament-detail]').forEach((button) => button.addEventListener('click', () => {

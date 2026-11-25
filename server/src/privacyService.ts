@@ -259,6 +259,12 @@ export function buildPersonalDataExport(playerId: string): Record<string, unknow
       tournaments: rows('SELECT id, event_id AS eventId FROM tournaments WHERE created_by = ?', playerId),
       draws: rows('SELECT id, event_id AS eventId, betting_allowed AS bettingAllowed FROM matchmaking_draws WHERE created_by = ?', playerId),
       drafts: rows('SELECT id, event_id AS eventId, betting_allowed AS bettingAllowed FROM drafts WHERE created_by = ?', playerId),
+      matchScreenshots: rows(
+        `SELECT s.id, s.match_id AS matchId, m.event_id AS eventId, s.created_at AS uploadedAt
+         FROM match_screenshots s JOIN matches m ON m.id = s.match_id
+         WHERE s.uploaded_by = ? ORDER BY s.created_at, s.id`,
+        playerId,
+      ),
     },
     pointsJournal: rows(
       `SELECT j.id, s.event_id AS eventId, s.account, s.source_key AS sourceKey,

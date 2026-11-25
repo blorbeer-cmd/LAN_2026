@@ -26,3 +26,35 @@ export function resizeImageFile(file, maxSize = 200, quality = 0.8) {
     reader.readAsDataURL(file);
   });
 }
+
+// Match screenshots (final scoreboards) stay readable at full-HD size. Larger
+// captures and phone photos are scaled down and always re-encoded as JPEG:
+// the upload stays small on the LAN, and the browser drops embedded metadata
+// such as a phone photo's location along the way.
+export const SCREENSHOT_MAX_SIZE = 1920;
+
+export function screenshotScale(width, height, maxSize = SCREENSHOT_MAX_SIZE) {
+  const scale = Math.min(1, maxSize / Math.max(width, height));
+  return { width: Math.max(1, Math.round(width * scale)), height: Math.max(1, Math.round(height * scale)) };
+}
+
+export function screenshotUploadBlob(file, maxSize = SCREENSHOT_MAX_SIZE, quality = 0.85) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error('Das ist kein Bild, das der Browser öffnen kann.'));
+    };
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const { width, height } = screenshotScale(img.naturalWidth, img.naturalHeight, maxSize);
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+      canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error('Das Bild konnte nicht verarbeitet werden.'))), 'image/jpeg', quality);
+    };
+    img.src = url;
+  });
+}

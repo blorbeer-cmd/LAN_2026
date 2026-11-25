@@ -29,6 +29,7 @@ import { registerChallengeRushSockets } from './arcade/challengeRush';
 import { registerChimpSockets } from './arcade/chimp';
 import { registerArcadeSockets as registerArcadeRealtimeSockets } from './arcade/realtime';
 import { startPrivacyRetention } from './privacyRetention';
+import { startMatchScreenshotPrune } from './matchScreenshots';
 import { startNewstickerGeneration } from './newsticker';
 import { backfillCompetitionPoints } from './orgaPoints';
 import { startTravelPointSweep } from './travelPointSweep';
@@ -115,6 +116,8 @@ function start(): void {
   startEventDatePollReminderSweep();
   startEventReminderSweep();
   startPrivacyRetention();
+  // Removes screenshot files whose match is gone (match, event or game deleted).
+  startMatchScreenshotPrune();
   startNewstickerGeneration();
   // Arcade matches are process-local. A restart cannot resume them, so close
   // any persisted live rows before the heartbeat can keep them fresh.

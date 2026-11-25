@@ -6179,6 +6179,22 @@ registerMigration({ version: 140, name: 'store optional server details on open m
     db.exec('ALTER TABLE matchmaking_draws ADD COLUMN server_password TEXT');
 } });
 
+registerMigration({ version: 141, name: 'attach screenshots to recorded match results', up: () => {
+  // The image files live outside SQLite (config.matchScreenshotDir, see
+  // matchScreenshots.ts); a row only names one file and who uploaded it.
+  // Rows follow their match on delete, an erased account only loses the link.
+  db.exec(`CREATE TABLE IF NOT EXISTS match_screenshots (
+      id           TEXT PRIMARY KEY,
+      match_id     TEXT NOT NULL REFERENCES matches(id) ON DELETE CASCADE,
+      uploaded_by  TEXT REFERENCES players(id) ON DELETE SET NULL,
+      content_type TEXT NOT NULL CHECK (content_type IN ('image/jpeg', 'image/png', 'image/webp')),
+      size         INTEGER NOT NULL CHECK (size > 0),
+      created_at   INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_match_screenshots_match ON match_screenshots(match_id, created_at);
+    CREATE INDEX IF NOT EXISTS idx_match_screenshots_uploader ON match_screenshots(uploaded_by);`);
+} });
+
 runRegisteredMigrations();
 
 // The active default-group role is the source of truth for instance admin

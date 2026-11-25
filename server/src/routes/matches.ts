@@ -6,7 +6,7 @@ import { withBettingAccounting, assertMatchEditable, correctableDrawRounds, vali
 // be viewed per LAN afterwards; editing a match never moves it to a
 // different event.
 
-import { Router } from 'express';
+import { Router, type Request, type Response } from 'express';
 import { requireRecentReauthentication } from '../sessions';
 import { writeAdminAudit } from '../adminAudit';
 import { nanoid } from 'nanoid';
@@ -17,8 +17,20 @@ import { applySeatConflicts, buildTeamsSnapshot } from './matchmaking';
 import { assertDrawLineup, DRAW_LINEUP_CHANGED, DRAW_LINEUP_CHANGED_CODE, DrawLineupChangedError, isDrawLineup } from '../drawLineup';
 import { requireGroupRole, resolveGroupResource } from '../groupAuthorization';
 import { competitionPlayersBelongToGroup } from '../competitionScope';
-import { requireGroupEventAccess, resolveRequestGroupEventScope } from '../groupEventScope';
+import { requestCanUseEventWorkspace, requireGroupEventAccess, resolveRequestGroupEventScope } from '../groupEventScope';
 import { syncCompetitionPoints } from '../orgaPoints';
+import {
+  acceptsMatchScreenshots,
+  deleteMatchScreenshot,
+  findMatchScreenshot,
+  isMatchScreenshotType,
+  listMatchScreenshots,
+  MATCH_SCREENSHOT_DRAIN_BYTES,
+  MatchScreenshotError,
+  pruneMatchScreenshotFiles,
+  SCREENSHOT_MATCH_ONLY,
+  storeMatchScreenshot,
+} from '../matchScreenshots';
 
 export const matchesRouter = Router();
 
@@ -156,7 +168,13 @@ matchesRouter.get('/', (req, res) => {
         WHERE tm.match_id = m.id LIMIT 1) AS tournament_status
     FROM matches m WHERE ${clauses.join(' AND ')} ORDER BY m.played_at DESC`)
     .all(...params) as Array<MatchRow & { draw_id: string | null; tournament_status: string | null }>;
-  res.json(rows.map((row) => ({ ...parseMatch(row), drawId: row.draw_id, tournamentStatus: row.tournament_status })));
+  const screenshots = listMatchScreenshots(rows.map((row) => row.id));
+  res.json(rows.map((row) => ({
+    ...parseMatch(row),
+    drawId: row.draw_id,
+    tournamentStatus: row.tournament_status,
+    screenshots: screenshots.get(row.id) ?? [],
+  })));
 });
 
 // POST /api/matches - record a new result.
@@ -404,6 +422,7 @@ matchesRouter.delete('/:id', resolveMatch, requireGroupRole('admin'), requireRec
     db.prepare('DELETE FROM matches WHERE id = ?').run(existing.id);
     syncCompetitionPoints(req.group!.id, existing.event_id);
   });
+  pruneMatchScreenshotFiles();
   writeAdminAudit({
     actorPlayerId: req.player?.id,
     groupId: req.group!.id,
@@ -412,5 +431,123 @@ matchesRouter.delete('/:id', resolveMatch, requireGroupRole('admin'), requireRec
     targetId: existing.id,
   });
   broadcast(Events.leaderboardChanged, null, { groupId: req.group!.id, eventId: existing.event_id });
+  res.status(204).end();
+});
+
+// ---------- Screenshots ----------
+// Proof images of a recorded Match result (final scoreboard). Everyone who can
+// see and record the match may add one; the uploader or a group admin removes
+// it. The result itself never changes through these routes.
+
+function declaredLength(req: Request): number | null {
+  const header = req.headers['content-length'];
+  if (typeof header !== 'string' || !/^\d+$/.test(header)) return null;
+  return Number(header);
+}
+
+// Answers an upload that is rejected before its body was read. Responding
+// while the client still sends the image makes some platforms reset the
+// connection, so the client would see a network error instead of the reason.
+// The body is read and discarded first; an absurdly large one is cut off.
+function rejectUpload(req: Request, res: Response, status: number, error: string): void {
+  const send = () => {
+    if (!res.headersSent) res.status(status).json({ error });
+  };
+  const length = declaredLength(req);
+  // Already read to the end, or cut off by the size cap while streaming.
+  if (req.complete || req.readableEnded || req.destroyed) {
+    send();
+    return;
+  }
+  if (length !== null && length > MATCH_SCREENSHOT_DRAIN_BYTES) {
+    res.set('Connection', 'close');
+    send();
+    req.resume();
+    return;
+  }
+  let drained = 0;
+  req.on('data', (chunk: Buffer) => {
+    drained += chunk.length;
+    if (drained > MATCH_SCREENSHOT_DRAIN_BYTES) {
+      res.set('Connection', 'close');
+      send();
+      req.destroy();
+    }
+  });
+  req.once('end', send);
+  req.once('error', () => undefined);
+  req.resume();
+}
+
+function broadcastScreenshotChange(match: MatchRow): void {
+  const draw = db.prepare('SELECT id FROM matchmaking_draws WHERE match_id = ?').get(match.id) as { id: string } | undefined;
+  broadcast(
+    Events.matchmakingDrawsChanged,
+    { id: draw?.id ?? null, matchId: match.id },
+    { groupId: match.group_id!, eventId: match.event_id },
+  );
+}
+
+// An <img> cannot send the Admin mode header that the rest of the app sends
+// with every request, so the image route also accepts it as a query flag.
+// Admin mode only widens which test data is visible; event participation is
+// still checked below.
+function adoptAdminModeQuery(req: Request): void {
+  if (req.query.adminMode === '1') req.headers['x-admin-mode'] = '1';
+}
+
+// GET /api/matches/:id/screenshots/:screenshotId - the image itself.
+matchesRouter.get('/:id/screenshots/:screenshotId', (req, _res, next) => {
+  adoptAdminModeQuery(req);
+  next();
+}, resolveMatch, (req, res) => {
+  const match = req.groupResource as MatchRow;
+  if (!requireGroupEventAccess(req, res, match.event_id)) return;
+  const screenshot = findMatchScreenshot(match.id, req.params.screenshotId);
+  if (!screenshot) return res.status(404).json({ error: 'Screenshot nicht gefunden.' });
+  // no-cache: the browser may keep the image but revalidates every time, so
+  // a deleted screenshot or lost event access applies immediately.
+  res.type(screenshot.contentType);
+  res.sendFile(screenshot.file, { headers: { 'Cache-Control': 'private, no-cache' } }, (error) => {
+    if (error && !res.headersSent) res.status(404).json({ error: 'Screenshot nicht gefunden.' });
+  });
+});
+
+async function uploadScreenshot(req: Request, res: Response): Promise<void> {
+  const match = req.groupResource as MatchRow;
+  if (!requestCanUseEventWorkspace(req, match.event_id)) return rejectUpload(req, res, 404, 'Event nicht gefunden.');
+  if (!acceptsMatchScreenshots(match.id)) return rejectUpload(req, res, 409, SCREENSHOT_MATCH_ONLY);
+  const type = (req.headers['content-type'] ?? '').split(';')[0].trim().toLowerCase();
+  if (!isMatchScreenshotType(type)) {
+    return rejectUpload(req, res, 415, 'Bitte ein Bild im Format JPEG, PNG oder WebP hochladen.');
+  }
+  let screenshot;
+  try {
+    screenshot = await storeMatchScreenshot(match.id, req.player!.id, type, req, declaredLength(req));
+  } catch (error) {
+    if (!(error instanceof MatchScreenshotError)) throw error;
+    return rejectUpload(req, res, error.status, error.message);
+  }
+  broadcastScreenshotChange(match);
+  res.status(201).json(screenshot);
+}
+
+// POST /api/matches/:id/screenshots - raw image body (image/jpeg|png|webp).
+matchesRouter.post('/:id/screenshots', resolveMatch, (req, res, next) => {
+  uploadScreenshot(req, res).catch(next);
+});
+
+// DELETE /api/matches/:id/screenshots/:screenshotId
+matchesRouter.delete('/:id/screenshots/:screenshotId', resolveMatch, (req, res) => {
+  const match = req.groupResource as MatchRow;
+  if (!requireGroupEventAccess(req, res, match.event_id)) return;
+  const screenshot = findMatchScreenshot(match.id, req.params.screenshotId);
+  if (!screenshot) return res.status(404).json({ error: 'Screenshot nicht gefunden.' });
+  const isAdmin = req.groupMembership?.role === 'owner' || req.groupMembership?.role === 'admin';
+  if (screenshot.uploadedBy !== req.player!.id && !isAdmin) {
+    return res.status(403).json({ error: 'Nur wer den Screenshot hochgeladen hat oder ein Admin kann ihn löschen.' });
+  }
+  if (!deleteMatchScreenshot(match.id, screenshot.id)) return res.status(404).json({ error: 'Screenshot nicht gefunden.' });
+  broadcastScreenshotChange(match);
   res.status(204).end();
 });

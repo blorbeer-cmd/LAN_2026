@@ -103,11 +103,13 @@ export async function apiFetch(path, options = {}) {
 
 // Sends a file as the raw request body with upload progress, which fetch()
 // cannot report. Resolves and rejects like apiFetch (error.status/code).
-function uploadFile(path, file, { contentType, onProgress } = {}) {
+function uploadFile(path, file, { contentType, onProgress, method = 'PUT' } = {}) {
   return new Promise((resolve, reject) => {
     const request = new XMLHttpRequest();
-    request.open('PUT', path);
+    request.open(method, path);
     request.setRequestHeader('Content-Type', contentType || file.type || 'application/octet-stream');
+    // Same Admin mode signal apiFetch sends, so test events stay reachable.
+    if (localStorage.getItem('respawn_admin') === '1') request.setRequestHeader('x-admin-mode', '1');
     request.upload.addEventListener('progress', (event) => {
       if (event.lengthComputable) onProgress?.(event.loaded / event.total);
     });
@@ -362,6 +364,17 @@ export const api = {
     create: (data) => apiFetch('/api/matches', { method: 'POST', body: JSON.stringify(data) }),
     update: (id, data) => apiFetch(`/api/matches/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
     remove: (id) => apiFetch(`/api/matches/${id}`, { method: 'DELETE' }),
+    // An <img> cannot send headers, so Admin mode travels as a query flag.
+    screenshotUrl: (matchId, id) => `/api/matches/${encodeURIComponent(matchId)}/screenshots/${encodeURIComponent(id)}${
+      localStorage.getItem('respawn_admin') === '1' ? '?adminMode=1' : ''}`,
+    uploadScreenshot: (matchId, blob, onProgress) => uploadFile(`/api/matches/${encodeURIComponent(matchId)}/screenshots`, blob, {
+      method: 'POST',
+      contentType: blob.type,
+      onProgress,
+    }),
+    removeScreenshot: (matchId, id) => apiFetch(`/api/matches/${encodeURIComponent(matchId)}/screenshots/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    }),
   },
 
   leaderboard: {

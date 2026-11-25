@@ -101,6 +101,9 @@
   --seating-seat-width: var(--selection-card-min-width);
   --seating-seat-height: calc(var(--avatar-size-lg) + var(--space-2));
   --assignment-select-width: 112px;
+  /* Narrowest match screenshot thumbnail: a scoreboard stays recognizable,
+     and two fit side by side in a match tile on a 390px phone. */
+  --match-screenshot-min-width: 120px;
   /* Fixed width keeps the food-order payment toggle stable beside the PayPal
      action while its label, position count and amount change. */
   --payment-marker-width: 96px;
@@ -3153,6 +3156,52 @@ button.profile-row-main {
 }
 .matchmaking-history-team-context {
   margin-top: var(--space-1);
+  font-size: var(--font-size-xs);
+}
+/* Proof screenshots of a recorded result, below its teams. Thumbnails keep
+   one aspect ratio so cards of differently sized captures stay aligned; the
+   link opens the full image. */
+.matchmaking-history-screenshot-count {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+.matchmaking-history-screenshots {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(var(--match-screenshot-min-width), 1fr));
+  gap: var(--space-2);
+}
+.matchmaking-history-screenshot {
+  margin: 0;
+  min-width: 0;
+}
+.matchmaking-history-screenshot-link {
+  display: block;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: var(--bg-elevated);
+}
+.matchmaking-history-screenshot-image {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+}
+.matchmaking-history-screenshot-caption {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-1);
+  min-width: 0;
+  font-size: var(--font-size-xs);
+}
+.matchmaking-history-screenshot-caption > .muted {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.matchmaking-history-screenshot-status {
   font-size: var(--font-size-xs);
 }
 .matchmaking-history-tournament-summary {

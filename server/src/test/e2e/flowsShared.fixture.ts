@@ -11,6 +11,9 @@
 import { test, before, after, type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import type { ChildProcess } from 'child_process';
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
 import { chromium, Browser, Page, type Locator } from 'playwright';
 import {
   addSessionCookie,
@@ -31,6 +34,9 @@ export let BASE_URL: string;
 // scenarios are kept in arcadeFlows.e2e.test.ts so changing them cannot select
 // the Core browser partition.
 let serverProcess: ChildProcess;
+// The in-memory test database has no folder beside it, so match screenshots
+// get their own temporary one per fixture process.
+let screenshotDir = '';
 let e2eServer: E2EServer;
 export let browser: Browser;
 export let page: Page;
@@ -272,7 +278,8 @@ async function bootstrapAdminAccount(name: string): Promise<E2EAccount> {
 }
 
 before(async () => {
-  const server = await startE2EServer(authenticatedServerEnv());
+  screenshotDir = fs.mkdtempSync(path.join(os.tmpdir(), 'respawn-e2e-screenshots-'));
+  const server = await startE2EServer({ ...authenticatedServerEnv(), MATCH_SCREENSHOT_DIR: screenshotDir });
   e2eServer = server;
   serverProcess = server.process;
   BASE_URL = server.baseUrl;
@@ -306,5 +313,6 @@ before(async () => {
 after(async () => {
   await browser?.close();
   serverProcess?.kill();
+  if (screenshotDir) fs.rmSync(screenshotDir, { recursive: true, force: true });
 });
 

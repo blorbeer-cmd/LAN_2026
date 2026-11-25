@@ -147,6 +147,12 @@ test('personal export is self-scoped and excludes every reusable access secret',
   );
 
   db.prepare('UPDATE matches SET created_by = ? WHERE id = ?').run(own.id, recordedMatchId);
+  const insertScreenshot = db.prepare(
+    `INSERT INTO match_screenshots (id, match_id, uploaded_by, content_type, size, created_at)
+     VALUES (?, ?, ?, 'image/jpeg', 10, ?)`,
+  );
+  insertScreenshot.run('export-own-shot', recordedMatchId, own.id, 1);
+  insertScreenshot.run('export-other-shot', recordedMatchId, other.id, 2);
   db.prepare('UPDATE tournaments SET created_by = ? WHERE id = ?').run(other.id, tournamentId);
   const response = await request(app).get('/api/privacy/export').set('Cookie', own.cookie);
   assert.equal(response.status, 200, JSON.stringify(response.body));
@@ -155,6 +161,8 @@ test('personal export is self-scoped and excludes every reusable access secret',
   assert.deepEqual(response.body.automaticOrgaState, [{ eventId: BASE_EVENT_ID, sourceKey: `match:privacy-${own.id}`, amount: 1 }]);
   assert.deepEqual(response.body.organizedCompetitions.matches, [{ id: recordedMatchId, eventId: exportEventId }]);
   assert.deepEqual(response.body.organizedCompetitions.tournaments, []);
+  assert.deepEqual(response.body.organizedCompetitions.matchScreenshots,
+    [{ id: 'export-own-shot', matchId: recordedMatchId, eventId: exportEventId, uploadedAt: 1 }]);
   assert.equal(response.body.pointsJournal.length, 2);
   const ownPointEntry = db.prepare(`SELECT j.id FROM points_journal j JOIN points_sources s ON s.id = j.source_id
     WHERE s.player_id = ? AND s.account='orga'`).get(own.id) as { id: string };

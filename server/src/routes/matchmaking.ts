@@ -27,6 +27,7 @@ import { requireGroupEventAccess, resolveRequestGroupEventScope } from '../group
 import { requireGroupRole } from '../groupAuthorization';
 import { requireRecentReauthentication } from '../sessions';
 import { writeAdminAudit } from '../adminAudit';
+import { listMatchScreenshots, pruneMatchScreenshotFiles } from '../matchScreenshots';
 import { assertDrawLineup, DRAW_LINEUP_CHANGED, DRAW_LINEUP_CHANGED_CODE, DrawLineupChangedError, isDrawLineup } from '../drawLineup';
 
 export const matchmakingRouter = Router();
@@ -449,9 +450,11 @@ function attachMatchResults(draws: ReturnType<typeof parseDrawRow>[]): void {
   const resultById = new Map(
     matchRows.map((m) => [m.id, JSON.parse(m.result) as { teams: Array<{ score?: number | null; rank?: number | null }>; winnerTeamIndex: number | null; isDraw?: boolean }])
   );
+  const screenshotsByMatch = listMatchScreenshots(matchIds);
 
   for (const draw of draws) {
     if (!draw.matchId) continue;
+    (draw as { screenshots?: unknown }).screenshots = screenshotsByMatch.get(draw.matchId) ?? [];
     const matchResult = resultById.get(draw.matchId);
     if (!matchResult || matchResult.teams.length !== draw.teams.length) continue;
     draw.teams.forEach((t: { score?: number | null; rank?: number | null }, i: number) => {
@@ -579,6 +582,7 @@ matchmakingRouter.delete('/draws/:id', requireGroupRole('admin'), requireRecentR
       details: { hadResult: Boolean(draw.match_id) },
     });
   });
+  if (draw.match_id) pruneMatchScreenshotFiles();
   broadcast(Events.matchmakingDrawsChanged, { id: draw.id, deleted: true }, { groupId: req.group!.id, eventId: draw.event_id });
   if (draw.match_id) broadcast(Events.leaderboardChanged, null, { groupId: req.group!.id, eventId: draw.event_id });
   res.status(204).end();

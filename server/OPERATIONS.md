@@ -106,6 +106,8 @@ Kontrollkopie möglich.
 cd /opt/respawn
 docker compose stop app
 cp -- data/lan.db data/lan.db.before-restore.sqlite
+rm -rf -- data/match-screenshots.before-restore
+if [ -d data/match-screenshots ]; then cp -a -- data/match-screenshots data/match-screenshots.before-restore; fi
 cp -- data/backups/<backup-datei>.sqlite data/lan.db
 rm -f -- data/lan.db-wal data/lan.db-shm
 docker compose run --rm --no-deps -e DB_FILE=/app/data/lan.db app npm run privacy:reconcile-restore -- --preview
@@ -127,6 +129,15 @@ Spieler und Historie öffnen. Schlägt die Prüfung fehl, den Container erneut s
 `data/lan.db.before-restore.sqlite` nach `data/lan.db` kopieren, erneut die beiden möglichen
 `lan.db-wal`-/`lan.db-shm`-Dateien entfernen und wieder starten. Das Entfernen verhindert, dass ein
 zur ersetzten Datenbank gehörender WAL-Stand beim nächsten Start auf den Restore angewendet wird.
+Vor dem Start auch die Match-Screenshots zurücklegen, denn schon der Probestart mit dem älteren
+Snapshot entfernt Bilder, die dieser Snapshot nicht kennt:
+
+```bash
+rm -rf -- data/match-screenshots
+if [ -d data/match-screenshots.before-restore ]; then cp -a -- data/match-screenshots.before-restore data/match-screenshots; fi
+```
+
+Nach einer erfolgreichen Abnahme kann `data/match-screenshots.before-restore` gelöscht werden.
 
 Mindestens vor jeder LAN sollte der komplette Ablauf in einer separaten Testinstallation oder mit
 einer Kopie des `data`-Verzeichnisses geprobt werden. Ein erfolgreicher `backup:verify`-Lauf allein
@@ -165,6 +176,32 @@ sieht ihn erst nach „Allen erneut zeigen“ wieder.
 
 Reverse-Proxy oder Tunnel vor der App müssen Request-Bodys in Videogröße durchlassen. Der
 Cloudflare-Tunnel erlaubt im kostenlosen Tarif bis 100 MB pro Request; daher die Grenze oben.
+
+## Match-Screenshots
+
+Teilnehmende können an ein erfasstes Match-Ergebnis bis zu vier Screenshots hängen. Die Bilder
+liegen nicht in SQLite, sondern als Dateien im Ordner `match-screenshots` neben `DB_FILE`, im
+Docker-Setup also unter `/opt/respawn/data/match-screenshots/` auf dem gesicherten Datenvolume.
+`MATCH_SCREENSHOT_DIR` kann einen anderen Pfad setzen. Die Tabelle `match_screenshots` verweist
+nur auf die Dateien (`match-shot-<id>.jpg`, `.png` oder `.webp`). Die App fasst in diesem Ordner nur
+Dateien mit diesem Präfix an; ein gemeinsam genutzter Medienordner behält seine übrigen Dateien.
+Screenshots lassen sich nur an Ergebnisse aus der Match-Historie hängen, nicht an Turnierpartien
+oder im Admin-Bereich frei erfasste Ergebnisse.
+
+Der Browser verkleinert ein Bild vor dem Upload auf höchstens 1920 px und sendet JPEG; der Server
+nimmt JPEG, PNG und WebP bis 5 MB an und prüft die Dateisignatur. Ein Upload landet zuerst in einer
+temporären Datei (`.match-shot-<id>.upload`) und wird erst nach vollständigem Empfang umbenannt.
+Ein zu großes Bild liest der Server bis 20 MB noch vollständig ein, verwirft es und antwortet mit
+`413`, damit der Browser die Meldung statt eines Verbindungsabbruchs erhält.
+
+Die SQLite-Snapshots unter „Backup und Restore“ enthalten die Bilder nicht. Wer die Screenshots
+sichern will, kopiert den Ordner zusammen mit dem Datenvolume. Nach einem Restore eines älteren
+Snapshots entfernt der Server beim Start und danach stündlich Dateien, auf die keine Zeile mehr
+verweist, ebenso liegengebliebene temporäre Dateien, die älter als eine Stunde sind; der
+Restore-Ablauf oben sichert den Ordner deshalb vorher. Dieselbe Bereinigung läuft direkt nach dem
+Löschen eines Matches; Bilder gelöschter Events oder Spiele verschwinden spätestens beim nächsten
+stündlichen Lauf. Lässt sich eine Datei nicht löschen, bleibt die bereits gespeicherte Löschung
+gültig; der Server protokolliert den Fehler und versucht es beim nächsten Lauf erneut.
 
 ## Produktions-Deployment
 
