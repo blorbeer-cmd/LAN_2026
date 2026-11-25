@@ -23,14 +23,10 @@ function list(label, rows) {
   })), { label });
 }
 
-function placeOrdinal(place, count) {
-  return place === count ? 'der letzte Platz' : `Platz ${place}`;
-}
-
 function totalSection(participantCount, prizeInfo) {
   const n = Math.max(0, Number(participantCount) || 0);
   const example = n >= 2
-    ? ` Bei aktuell ${n} Teilnehmenden bringt Platz 1 also ${points(n)}, ${placeOrdinal(n, n)} ${points(1)}`
+    ? ` Bei aktuell ${n} Teilnehmenden bringt Platz 1 also ${points(n)} und Platz ${n}, falls er vergeben wird, ${points(1)}`
     : '';
   return section('total', 'Gesamtwertung', `
     <p>Gewertet werden drei Kategorien: Orga, Spielen und Wetten. In jeder Kategorie bekommst du einen Platz, und jeder Platz bringt Platzpunkte. Die Summe deiner Platzpunkte ist dein Gesamtstand.</p>
@@ -54,7 +50,7 @@ function orgaSection(rules) {
       { title: 'Ankunft eingetragen', meta: 'Wenn sie bis zum Eventstart eingetragen ist', value: points(o.arrivalBeforeStart) },
       { title: 'Abreise eingetragen', meta: 'Wenn sie bis zum Eventstart eingetragen ist', value: points(o.departureBeforeStart) },
       { title: 'Umfrage abgeschlossen', meta: `Für den Ersteller, ab ${o.minimumRespondents} Antwortenden`, value: points(o.completedPoll) },
-      { title: 'Vote abgeschlossen', meta: `Spieleabstimmung, für den Ersteller, ab ${o.minimumRespondents} Abstimmenden`, value: points(o.completedGameVote) },
+      { title: 'Vote abgeschlossen', meta: `Spieleabstimmung, für den Ersteller, ab ${o.minimumRespondents} Abstimmenden; einmal je Entscheidung, auch mit Stichwahl`, value: points(o.completedGameVote) },
     ])}`);
 }
 

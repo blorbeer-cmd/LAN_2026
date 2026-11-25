@@ -770,10 +770,12 @@ export function renderPoints(container, ctx) {
 
 // The rules page is a local route of the points view (#points/regeln), linked
 // from the area's help dialog. Its only exit besides navigation and history is
-// the account it explains.
+// the account it explains. The account tour targets account elements, so the
+// rules heading carries no tour entry.
 function renderPointsRules(container, ctx, data) {
   const rules = pointsRulesHtml(data);
-  container.innerHTML = `<div class="row-between page-title-row points-actions"><h1 class="view-title">So funktionieren LAN-Punkte</h1><div class="row points-actions"><button type="button" class="btn btn-sm" data-points-account>Mein Punktekonto</button></div></div>
+  container.innerHTML = `<div class="row-between page-title-row points-actions"><h1 class="view-title" data-area-tour="off">So funktionieren LAN-Punkte</h1><div class="row points-actions"><button type="button" class="btn btn-sm" data-points-account>Mein Punktekonto</button></div></div>
+    ${rules && loadError ? `<div class="row points-actions" role="status">${e(loadError)}<button type="button" class="btn btn-sm" data-points-retry>Erneut laden</button></div>` : ''}
     ${rules || `${emptyStateHtml(loadError || 'Regeln werden geladen…')}${loadError ? '<button type="button" class="btn" data-points-retry>Erneut laden</button>' : ''}`}`;
   container.querySelector('[data-points-account]').addEventListener('click', () => ctx.backLocal(null));
   container.querySelector('[data-points-retry]')?.addEventListener('click', () => refreshPoints(ctx));

@@ -1192,7 +1192,9 @@ test('poll and event-start travel awards update the open personal journal live',
     assert.match(member.url(), /#points\/regeln$/);
     const orgaRules = member.getByRole('list', { name: 'Orga-Punkte je Aktion' });
     await orgaRules.getByRole('listitem').filter({ hasText: 'Umfrage abgeschlossen' }).getByText('3 P.', { exact: true }).waitFor();
-    await member.getByText('Bei aktuell 3 Teilnehmenden bringt Platz 1 also 3 P., der letzte Platz 1 P.', { exact: false }).waitFor();
+    await member.getByText('Bei aktuell 3 Teilnehmenden bringt Platz 1 also 3 P. und Platz 3, falls er vergeben wird, 1 P.', { exact: false }).waitFor();
+    // The account tour explains account elements, so the rules page offers none.
+    assert.equal(await member.getByRole('button', { name: 'LAN-Punkte kennenlernen', exact: true }).count(), 0);
     await member.getByRole('dialog', { name: 'LAN-Punkte kennenlernen', exact: true }).waitFor({ state: 'detached' });
     await member.getByRole('button', { name: 'Mein Punktekonto', exact: true }).click();
     await member.getByRole('heading', { level: 1, name: 'Meine LAN-Punkte' }).waitFor();

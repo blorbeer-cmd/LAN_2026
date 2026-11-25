@@ -49,7 +49,8 @@ export function createAreaTours({ container, getContext }) {
   }
 
   function attach(heading, key, source, context) {
-    if (!heading || !eligible(context) || !definition(key, context)) return;
+    // A sub-page without the elements its area tour explains opts out.
+    if (!heading || heading.dataset.areaTour === 'off' || !eligible(context) || !definition(key, context)) return;
     if (heading.querySelector('[data-area-tour-open]')) return;
     // Keep heading navigation's name unchanged when its help button becomes
     // a descendant. The button remains an independently named tab stop.
@@ -133,6 +134,8 @@ export function createAreaTours({ container, getContext }) {
           startTour(key, source, trigger, chapterId, restart);
         };
         el.querySelector('[data-tour-link]')?.addEventListener('click', (event) => {
+          // Modified clicks (new tab or window) stay with the browser.
+          if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
           event.preventDefault();
           close();
           window.dispatchEvent(new CustomEvent('respawn:navigate', { detail: { view: tour.link.view, localRoute: tour.link.localRoute } }));

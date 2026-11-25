@@ -27,7 +27,7 @@ test('the rules page shows the server rule set rather than fixed numbers', () =>
   assert.equal(value(html, 'Platz 1'), '4 P.');
   assert.equal(value(html, 'Platz 4 und dahinter'), '1 P.');
   assert.equal(value(html, 'Turnier Platz 1'), '+5 P.');
-  assert.match(html, /Bei aktuell 12 Teilnehmenden bringt Platz 1 also 12 P\., der letzte Platz 1 P\.<\/p>/);
+  assert.match(html, /Bei aktuell 12 Teilnehmenden bringt Platz 1 also 12 P\. und Platz 12, falls er vergeben wird, 1 P\.<\/p>/);
   assert.match(html, /Unentschieden zu zweit: je 2 P\.\)/);
   assert.match(html, /3–5: 3 P\., 6–8: 4 P\., ab 9: 5 P\./);
 });
