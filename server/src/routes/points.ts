@@ -99,6 +99,9 @@ pointsRouter.get('/', (req, res) => {
     rounds,
     standings,
     participantCount: pointParticipantCount(eventId),
+    // The same rule set every final standing stores, so the rules page shows
+    // the values the server actually applies.
+    rules: pointsSnapshotRules(),
     categoryStanding: standings.find((row) => row.playerId === req.player!.id) ?? null,
     revisions: db.prepare('SELECT revision,created_at AS createdAt FROM points_snapshots WHERE event_id=? ORDER BY revision DESC').all(eventId),
   });

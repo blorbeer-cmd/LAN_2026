@@ -14,6 +14,7 @@ import { actionMenuHtml, wireActionMenus } from '../actionMenu.js';
 import { captureViewRenderState, restoreViewRenderState } from '../viewRenderState.js';
 import { profileRow } from '../profileRow.js';
 import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
+import { pointsRulesHtml } from '../pointsRules.js';
 
 let cached = null;
 let stale = true;
@@ -718,11 +719,12 @@ export function renderPoints(container, ctx) {
   }
   ensurePoints(ctx);
   const data = currentData();
+  if (ctx.localRoute?.()?.kind === 'rules') return renderPointsRules(container, ctx, data);
   const header = `<div class="row-between page-title-row points-actions"><h1 class="view-title">Meine LAN-Punkte</h1><div class="row points-actions"><button type="button" class="btn btn-sm" data-points-reports>Meldungen</button>${isGroupAdmin() ? '<button type="button" class="btn btn-sm" data-navigate="pointsAdmin">Punkte verwalten</button>' : ''}</div></div>`;
   if (!data?.settings) {
     container.innerHTML = `${header}${emptyStateHtml(loadError || (data ? 'Für diese LAN ist noch keine Punktewertung aktiviert.' : state.activeEvent?.eventType === 'lan' ? 'Punktekonto wird geladen…' : 'Wähle ein LAN-Event.'))}${loadError ? '<button type="button" class="btn" data-points-retry>Erneut laden</button>' : ''}`;
     wirePointsReportButtons(container);
-    container.querySelector('[data-points-retry]')?.addEventListener('click', () => refreshPoints(ctx));
+      container.querySelector('[data-points-retry]')?.addEventListener('click', () => refreshPoints(ctx));
     return;
   }
   const selected = ctx.localRoute?.()?.kind === 'round' ? ctx.localRoute().id : null;
@@ -764,6 +766,19 @@ export function renderPoints(container, ctx) {
       ),
     ),
   );
+}
+
+// The rules page is a local route of the points view (#points/regeln), linked
+// from the area's help dialog. Its only exit besides navigation and history is
+// the account it explains. The account tour targets account elements, so the
+// rules heading carries no tour entry.
+function renderPointsRules(container, ctx, data) {
+  const rules = pointsRulesHtml(data);
+  container.innerHTML = `<div class="row-between page-title-row points-actions"><h1 class="view-title" data-area-tour="off">So funktionieren LAN-Punkte</h1><div class="row points-actions"><button type="button" class="btn btn-sm" data-points-account>Mein Punktekonto</button></div></div>
+    ${rules && loadError ? `<div class="row points-actions" role="status">${e(loadError)}<button type="button" class="btn btn-sm" data-points-retry>Erneut laden</button></div>` : ''}
+    ${rules || `${emptyStateHtml(loadError || 'Regeln werden geladen…')}${loadError ? '<button type="button" class="btn" data-points-retry>Erneut laden</button>' : ''}`}`;
+  container.querySelector('[data-points-account]').addEventListener('click', () => ctx.backLocal(null));
+  container.querySelector('[data-points-retry]')?.addEventListener('click', () => refreshPoints(ctx));
 }
 
 function loadAdminCategories(ctx) {

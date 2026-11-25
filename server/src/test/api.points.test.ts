@@ -172,6 +172,8 @@ test('finalization refunds open and locked bets atomically, blocks on reports, a
   }
   const snapshot = (await request(app).get('/api/points/snapshots/1')).body;
   assert.equal(snapshot.rules.unsettledMarketsAtClose, 'full_refund');
+  // The rules page reads the live rule set; it must be the one stored with a final standing.
+  assert.deepEqual(final.rules, snapshot.rules);
   assert.deepEqual(snapshot.standings, final.standings);
 });
 

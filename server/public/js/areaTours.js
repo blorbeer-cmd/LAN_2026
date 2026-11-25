@@ -5,6 +5,7 @@ import { icon } from './icons.js';
 import { escapeHtml } from './format.js';
 import { profileRow } from './profileRow.js';
 import { DEMO_VIEWS, tourDemoSceneKey } from './areaTourDemoData.js';
+import { appHash } from './appRoute.js';
 
 export function tourPanelPlacement(target, panel, viewport, inset) {
   const candidates = ['bottom', 'top'].flatMap((placement) => ['center', 'left', 'right'].map((align) => {
@@ -48,7 +49,8 @@ export function createAreaTours({ container, getContext }) {
   }
 
   function attach(heading, key, source, context) {
-    if (!heading || !eligible(context) || !definition(key, context)) return;
+    // A sub-page without the elements its area tour explains opts out.
+    if (!heading || heading.dataset.areaTour === 'off' || !eligible(context) || !definition(key, context)) return;
     if (heading.querySelector('[data-area-tour-open]')) return;
     // Keep heading navigation's name unchanged when its help button becomes
     // a descendant. The button remains an independently named tab stop.
@@ -116,6 +118,8 @@ export function createAreaTours({ container, getContext }) {
       <p>Entdecke die Funktionen und was deine Aktionen auslösen.</p>
       ${context.area === 'arcade' && !['arcade', 'arcadeWatch'].includes(key) ? '<p class="muted">Die Partie läuft während der Tour weiter. Als Host kannst du sie vorher pausieren, wenn die aktuelle Spielphase es erlaubt.</p>' : ''}
       ${chapters}
+      ${tour.link && !(context.view === tour.link.view && context.route?.kind === tour.link.localRoute?.kind)
+    ? `<p><a href="${escapeHtml(appHash(tour.link.view, tour.link.localRoute))}" data-tour-link>${escapeHtml(tour.link.label)}</a></p>` : ''}
       <p class="muted">Dein Fortschritt bleibt für dieses Konto in diesem Browser gespeichert.</p>
       <div class="area-tour-actions">
         ${resumable ? '<button type="button" class="btn btn-sm" data-tour-restart>Neu starten</button>' : ''}
@@ -129,6 +133,13 @@ export function createAreaTours({ container, getContext }) {
           if (contextKey(getContext()) !== scope || !source.isConnected) return;
           startTour(key, source, trigger, chapterId, restart);
         };
+        el.querySelector('[data-tour-link]')?.addEventListener('click', (event) => {
+          // Modified clicks (new tab or window) stay with the browser.
+          if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+          event.preventDefault();
+          close();
+          window.dispatchEvent(new CustomEvent('respawn:navigate', { detail: { view: tour.link.view, localRoute: tour.link.localRoute } }));
+        });
         el.querySelector('[data-tour-start]').addEventListener('click', () => start(resumable ? resumeChapter : 'all'));
         el.querySelector('[data-tour-restart]')?.addEventListener('click', () => start(resumeChapter, true));
         el.querySelectorAll('[data-tour-chapter]').forEach((button) => {

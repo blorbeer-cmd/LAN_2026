@@ -10,7 +10,10 @@ export const AREA_TOURS = {
     s('earn', 'Mitmachen bringt Punkte', 'Ein erledigtes fremdes To-do bringt dem ersten Helfer 3 Orga-Punkte. Gespielte Matches bringen Spielpunkte: ein Sieg 4, der letzte Platz 1. Spielzeit und Teamgröße werden nicht gewichtet.'),
     s('bet', 'Auch eigene Spiele tippen', 'Tippe über „Wetten“ im Match- oder Turnierheader, auch auf eigene Spiele. Höchstens 20 Punkte Einsatz; Gewinn maximal in Einsatzhöhe. Nettogewinne zählen ab zwei abgerechneten Tipps.', '[aria-label="Mein Punktekonto"]'),
     s('history', 'Jede Buchung nachvollziehen', 'Der Punkteverlauf bietet die Kontoauswahl und zeigt Zeitpunkt, Herkunft und Betrag. Details erklären Auszahlungen und begründete Korrekturen. Bei falsch vergebenen Punkten kannst du eine Meldung erstellen.', '[aria-label="Punkteverlauf"]'),
-  ])]),
+  ])], {
+    // The help dialog links the complete rules page, which the short steps only summarize.
+    link: { label: 'Alle Regeln: So funktionieren LAN-Punkte', view: 'points', localRoute: { kind: 'rules' } },
+  }),
   pointsAdmin: t('LAN-Punkte verwalten', [c('manage', 'Regeln und Korrekturen', [
     s('rules', 'Feste Regeln', 'Pro Person gibt es einmal 100 Wettpunkte und höchstens 20 Punkte Einsatz je Markt. Orga-, Spiel- und Wett-Nettopunkte bleiben getrennt; Kategorieplätze bestimmen die Gesamtwertung.', '[data-points-settings]'),
     s('tasks', 'Feste To-do-Punkte', 'Der erste fremde Helfer erhält beim Erledigen eines To-dos automatisch 3 Orga-Punkte, auch bei einer Sammelaufgabe nur einmal. Wiederöffnen nimmt die Punkte zurück.'),

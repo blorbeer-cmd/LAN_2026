@@ -319,6 +319,13 @@ abwechselnder Hintergrundfläche, auch im geschlossenen Zustand.
 Auf schmalen Telefonen steht die Tippaktion unter dem Begegnungstext. Erstattete Märkte bleiben
 als Historie einsehbar und nennen im Tippdialog dauerhaft die Rückgabe aller Einsätze sowie den
 vorhandenen Erstattungsgrund. Das gilt auch nach erneutem Öffnen und bei einer Live-Erstattung.
+Der Hilfedialog des „?“ neben „Meine LAN-Punkte“ verlinkt „Alle Regeln: So funktionieren
+LAN-Punkte“. Die Seite „So funktionieren LAN-Punkte“
+(`#points/regeln`) erklärt Gesamtwertung und Platzpunkte mit der aktuellen Teilnehmerzahl, die
+Orga-Punkte je Aktion, Match- und Turnierpunkte, Wettguthaben, Höchsteinsatz, Tippschluss,
+Abrechnung mit Beispiel und Erstattungsfälle sowie den Buchungszeitpunkt und einen hinterlegten
+Preis. Alle Zahlen stammen aus `rules` in `GET /api/points`, demselben Regelsatz, den jeder
+festgeschriebene Endstand speichert. „Mein Punktekonto“ führt zurück.
 Home zeigt kein Punktekonto; Punkte und Tipps erreicht man über die Navigation. Admins finden in der
 Punkteverwaltung unter „Wettrunden“ alle Märkte mit Status, Topf, Tippanzahl und den Aktionen
 Schließen, Wiederöffnen, Erstatten und Stornieren. Vor „LAN-Endwertung festschreiben“ nennt die
